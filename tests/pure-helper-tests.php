@@ -119,4 +119,14 @@ $entries = $parser->parse_export( $parser_dir, $results );
 assert_true( 1 === count( $entries ) && 'UUID-1' === $entries[0]['uuid'], 'Parser finds and normalizes entries.' );
 Day_One_Importer_Cleanup::remove( $parser_dir );
 
+$fixture_dir     = __DIR__ . '/fixtures/day-one-fictional';
+$fixture_results = new Day_One_Importer_Results();
+$fixture_entries = $parser->parse_export( $fixture_dir, $fixture_results );
+assert_true( 3 === count( $fixture_entries ), 'Committed fictional fixture parses three entries.' );
+assert_true( 3 === $fixture_results->get_count( 'entries_found' ), 'Committed fictional fixture reports three found entries.' );
+assert_true( empty( $fixture_results->get_warnings() ), 'Committed fictional fixture parses without warnings.' );
+assert_true( ! empty( $fixture_entries[0]['photos'] ), 'Committed fictional fixture includes photo metadata.' );
+$fixture_photo_path = Day_One_Importer_Media::resolve_photo_path( $fixture_dir, $fixture_entries[0]['photos'][0] );
+assert_true( '' !== $fixture_photo_path && is_file( $fixture_photo_path ), 'Committed fictional fixture photo resolves on disk.' );
+
 echo "All pure helper tests passed.\n";
