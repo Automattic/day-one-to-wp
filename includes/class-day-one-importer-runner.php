@@ -158,17 +158,20 @@ class Day_One_Importer_Runner {
 		};
 
 		add_filter( 'upload_dir', $upload_dir_filter );
-		$uploaded = wp_handle_upload(
-			$file,
-			array(
-				'test_form'                => false,
-				'mimes'                    => array( 'zip' => 'application/zip' ),
-				'unique_filename_callback' => static function ( $dir, $name, $ext ) {
-					return 'day-one-export.zip';
-				},
-			)
-		);
-		remove_filter( 'upload_dir', $upload_dir_filter );
+		try {
+			$uploaded = wp_handle_upload(
+				$file,
+				array(
+					'test_form'                => false,
+					'mimes'                    => array( 'zip' => 'application/zip' ),
+					'unique_filename_callback' => static function ( $dir, $name, $ext ) {
+						return 'day-one-export.zip';
+					},
+				)
+			);
+		} finally {
+			remove_filter( 'upload_dir', $upload_dir_filter );
+		}
 
 		if ( empty( $uploaded['file'] ) || ! empty( $uploaded['error'] ) ) {
 			$results->add_error( __( 'The uploaded ZIP file could not be moved into the protected import directory.', 'day-one-importer' ) );
@@ -176,6 +179,12 @@ class Day_One_Importer_Runner {
 		}
 
 		$target = (string) $uploaded['file'];
+		if ( ! Day_One_Importer_Cleanup::set_owner_only_permissions( $target ) ) {
+			@unlink( $target ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+			$results->add_error( __( 'The uploaded ZIP file could not be secured in the protected import directory.', 'day-one-importer' ) );
+			return '';
+		}
+
 		return $target;
 	}
 

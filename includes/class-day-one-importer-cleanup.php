@@ -27,10 +27,44 @@ class Day_One_Importer_Cleanup {
 			return false;
 		}
 
+		if ( ! self::set_owner_only_permissions( $base ) || ! self::set_owner_only_permissions( $run ) ) {
+			self::remove( $run );
+			return false;
+		}
+
 		self::protect_directory( $base );
 		self::protect_directory( $run );
 
 		return $run;
+	}
+
+	/**
+	 * Restrict a file or directory to owner-only permissions.
+	 *
+	 * @param string $path File or directory path.
+	 * @return bool True when permissions were applied.
+	 */
+	public static function set_owner_only_permissions( $path ) {
+		if ( empty( $path ) || ! file_exists( $path ) ) {
+			return false;
+		}
+
+		global $wp_filesystem;
+		if ( ! $wp_filesystem || ! is_object( $wp_filesystem ) || ! method_exists( $wp_filesystem, 'chmod' ) ) {
+			if ( defined( 'ABSPATH' ) && ! function_exists( 'WP_Filesystem' ) ) {
+				require_once ABSPATH . 'wp-admin/includes/file.php';
+			}
+
+			if ( function_exists( 'WP_Filesystem' ) ) {
+				WP_Filesystem();
+			}
+		}
+
+		if ( ! $wp_filesystem || ! is_object( $wp_filesystem ) || ! method_exists( $wp_filesystem, 'chmod' ) ) {
+			return false;
+		}
+
+		return (bool) $wp_filesystem->chmod( $path, is_dir( $path ) ? 0700 : 0600, false );
 	}
 
 	/**
