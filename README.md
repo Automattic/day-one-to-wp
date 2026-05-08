@@ -94,4 +94,14 @@ Run pure helper tests without WordPress:
 php tests/pure-helper-tests.php
 ```
 
+Run a local WordPress smoke test with `wp-env`:
+
+```sh
+wp-env start
+wp-env run cli wp eval '$admin = new Day_One_Importer_Admin(); $admin->register_importer(); global $wp_importers; echo isset( $wp_importers["day-one"] ) ? "day-one importer registered\n" : "missing importer\n";'
+wp-env run cli wp eval-file wp-content/plugins/day-one-importer-0-day-one-importer/tests/wp-env-import-sample.php
+```
+
+The wp-env smoke test imports the bundled sample export without printing journal content, verifies private posts/media are created, reruns the import, and verifies completed entries are skipped.
+
 See `tests/manual-verification.md` for a WordPress manual verification checklist covering installation, import, privacy, idempotency, invalid inputs, media behavior, and cleanup.
