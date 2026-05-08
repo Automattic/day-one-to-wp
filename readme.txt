@@ -26,6 +26,8 @@ Privacy note: WordPress Media Library files may be accessible by direct URL depe
 
 The plugin does not send journal content or media to external services.
 
+For development and testing, the repository includes a wholly fictional sample Day One-style export. Real Day One exports should remain in ignored local paths such as `sample/` or outside the repository.
+
 == Installation ==
 
 1. Upload the plugin files to the `/wp-content/plugins/day-one-importer/` directory, or install the plugin ZIP through the WordPress Plugins screen.

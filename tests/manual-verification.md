@@ -22,11 +22,11 @@ Use this checklist on a local or staging WordPress site before relying on the im
 
 ## Sample import
 
-1. Place a local Day One JSON export ZIP in the ignored `sample/` directory, for example `sample/local-day-one-export.zip`, or choose another private local path.
-2. Import that local sample ZIP through the Day One importer screen.
-3. Confirm the results screen reports counts for journal JSON files, entries, created/skipped/resumed posts, tags, and media.
-4. Confirm warnings, if any, use UUIDs/dates/filenames only and do **not** display full private journal text.
-5. Confirm no plugin-created PHP warnings or logs include full journal entry text.
+1. Import the committed fictional fixture `tests/fixtures/day-one-fictional.zip` through the Day One importer screen.
+2. Confirm the results screen reports counts for journal JSON files, entries, created/skipped/resumed posts, tags, and media.
+3. Confirm warnings, if any, use UUIDs/dates/filenames only and do **not** display full journal text.
+4. Confirm no plugin-created PHP warnings or logs include full journal entry text.
+5. Optional: test a real developer-owned Day One JSON export ZIP from the ignored `sample/` directory, for example `sample/local-day-one-export.zip`, or from another private local path. Do not commit real Day One exports, extracted photos, screenshots, or prompt/reference images.
 
 ## Imported post checks
 
@@ -91,7 +91,7 @@ Entry-level and media-level failures should not stop unrelated valid entries fro
 Before considering the plugin verified, confirm all of the following:
 
 - Day One importer appears under **Tools → Import**.
-- Sample export imports without exposing private text in notices/logs.
+- Fictional sample export imports without exposing journal text in notices/logs.
 - Posts are private and dated correctly.
 - Tags and supported photos are preserved.
 - Re-importing does not duplicate completed entries.

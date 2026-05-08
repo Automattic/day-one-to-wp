@@ -1,0 +1,71 @@
+{
+  "metadata": {
+    "version": "fictional-sample-1",
+    "source": "Fictional Day One export fixture",
+    "generator": "day-one-importer tests"
+  },
+  "entries": [
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0001",
+      "creationDate": "2031-04-05T14:30:00Z",
+      "modifiedDate": "2031-04-05T15:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "# Lantern Garden Notes\n\nThe fictional greenhouse committee planted paper marigolds beside a blue ceramic moon. Nothing here describes a real journal or a real person.\n\nA tiny generated color tile is attached for media import testing.",
+      "tags": [
+        "fictional",
+        "sample",
+        "garden"
+      ],
+      "starred": true,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0001",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-04-05T14:35:00Z",
+          "orderInEntry": 0,
+          "width": 2,
+          "height": 2
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0002",
+      "creationDate": "2031-04-06T09:15:00Z",
+      "modifiedDate": "2031-04-06T09:45:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "# Library Robot Rehearsal\n\nThe cardboard library robot announced this shortcode-like text as plain writing: [gallery].\n\nLiteral raw HTML for safety testing: <strong>imaginary bold shelf</strong> and <script>makeBelieve()</script>. These strings are fictional fixture text.",
+      "tags": [
+        "fictional",
+        "library",
+        "safety-test"
+      ],
+      "starred": false,
+      "isPinned": true,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0003",
+      "creationDate": "2031-04-07T20:05:00Z",
+      "modifiedDate": "2031-04-07T20:10:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Quiet text-only entry for the imaginary mooncake tasting club.\n\nThis entry has no media and exists only to exercise text-only imports with paragraph breaks.",
+      "tags": [
+        "fictional",
+        "sample",
+        "text-only"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    }
+  ]
+}

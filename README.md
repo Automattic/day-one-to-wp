@@ -72,6 +72,8 @@ Photos are attached to the corresponding private post and importer metadata is s
 
 Local Day One exports, extracted photos, and prompt/reference images must not be committed. This repository ignores `sample/` and `prompt-images/` for local-only private data.
 
+For tests and examples, the repository includes `tests/fixtures/day-one-fictional.zip`, a wholly fictional Day One-style export that is safe to publish and is used by default in automated smoke tests.
+
 ## License
 
 Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
@@ -115,6 +117,6 @@ PLUGIN_DIR=$(wp-env run cli wp eval 'echo basename( WP_PLUGIN_DIR . "/" . dirnam
 wp-env run cli wp eval-file "wp-content/plugins/${PLUGIN_DIR}/tests/wp-env-import-sample.php"
 ```
 
-The wp-env smoke test imports a local, uncommitted sample export from `sample/local-day-one-export.zip` when present. You can also set `DAY_ONE_IMPORTER_SAMPLE_ZIP` or pass a ZIP path as the first WP-CLI argument. The script does not print journal content. With a local sample available, it verifies private posts/media are created, reruns the import, verifies completed entries are skipped, simulates an older importer-schema version and verifies it is reprocessed in place, moves one imported post to Trash, and verifies a later rerun recreates only that trashed entry. If the local sample ZIP is absent, the script exits successfully with a skipped status.
+The wp-env smoke test imports the committed fictional fixture at `tests/fixtures/day-one-fictional.zip` by default. You can optionally set `DAY_ONE_IMPORTER_SAMPLE_ZIP` or pass a ZIP path as the first WP-CLI argument to test a developer-owned private export, such as an ignored `sample/local-day-one-export.zip`. The script does not print journal content. It verifies private posts/media are created, reruns the import, verifies completed entries are skipped, simulates an older importer-schema version and verifies it is reprocessed in place, moves one imported post to Trash, and verifies a later rerun recreates only that trashed entry. The committed default fixture is required; if it is missing, the script fails as a repository setup error.
 
 See `tests/manual-verification.md` for a WordPress manual verification checklist covering installation, import, privacy, idempotency, invalid inputs, media behavior, and cleanup.

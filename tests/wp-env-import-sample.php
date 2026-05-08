@@ -1,14 +1,16 @@
 <?php
 /**
- * wp-env smoke test for importing a local Day One sample export.
+ * wp-env smoke test for importing the committed fictional Day One sample export.
  *
  * Run from the plugin root after `wp-env start`. In wp-env, the mounted plugin
  * directory name follows the local checkout name, so see README.md for the
  * robust command that resolves the plugin directory dynamically.
  *
- * The sample export is intentionally not committed because it can contain
- * personal journal data. Place a local ZIP at sample/local-day-one-export.zip,
- * set DAY_ONE_IMPORTER_SAMPLE_ZIP, or pass a path as the first WP-CLI argument.
+ * By default, this imports the safe fictional fixture committed at
+ * tests/fixtures/day-one-fictional.zip. Developers may optionally test their own
+ * private local export by setting DAY_ONE_IMPORTER_SAMPLE_ZIP or passing a path
+ * as the first WP-CLI argument. Private exports should stay under ignored paths
+ * such as sample/ or outside this repository.
  *
  * The script intentionally prints counts and statuses only, not journal content.
  * It bypasses browser upload handling so it can run under WP-CLI, but exercises
@@ -30,39 +32,39 @@ function day_one_importer_wp_env_is_absolute_path( $path ) {
 	return 1 === preg_match( '#^(?:/|[A-Za-z]:[\\\\/])#', (string) $path );
 }
 
-function day_one_importer_wp_env_sample_zip_path() {
+function day_one_importer_wp_env_sample_zip_config() {
 	global $args;
 
+	$explicit   = false;
 	$configured = getenv( 'DAY_ONE_IMPORTER_SAMPLE_ZIP' );
-	if ( ( false === $configured || '' === trim( (string) $configured ) ) && ! empty( $args[0] ) ) {
+	if ( false !== $configured && '' !== trim( (string) $configured ) ) {
+		$explicit = true;
+	} elseif ( ! empty( $args[0] ) ) {
 		$configured = $args[0];
-	}
-
-	if ( false === $configured || '' === trim( (string) $configured ) ) {
-		$configured = 'sample/local-day-one-export.zip';
+		$explicit   = true;
+	} else {
+		$configured = 'tests/fixtures/day-one-fictional.zip';
 	}
 
 	$configured = (string) $configured;
-	if ( day_one_importer_wp_env_is_absolute_path( $configured ) ) {
-		return $configured;
-	}
+	$path       = day_one_importer_wp_env_is_absolute_path( $configured ) ? $configured : dirname( __DIR__ ) . '/' . ltrim( $configured, '/\\' );
 
-	return dirname( __DIR__ ) . '/' . ltrim( $configured, '/\\' );
+	return array(
+		'path'     => $path,
+		'explicit' => $explicit,
+	);
 }
 
-$sample_zip = day_one_importer_wp_env_sample_zip_path();
+$sample_config     = day_one_importer_wp_env_sample_zip_config();
+$sample_zip        = $sample_config['path'];
+$using_default_zip = ! $sample_config['explicit'];
 if ( ! is_readable( $sample_zip ) ) {
-	echo wp_json_encode(
-		array(
-			'status'            => 'skipped',
-			'reason'            => 'Local sample export ZIP not found.',
-			'sample_configured' => (bool) getenv( 'DAY_ONE_IMPORTER_SAMPLE_ZIP' ) || ! empty( $args[0] ),
-			'path_hint'         => 'Use sample/local-day-one-export.zip, DAY_ONE_IMPORTER_SAMPLE_ZIP, or a first WP-CLI argument.',
-			'privacy'           => 'Sample Day One exports are personal and are intentionally not committed.',
-		),
-		JSON_PRETTY_PRINT
-	) . "\n";
-	exit( 0 );
+	if ( $using_default_zip ) {
+		fwrite( STDERR, "FAIL: Committed fictional fixture is missing or unreadable: tests/fixtures/day-one-fictional.zip\n" );
+	} else {
+		fwrite( STDERR, "FAIL: Configured Day One sample ZIP override is missing or unreadable. Check DAY_ONE_IMPORTER_SAMPLE_ZIP or the first WP-CLI argument.\n" );
+	}
+	exit( 1 );
 }
 
 require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -122,7 +124,7 @@ function day_one_importer_wp_env_import_from_zip( $zip_path ) {
 // Start from a clean sample-import state so this smoke test is repeatable.
 $existing = get_posts(
 	array(
-		'post_type'      => 'post',
+		'post_type'      => array( 'post', 'attachment' ),
 		'post_status'    => 'any',
 		'posts_per_page' => -1,
 		'fields'         => 'ids',
@@ -131,7 +133,11 @@ $existing = get_posts(
 	)
 );
 foreach ( $existing as $post_id ) {
-	wp_delete_post( (int) $post_id, true );
+	if ( 'attachment' === get_post_type( (int) $post_id ) ) {
+		wp_delete_attachment( (int) $post_id, true );
+	} else {
+		wp_delete_post( (int) $post_id, true );
+	}
 }
 
 $first        = day_one_importer_wp_env_import_from_zip( $sample_zip );
@@ -139,7 +145,13 @@ $first_counts = $first->get_counts();
 
 $created = isset( $first_counts['posts_created'] ) ? (int) $first_counts['posts_created'] : 0;
 $media   = isset( $first_counts['media_imported'] ) ? (int) $first_counts['media_imported'] : 0;
-day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
+if ( $using_default_zip ) {
+	$entries_found = isset( $first_counts['entries_found'] ) ? (int) $first_counts['entries_found'] : 0;
+	day_one_importer_wp_env_assert( 3 === $entries_found, 'Fictional fixture parsed three entries.' );
+	day_one_importer_wp_env_assert( 3 === $created, 'Fictional fixture created exactly three private posts.' );
+} else {
+	day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
+}
 day_one_importer_wp_env_assert( $media > 0, 'Imported sample media attachments.' );
 
 $imported_posts = get_posts(
@@ -148,16 +160,28 @@ $imported_posts = get_posts(
 		'post_status'    => 'any',
 		'posts_per_page' => -1,
 		'fields'         => 'ids',
+		'orderby'        => 'ID',
+		'order'          => 'ASC',
 		'meta_key'       => '_day_one_source', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
 		'meta_value'     => 'day-one-export', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 	)
 );
 
 day_one_importer_wp_env_assert( count( $imported_posts ) === $created, 'Created post count matches query count.' );
+$found_fixture_tag = false;
 foreach ( $imported_posts as $post_id ) {
-	day_one_importer_wp_env_assert( 'private' === get_post_status( (int) $post_id ), 'Imported post is private.' );
-	day_one_importer_wp_env_assert( '' !== get_post_meta( (int) $post_id, '_day_one_uuid', true ), 'Imported post has Day One UUID.' );
-	day_one_importer_wp_env_assert( '1' === get_post_meta( (int) $post_id, '_day_one_import_complete', true ), 'Imported post marked complete.' );
+	$post_id = (int) $post_id;
+	day_one_importer_wp_env_assert( 'private' === get_post_status( $post_id ), 'Imported post is private.' );
+	day_one_importer_wp_env_assert( '' !== get_post_meta( $post_id, '_day_one_uuid', true ), 'Imported post has Day One UUID.' );
+	day_one_importer_wp_env_assert( 'day-one-export' === get_post_meta( $post_id, '_day_one_source', true ), 'Imported post has Day One source metadata.' );
+	day_one_importer_wp_env_assert( '1' === get_post_meta( $post_id, '_day_one_import_complete', true ), 'Imported post marked complete.' );
+	day_one_importer_wp_env_assert( Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION === get_post_meta( $post_id, '_day_one_import_version', true ), 'Imported post has current import schema metadata.' );
+	if ( $using_default_zip && has_term( 'fictional', 'post_tag', $post_id ) ) {
+		$found_fixture_tag = true;
+	}
+}
+if ( $using_default_zip ) {
+	day_one_importer_wp_env_assert( $found_fixture_tag, 'Expected fictional fixture tag exists on imported posts.' );
 }
 
 $second        = day_one_importer_wp_env_import_from_zip( $sample_zip );
@@ -167,8 +191,8 @@ day_one_importer_wp_env_assert( $skipped === $created, 'Second import skipped ex
 
 $legacy_post_id = (int) reset( $imported_posts );
 update_post_meta( $legacy_post_id, '_day_one_import_version', '1' );
-$third         = day_one_importer_wp_env_import_from_zip( $sample_zip );
-$third_counts  = $third->get_counts();
+$third          = day_one_importer_wp_env_import_from_zip( $sample_zip );
+$third_counts   = $third->get_counts();
 $resumed_legacy = isset( $third_counts['posts_resumed'] ) ? (int) $third_counts['posts_resumed'] : 0;
 $skipped_legacy = isset( $third_counts['posts_skipped'] ) ? (int) $third_counts['posts_skipped'] : 0;
 day_one_importer_wp_env_assert( 1 === $resumed_legacy, 'Legacy-version imported post was reprocessed on rerun.' );
@@ -188,6 +212,7 @@ day_one_importer_wp_env_assert( ( $created - 1 ) === $skipped_after_trash, 'Non-
 echo wp_json_encode(
 	array(
 		'status'                         => 'passed',
+		'sample'                         => $using_default_zip ? 'committed fictional fixture' : 'configured override',
 		'posts_created'                  => $created,
 		'posts_skipped_rerun'            => $skipped,
 		'legacy_posts_reprocessed'       => $resumed_legacy,
