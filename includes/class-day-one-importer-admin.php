@@ -64,8 +64,12 @@ class Day_One_Importer_Admin {
 		echo '<div class="wrap">';
 		echo '<h1>' . esc_html__( 'Import Day One', 'day-one-importer' ) . '</h1>';
 
-		if ( 'POST' === $_SERVER['REQUEST_METHOD'] && isset( $_POST['day_one_importer_submit'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$this->handle_submission();
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
+		if ( 'POST' === $request_method ) {
+			check_admin_referer( self::NONCE_ACTION );
+			if ( isset( $_POST['day_one_importer_submit'] ) ) {
+				$this->handle_submission();
+			}
 		}
 
 		$this->render_intro();

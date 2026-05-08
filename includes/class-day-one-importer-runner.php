@@ -112,7 +112,13 @@ class Day_One_Importer_Runner {
 		}
 
 		if ( UPLOAD_ERR_OK !== (int) $file['error'] ) {
-			$results->add_error( sprintf( __( 'The upload failed with PHP upload error code %d.', 'day-one-importer' ), (int) $file['error'] ) );
+			$results->add_error(
+				sprintf(
+					/* translators: %d: PHP file upload error code. */
+					__( 'The upload failed with PHP upload error code %d.', 'day-one-importer' ),
+					(int) $file['error']
+				)
+			);
 			return '';
 		}
 
@@ -134,13 +140,51 @@ class Day_One_Importer_Runner {
 			return '';
 		}
 
-		$target = trailingslashit( $run_dir ) . 'day-one-export.zip';
-		if ( ! move_uploaded_file( $tmp_name, $target ) ) {
+		if ( ! function_exists( 'wp_handle_upload' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+
+		$upload_dir_filter = static function ( $dirs ) use ( $run_dir ) {
+			$run_dir = untrailingslashit( $run_dir );
+
+			$dirs['path']    = $run_dir;
+			$dirs['basedir'] = $run_dir;
+			$dirs['subdir']  = '';
+			$dirs['url']     = '';
+			$dirs['baseurl'] = '';
+			$dirs['error']   = false;
+
+			return $dirs;
+		};
+
+		add_filter( 'upload_dir', $upload_dir_filter );
+		try {
+			$uploaded = wp_handle_upload(
+				$file,
+				array(
+					'test_form'                => false,
+					'mimes'                    => array( 'zip' => 'application/zip' ),
+					'unique_filename_callback' => static function ( $dir, $name, $ext ) {
+						return 'day-one-export.zip';
+					},
+				)
+			);
+		} finally {
+			remove_filter( 'upload_dir', $upload_dir_filter );
+		}
+
+		if ( empty( $uploaded['file'] ) || ! empty( $uploaded['error'] ) ) {
 			$results->add_error( __( 'The uploaded ZIP file could not be moved into the protected import directory.', 'day-one-importer' ) );
 			return '';
 		}
 
-		@chmod( $target, 0600 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_chmod
+		$target = (string) $uploaded['file'];
+		if ( ! Day_One_Importer_Cleanup::set_owner_only_permissions( $target ) ) {
+			@unlink( $target ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+			$results->add_error( __( 'The uploaded ZIP file could not be secured in the protected import directory.', 'day-one-importer' ) );
+			return '';
+		}
+
 		return $target;
 	}
 
@@ -152,7 +196,9 @@ class Day_One_Importer_Runner {
 	 * @return true|WP_Error
 	 */
 	private function unzip( $zip_path, $extract_dir ) {
-		require_once ABSPATH . 'wp-admin/includes/file.php';
+		if ( ! function_exists( 'unzip_file' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
 
 		global $wp_filesystem;
 		if ( ! $wp_filesystem ) {
@@ -202,7 +248,13 @@ class Day_One_Importer_Runner {
 		$creation = Day_One_Importer_Content::parse_day_one_date( isset( $entry['creationDate'] ) ? $entry['creationDate'] : '' );
 		$modified = Day_One_Importer_Content::parse_day_one_date( isset( $entry['modifiedDate'] ) ? $entry['modifiedDate'] : '' );
 		if ( ! $creation['valid'] ) {
-			$results->add_warning( sprintf( __( 'Invalid creation date for UUID %s; WordPress current time was used.', 'day-one-importer' ), $uuid ) );
+			$results->add_warning(
+				sprintf(
+					/* translators: %s: Day One entry UUID. */
+					__( 'Invalid creation date for UUID %s; WordPress current time was used.', 'day-one-importer' ),
+					$uuid
+				)
+			);
 		}
 
 		$content = Day_One_Importer_Content::convert_text_to_content( isset( $entry['text'] ) ? $entry['text'] : '' );
@@ -228,7 +280,13 @@ class Day_One_Importer_Runner {
 			$updated       = wp_update_post( wp_slash( $postarr ), true );
 			if ( is_wp_error( $updated ) ) {
 				$results->increment( 'entries_failed' );
-				$results->add_warning( sprintf( __( 'Could not resume post for UUID %s.', 'day-one-importer' ), $uuid ) );
+				$results->add_warning(
+					sprintf(
+						/* translators: %s: Day One entry UUID. */
+						__( 'Could not resume post for UUID %s.', 'day-one-importer' ),
+						$uuid
+					)
+				);
 				return;
 			}
 		} else {
@@ -236,7 +294,13 @@ class Day_One_Importer_Runner {
 			$post_id                 = wp_insert_post( wp_slash( $postarr ), true );
 			if ( is_wp_error( $post_id ) || ! $post_id ) {
 				$results->increment( 'entries_failed' );
-				$results->add_warning( sprintf( __( 'Could not create private post for UUID %s.', 'day-one-importer' ), $uuid ) );
+				$results->add_warning(
+					sprintf(
+						/* translators: %s: Day One entry UUID. */
+						__( 'Could not create private post for UUID %s.', 'day-one-importer' ),
+						$uuid
+					)
+				);
 				return;
 			}
 
@@ -263,7 +327,13 @@ class Day_One_Importer_Runner {
 				true
 			);
 			if ( is_wp_error( $updated ) ) {
-				$results->add_warning( sprintf( __( 'Could not append imported media to post content for UUID %s.', 'day-one-importer' ), $uuid ) );
+				$results->add_warning(
+					sprintf(
+						/* translators: %s: Day One entry UUID. */
+						__( 'Could not append imported media to post content for UUID %s.', 'day-one-importer' ),
+						$uuid
+					)
+				);
 			}
 		}
 
@@ -294,7 +364,13 @@ class Day_One_Importer_Runner {
 		);
 
 		if ( count( $ids ) > 1 ) {
-			$results->add_warning( sprintf( __( 'Multiple existing posts found for UUID %s; the first one was used.', 'day-one-importer' ), $uuid ) );
+			$results->add_warning(
+				sprintf(
+					/* translators: %s: Day One entry UUID. */
+					__( 'Multiple existing posts found for UUID %s; the first one was used.', 'day-one-importer' ),
+					$uuid
+				)
+			);
 		}
 
 		return ! empty( $ids ) ? (int) $ids[0] : 0;
@@ -341,7 +417,13 @@ class Day_One_Importer_Runner {
 
 		$set = wp_set_post_tags( $post_id, $tags, false );
 		if ( is_wp_error( $set ) ) {
-			$results->add_warning( sprintf( __( 'Tags could not be assigned for UUID %s.', 'day-one-importer' ), $uuid ) );
+			$results->add_warning(
+				sprintf(
+					/* translators: %s: Day One entry UUID. */
+					__( 'Tags could not be assigned for UUID %s.', 'day-one-importer' ),
+					$uuid
+				)
+			);
 			return;
 		}
 

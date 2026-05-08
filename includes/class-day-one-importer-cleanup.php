@@ -23,11 +23,12 @@ class Day_One_Importer_Cleanup {
 		$base = trailingslashit( $base ) . 'day-one-importer';
 		$run  = $base . DIRECTORY_SEPARATOR . gmdate( 'Ymd-His' ) . '-' . wp_generate_password( 8, false, false );
 
-		if ( function_exists( 'wp_mkdir_p' ) ) {
-			if ( ! wp_mkdir_p( $run ) ) {
-				return false;
-			}
-		} elseif ( ! is_dir( $run ) && ! mkdir( $run, 0700, true ) ) {
+		if ( ! function_exists( 'wp_mkdir_p' ) || ! wp_mkdir_p( $run ) ) {
+			return false;
+		}
+
+		if ( ! self::set_owner_only_permissions( $base ) || ! self::set_owner_only_permissions( $run ) ) {
+			self::remove( $run );
 			return false;
 		}
 
@@ -38,13 +39,42 @@ class Day_One_Importer_Cleanup {
 	}
 
 	/**
+	 * Restrict a file or directory to owner-only permissions.
+	 *
+	 * @param string $path File or directory path.
+	 * @return bool True when permissions were applied.
+	 */
+	public static function set_owner_only_permissions( $path ) {
+		if ( empty( $path ) || ! file_exists( $path ) ) {
+			return false;
+		}
+
+		global $wp_filesystem;
+		if ( ! $wp_filesystem || ! is_object( $wp_filesystem ) || ! method_exists( $wp_filesystem, 'chmod' ) ) {
+			if ( defined( 'ABSPATH' ) && ! function_exists( 'WP_Filesystem' ) ) {
+				require_once ABSPATH . 'wp-admin/includes/file.php';
+			}
+
+			if ( function_exists( 'WP_Filesystem' ) ) {
+				WP_Filesystem();
+			}
+		}
+
+		if ( ! $wp_filesystem || ! is_object( $wp_filesystem ) || ! method_exists( $wp_filesystem, 'chmod' ) ) {
+			return false;
+		}
+
+		return (bool) $wp_filesystem->chmod( $path, is_dir( $path ) ? 0700 : 0600, false );
+	}
+
+	/**
 	 * Add best-effort protection files to a temp directory.
 	 *
 	 * @param string $dir Directory.
 	 * @return void
 	 */
 	public static function protect_directory( $dir ) {
-		if ( ! is_dir( $dir ) || ! is_writable( $dir ) ) {
+		if ( ! is_dir( $dir ) || ( function_exists( 'wp_is_writable' ) && ! wp_is_writable( $dir ) ) ) {
 			return;
 		}
 

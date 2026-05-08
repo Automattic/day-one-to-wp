@@ -39,21 +39,10 @@ class Day_One_Importer_Plugin {
 	 * @return void
 	 */
 	public function init() {
-		$this->load_textdomain();
-
 		if ( is_admin() ) {
 			$admin = new Day_One_Importer_Admin();
 			$admin->init();
 		}
-	}
-
-	/**
-	 * Load translations.
-	 *
-	 * @return void
-	 */
-	private function load_textdomain() {
-		load_plugin_textdomain( 'day-one-importer', false, dirname( plugin_basename( DAY_ONE_IMPORTER_FILE ) ) . '/languages' );
 	}
 
 	/**

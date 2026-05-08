@@ -116,21 +116,42 @@ class Day_One_Importer_Media {
 		$source = self::resolve_photo_path( $this->root, $photo );
 		if ( ! $source ) {
 			$this->results->increment( 'media_missing' );
-			$this->results->add_warning( sprintf( __( 'Media missing for UUID %1$s: %2$s', 'day-one-importer' ), $uuid, $label ) );
+			$this->results->add_warning(
+				sprintf(
+					/* translators: 1: Day One entry UUID, 2: media identifier, hash, or filename. */
+					__( 'Media missing for UUID %1$s: %2$s', 'day-one-importer' ),
+					$uuid,
+					$label
+				)
+			);
 			return 0;
 		}
 
 		$valid = $this->validate_media_file( $source );
 		if ( true !== $valid ) {
 			$this->results->increment( 'media_unsupported' );
-			$this->results->add_warning( sprintf( __( 'Unsupported media skipped for UUID %1$s: %2$s', 'day-one-importer' ), $uuid, $label ) );
+			$this->results->add_warning(
+				sprintf(
+					/* translators: 1: Day One entry UUID, 2: media identifier, hash, or filename. */
+					__( 'Unsupported media skipped for UUID %1$s: %2$s', 'day-one-importer' ),
+					$uuid,
+					$label
+				)
+			);
 			return 0;
 		}
 
 		$attachment_id = $this->sideload_media( $source, $photo, $post_id );
 		if ( ! $attachment_id ) {
 			$this->results->increment( 'media_failed' );
-			$this->results->add_warning( sprintf( __( 'Media import failed for UUID %1$s: %2$s', 'day-one-importer' ), $uuid, $label ) );
+			$this->results->add_warning(
+				sprintf(
+					/* translators: 1: Day One entry UUID, 2: media identifier, hash, or filename. */
+					__( 'Media import failed for UUID %1$s: %2$s', 'day-one-importer' ),
+					$uuid,
+					$label
+				)
+			);
 			return 0;
 		}
 
