@@ -2,6 +2,14 @@
 
 Day One Importer is a WordPress admin importer for Day One JSON exports. It creates one **private** WordPress post per Day One entry and attempts to preserve dates, tags, text, and supported photos.
 
+## Try in WordPress Playground
+
+You can launch a temporary WordPress site with Day One Importer installed and activated:
+
+[![Test in WordPress Playground](https://playground.wordpress.net/badge.svg)](https://playground.wordpress.net/?blueprint-url=https://raw.githubusercontent.com/Automattic/day-one-to-wp/main/blueprint.json)
+
+Playground runs in your browser and is useful for checking the importer screens with fictional or disposable exports. Avoid uploading private Day One exports unless you are comfortable testing them in that browser session. Playground storage is temporary and browser-backed; large ZIP uploads, media processing, and generated attachment URLs may behave differently from a normal WordPress host.
+
 ## Requirements
 
 - WordPress 6.4 or newer
@@ -84,6 +92,7 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 - Images are appended after entry text rather than placed at exact original inline positions.
 - Unsupported or missing media produces warnings but does not stop the entry import.
 - Very large exports may hit PHP upload, timeout, or memory limits. Increase server limits or split exports if needed.
+- WordPress Playground is useful for quick testing, but browser-backed uploads/media handling may differ from a normal WordPress host, especially for large Day One ZIP exports or photo-heavy imports.
 - The importer does not sync with Day One, delete Day One accounts, or publish imported entries publicly.
 
 ## Troubleshooting
