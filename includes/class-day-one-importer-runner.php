@@ -176,7 +176,6 @@ class Day_One_Importer_Runner {
 		}
 
 		$target = (string) $uploaded['file'];
-		@chmod( $target, 0600 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_chmod
 		return $target;
 	}
 
