@@ -154,6 +154,15 @@ class Day_One_Importer_Results {
 	}
 
 	/**
+	 * Whether the run has warning details or suppressed warnings.
+	 *
+	 * @return bool
+	 */
+	public function has_warnings() {
+		return ! empty( $this->warnings ) || $this->warnings_suppressed > 0;
+	}
+
+	/**
 	 * Get warnings.
 	 *
 	 * @return string[]

@@ -36,6 +36,24 @@ function assert_true( $condition, $message ) {
 	}
 }
 
+$empty_results = new Day_One_Importer_Results();
+assert_true( ! $empty_results->has_warnings(), 'A new result has no warnings.' );
+assert_true( ! $empty_results->has_errors(), 'A new result has no errors.' );
+
+$warning_results = new Day_One_Importer_Results();
+$warning_results->add_warning( 'Privacy-safe warning.' );
+assert_true( $warning_results->has_warnings(), 'A result with one warning reports warnings.' );
+
+$suppressed_warning_results = new Day_One_Importer_Results();
+for ( $i = 0; $i <= Day_One_Importer_Results::MAX_DETAILS; $i++ ) {
+	$suppressed_warning_results->add_warning( 'Privacy-safe warning.' );
+}
+assert_true( $suppressed_warning_results->has_warnings(), 'Suppressed warnings still report warnings.' );
+
+$error_results = new Day_One_Importer_Results();
+$error_results->add_error( 'Privacy-safe error.' );
+assert_true( $error_results->has_errors(), 'Existing error behavior is unchanged.' );
+
 $content = Day_One_Importer_Content::convert_text_to_content( "# Heading\n\nParagraph with [gallery] and <script>alert(1)</script>.\n- item" );
 assert_true( false !== strpos( $content, '<h1>Heading</h1>' ), 'Markdown heading is converted.' );
 assert_true( false === strpos( $content, '<script>' ), 'Raw script tags are escaped.' );
