@@ -127,12 +127,25 @@ $second_counts = $second->get_counts();
 $skipped       = isset( $second_counts['posts_skipped'] ) ? (int) $second_counts['posts_skipped'] : 0;
 day_one_importer_wp_env_assert( $skipped === $created, 'Second import skipped existing completed posts.' );
 
+$trashed_post_id = (int) reset( $imported_posts );
+wp_trash_post( $trashed_post_id );
+day_one_importer_wp_env_assert( 'trash' === get_post_status( $trashed_post_id ), 'Imported post moved to trash for retry test.' );
+
+$third              = day_one_importer_wp_env_import_from_zip( $sample_zip );
+$third_counts       = $third->get_counts();
+$recreated          = isset( $third_counts['posts_created'] ) ? (int) $third_counts['posts_created'] : 0;
+$skipped_after_trash = isset( $third_counts['posts_skipped'] ) ? (int) $third_counts['posts_skipped'] : 0;
+day_one_importer_wp_env_assert( 1 === $recreated, 'Trashed imported post was recreated on rerun.' );
+day_one_importer_wp_env_assert( ( $created - 1 ) === $skipped_after_trash, 'Non-trashed completed posts were still skipped.' );
+
 echo wp_json_encode(
 	array(
-		'status'              => 'passed',
-		'posts_created'       => $created,
-		'posts_skipped_rerun' => $skipped,
-		'media_imported'      => $media,
+		'status'                         => 'passed',
+		'posts_created'                  => $created,
+		'posts_skipped_rerun'            => $skipped,
+		'posts_recreated_after_trash'    => $recreated,
+		'posts_skipped_after_trash_test' => $skipped_after_trash,
+		'media_imported'                 => $media,
 	),
 	JSON_PRETTY_PRINT
 ) . "\n";

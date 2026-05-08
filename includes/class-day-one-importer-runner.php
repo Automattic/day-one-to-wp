@@ -128,10 +128,9 @@ class Day_One_Importer_Runner {
 			return '';
 		}
 
-		$zip_mimes = array( 'zip' => 'application/zip|application/x-zip-compressed|multipart/x-zip' );
-		$checked   = wp_check_filetype_and_ext( $tmp_name, $name, $zip_mimes );
-		if ( empty( $checked['ext'] ) && empty( $checked['type'] ) ) {
-			$results->add_error( __( 'The uploaded file does not appear to be a valid ZIP archive.', 'day-one-importer' ) );
+		$zip_type = wp_check_filetype( $name, array( 'zip' => 'application/zip' ) );
+		if ( 'zip' !== strtolower( (string) $zip_type['ext'] ) ) {
+			$results->add_error( __( 'Only Day One ZIP exports are supported.', 'day-one-importer' ) );
 			return '';
 		}
 
@@ -180,22 +179,23 @@ class Day_One_Importer_Runner {
 
 		$existing_post_id = $this->find_existing_post_id( $uuid, $results );
 		if ( $existing_post_id ) {
-			$complete = get_post_meta( $existing_post_id, '_day_one_import_complete', true );
-			$version  = get_post_meta( $existing_post_id, '_day_one_import_version', true );
-			if ( '1' === (string) $complete && self::IMPORT_SCHEMA_VERSION === (string) $version ) {
-				$results->increment( 'posts_skipped' );
-				return;
-			}
-
 			if ( 'trash' === get_post_status( $existing_post_id ) ) {
-				$results->increment( 'posts_skipped' );
-				$results->add_warning( sprintf( __( 'Existing trashed post for UUID %s was skipped.', 'day-one-importer' ), $uuid ) );
-				return;
-			}
+				wp_delete_post( $existing_post_id, true );
+				$existing_post_id = 0;
+			} else {
+				$complete = get_post_meta( $existing_post_id, '_day_one_import_complete', true );
+				$version  = get_post_meta( $existing_post_id, '_day_one_import_version', true );
+				if ( '1' === (string) $complete && self::IMPORT_SCHEMA_VERSION === (string) $version ) {
+					$results->increment( 'posts_skipped' );
+					return;
+				}
 
-			$post_id = $existing_post_id;
-			$results->increment( 'posts_resumed' );
-		} else {
+				$post_id = $existing_post_id;
+				$results->increment( 'posts_resumed' );
+			}
+		}
+
+		if ( ! $existing_post_id ) {
 			$post_id = 0;
 		}
 

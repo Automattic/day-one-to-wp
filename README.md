@@ -48,6 +48,8 @@ The results screen is designed to be privacy-safe: it reports counts, UUIDs, dat
 
 The importer stores Day One UUID metadata on posts and media. Re-importing the same export skips entries that were already imported and marked complete. If an earlier import created a post but did not finish, the importer resumes that post instead of creating a duplicate.
 
+If you move imported posts to Trash and rerun the import, the trashed imported copy is permanently removed and a fresh private post is created for that Day One UUID. This is useful when cleaning up a failed test import before retrying.
+
 This means you can normally rerun the same export after an interruption without creating duplicate posts for the same Day One UUIDs.
 
 ## Media behavior and privacy
@@ -102,6 +104,6 @@ wp-env run cli wp eval '$admin = new Day_One_Importer_Admin(); $admin->register_
 wp-env run cli wp eval-file wp-content/plugins/day-one-importer-0-day-one-importer/tests/wp-env-import-sample.php
 ```
 
-The wp-env smoke test imports the bundled sample export without printing journal content, verifies private posts/media are created, reruns the import, and verifies completed entries are skipped.
+The wp-env smoke test imports the bundled sample export without printing journal content, verifies private posts/media are created, reruns the import, verifies completed entries are skipped, moves one imported post to Trash, and verifies a later rerun recreates only that trashed entry.
 
 See `tests/manual-verification.md` for a WordPress manual verification checklist covering installation, import, privacy, idempotency, invalid inputs, media behavior, and cleanup.
