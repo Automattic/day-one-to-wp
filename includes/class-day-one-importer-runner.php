@@ -140,7 +140,9 @@ class Day_One_Importer_Runner {
 			return '';
 		}
 
-		require_once ABSPATH . 'wp-admin/includes/file.php';
+		if ( ! function_exists( 'wp_handle_upload' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
 
 		$upload_dir_filter = static function ( $dirs ) use ( $run_dir ) {
 			$run_dir = untrailingslashit( $run_dir );
@@ -186,7 +188,9 @@ class Day_One_Importer_Runner {
 	 * @return true|WP_Error
 	 */
 	private function unzip( $zip_path, $extract_dir ) {
-		require_once ABSPATH . 'wp-admin/includes/file.php';
+		if ( ! function_exists( 'unzip_file' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
 
 		global $wp_filesystem;
 		if ( ! $wp_filesystem ) {
