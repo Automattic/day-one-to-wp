@@ -81,6 +81,19 @@ function day_one_importer_wp_env_assert( $condition, $message ) {
 	}
 }
 
+function day_one_importer_wp_env_blocks_have_core_block( $blocks ) {
+	foreach ( (array) $blocks as $block ) {
+		if ( ! empty( $block['blockName'] ) && 0 === strpos( $block['blockName'], 'core/' ) ) {
+			return true;
+		}
+		if ( ! empty( $block['innerBlocks'] ) && day_one_importer_wp_env_blocks_have_core_block( $block['innerBlocks'] ) ) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 function day_one_importer_wp_env_import_from_zip( $zip_path ) {
 	$run_dir = Day_One_Importer_Cleanup::create_run_directory();
 	day_one_importer_wp_env_assert( $run_dir, 'Run directory created.' );
@@ -153,6 +166,7 @@ if ( $using_default_zip ) {
 	day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
 }
 day_one_importer_wp_env_assert( $media > 0, 'Imported sample media attachments.' );
+day_one_importer_wp_env_assert( '3' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 3 for block content.' );
 
 $imported_posts = get_posts(
 	array(
@@ -176,6 +190,28 @@ foreach ( $imported_posts as $post_id ) {
 	day_one_importer_wp_env_assert( 'day-one-export' === get_post_meta( $post_id, '_day_one_source', true ), 'Imported post has Day One source metadata.' );
 	day_one_importer_wp_env_assert( '1' === get_post_meta( $post_id, '_day_one_import_complete', true ), 'Imported post marked complete.' );
 	day_one_importer_wp_env_assert( Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION === get_post_meta( $post_id, '_day_one_import_version', true ), 'Imported post has current import schema metadata.' );
+
+	$post_content = (string) get_post_field( 'post_content', $post_id );
+	day_one_importer_wp_env_assert( false !== strpos( $post_content, '<!-- wp:' ), 'Imported post content contains block comments.' );
+	if ( function_exists( 'parse_blocks' ) ) {
+		day_one_importer_wp_env_assert( day_one_importer_wp_env_blocks_have_core_block( parse_blocks( $post_content ) ), 'Imported post content parses as core blocks.' );
+	}
+	day_one_importer_wp_env_assert( false === strpos( $post_content, 'day-one-importer-photos' ), 'Imported post content omits old photo wrapper.' );
+	day_one_importer_wp_env_assert( false === strpos( $post_content, '<h2>Imported photos</h2>' ), 'Imported post content omits old imported photos heading.' );
+
+	$attachments    = get_attached_media( 'image', $post_id );
+	$attachment_ids = array_map( 'intval', wp_list_pluck( $attachments, 'ID' ) );
+	if ( 1 === count( $attachment_ids ) ) {
+		day_one_importer_wp_env_assert( false !== strpos( $post_content, '<!-- wp:image' ), 'Post with one attachment contains an Image block.' );
+	} elseif ( count( $attachment_ids ) >= 2 ) {
+		day_one_importer_wp_env_assert( false !== strpos( $post_content, '<!-- wp:gallery' ), 'Post with multiple attachments contains a Gallery block.' );
+	}
+	foreach ( $attachment_ids as $attachment_id ) {
+		if ( false !== strpos( $post_content, '"id":' . $attachment_id ) ) {
+			day_one_importer_wp_env_assert( false !== strpos( $post_content, 'wp-image-' . $attachment_id ), 'Image block contains matching wp-image class.' );
+		}
+	}
+
 	if ( $using_default_zip && has_term( 'fictional', 'post_tag', $post_id ) ) {
 		$found_fixture_tag = true;
 	}
