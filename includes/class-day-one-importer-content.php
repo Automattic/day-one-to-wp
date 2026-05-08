@@ -24,7 +24,7 @@ class Day_One_Importer_Content {
 	 */
 	public static function convert_text_to_content( $text ) {
 		$text  = is_scalar( $text ) ? (string) $text : '';
-		$text  = self::normalize_line_endings( $text );
+		$text  = self::normalize_day_one_markdown_escapes( self::normalize_line_endings( $text ) );
 		$lines = explode( "\n", $text );
 
 		$html       = '';
@@ -55,6 +55,12 @@ class Day_One_Importer_Content {
 
 		foreach ( $lines as $line ) {
 			$trimmed = trim( $line );
+
+			if ( self::is_day_one_media_placeholder( $trimmed ) ) {
+				$flush_paragraph();
+				$flush_list();
+				continue;
+			}
 
 			if ( '' === $trimmed ) {
 				$flush_paragraph();
@@ -100,10 +106,13 @@ class Day_One_Importer_Content {
 	 */
 	public static function derive_title( $text, $date_gmt = '' ) {
 		$text  = is_scalar( $text ) ? (string) $text : '';
-		$lines = explode( "\n", self::normalize_line_endings( $text ) );
+		$lines = explode( "\n", self::normalize_day_one_markdown_escapes( self::normalize_line_endings( $text ) ) );
 
 		foreach ( $lines as $line ) {
 			$trimmed = trim( $line );
+			if ( self::is_day_one_media_placeholder( $trimmed ) ) {
+				continue;
+			}
 			if ( preg_match( '/^#{1,6}\s+(.+)$/', $trimmed, $matches ) ) {
 				return self::trim_title( $matches[1] );
 			}
@@ -111,6 +120,9 @@ class Day_One_Importer_Content {
 
 		foreach ( $lines as $line ) {
 			$trimmed = trim( $line );
+			if ( self::is_day_one_media_placeholder( $trimmed ) ) {
+				continue;
+			}
 			if ( '' !== $trimmed ) {
 				return self::trim_title( preg_replace( '/^[-*+]\s+/', '', $trimmed ) );
 			}
@@ -244,6 +256,32 @@ class Day_One_Importer_Content {
 	}
 
 	/**
+	 * Normalize Markdown escape backslashes emitted by Day One plain-text export.
+	 *
+	 * @param string $text Text.
+	 * @return string
+	 */
+	public static function normalize_day_one_markdown_escapes( $text ) {
+		return preg_replace( '/\\\\([\\\\`*_{}\[\]()#+\-.!>])/', '$1', (string) $text );
+	}
+
+	/**
+	 * Detect Day One media placeholder Markdown links.
+	 *
+	 * Day One can include photo placeholders such as
+	 * `![](dayone-moment://UUID)` in the text field while the actual media is
+	 * represented separately in the `photos` array. The importer appends imported
+	 * photos from that structured metadata, so these placeholders should not be
+	 * used as visible content or post titles.
+	 *
+	 * @param string $line Trimmed line.
+	 * @return bool
+	 */
+	public static function is_day_one_media_placeholder( $line ) {
+		return (bool) preg_match( '/^!\[[^\]]*\]\(dayone-(?:moment|photo|video):\/\/[^\s)]+\)$/i', trim( (string) $line ) );
+	}
+
+	/**
 	 * Normalize line endings.
 	 *
 	 * @param string $text Text.
@@ -264,10 +302,10 @@ class Day_One_Importer_Content {
 		$title = preg_replace( '/\s+/u', ' ', $title );
 		$title = trim( (string) $title );
 
-		if ( function_exists( 'mb_strlen' ) && mb_strlen( $title ) > 80 ) {
-			$title = rtrim( mb_substr( $title, 0, 77 ) ) . '…';
-		} elseif ( strlen( $title ) > 80 ) {
-			$title = rtrim( substr( $title, 0, 77 ) ) . '...';
+		if ( function_exists( 'mb_strlen' ) && mb_strlen( $title ) > 60 ) {
+			$title = rtrim( mb_substr( $title, 0, 57 ) ) . '…';
+		} elseif ( strlen( $title ) > 60 ) {
+			$title = rtrim( substr( $title, 0, 57 ) ) . '...';
 		}
 
 		return $title ? $title : ( function_exists( '__' ) ? __( 'Day One entry', 'day-one-importer' ) : 'Day One entry' );
