@@ -1,26 +1,97 @@
 # Manual verification plan
 
-1. Install the plugin on a local WordPress site with `WP_DEBUG` enabled.
-2. Activate the plugin and confirm **Tools → Import → Day One** exists.
-3. Import `sample/05-07-2026_1-48-PM.zip`.
-4. Confirm the results screen is privacy-safe and reports counts for journal JSON files, entries, posts, tags, and media.
-5. Inspect several imported posts:
-   - Status is `private`.
-   - Date matches the Day One `creationDate`.
-   - Text is readable, headings/paragraphs are preserved sufficiently, and shortcode-like text remains literal.
-   - Tags are assigned where the source entry has tags.
-   - Photos are attached and appended in order when present.
-6. Re-import the same ZIP and confirm no duplicate posts are created; complete entries are skipped.
-7. Simulate an incomplete import by changing `_day_one_import_complete` to `0` on one imported post, then re-import and confirm it is resumed without a duplicate.
-8. Test invalid inputs:
-   - Non-ZIP upload.
-   - ZIP with malformed JSON.
-   - ZIP without a JSON file containing `entries`.
-   - Entry missing `uuid`.
-   - Entry with invalid date.
-   - Entry with missing media file.
-   - Entry with unsupported media extension.
-9. Confirm temporary extraction files are removed after success and failure.
-10. Confirm no full private journal text is displayed in admin notices or plugin-created logs.
-11. Confirm frontend visibility: imported posts are visible only to users who can read private posts.
-12. Review media URL exposure on the target hosting environment and communicate any direct-URL media privacy implications to the site owner.
+Use this checklist on a local or staging WordPress site before relying on the importer for a real Day One archive.
+
+## Environment setup
+
+1. Install WordPress 6.4+ with PHP 7.4+.
+2. Enable `WP_DEBUG` and review PHP logs during testing.
+3. Copy this plugin to `wp-content/plugins/day-one-importer/`.
+4. Activate **Day One Importer** in **Plugins → Installed Plugins**.
+5. Confirm the testing user can import, upload files, and edit posts.
+
+## Importer registration and upload flow
+
+1. Go to **Tools → Import**.
+2. Confirm **Day One** is listed.
+3. Open the importer and verify the page explains:
+   - A Day One JSON export ZIP is expected.
+   - Imported posts are private by default.
+   - Media URL privacy depends on WordPress/hosting configuration.
+4. Confirm the upload form has a ZIP file input and submit button.
+
+## Sample import
+
+1. Import `sample/05-07-2026_1-48-PM.zip`.
+2. Confirm the results screen reports counts for journal JSON files, entries, created/skipped/resumed posts, tags, and media.
+3. Confirm warnings, if any, use UUIDs/dates/filenames only and do **not** display full private journal text.
+4. Confirm no plugin-created PHP warnings or logs include full journal entry text.
+
+## Imported post checks
+
+Inspect several imported posts in **Posts → All Posts**:
+
+1. Status is `private`.
+2. Post date matches the Day One `creationDate`.
+3. Text is readable and paragraph breaks/headings are preserved sufficiently.
+4. Raw HTML from Day One text is escaped rather than executed.
+5. Shortcode-like text such as `[gallery]` remains visible text and does not render as a shortcode.
+6. Day One tags are assigned as WordPress post tags when present.
+7. Day One UUID/source/import metadata exists on the post.
+8. Entries with no photos still import successfully.
+
+## Media checks
+
+For entries with photos:
+
+1. Photos are imported into the Media Library.
+2. Photos are attached to the corresponding imported post.
+3. Photos appear/appended in the post content in entry order when possible.
+4. Attachment metadata includes Day One media identifiers or MD5 values when available.
+5. Reused/skipped media is counted correctly on reruns.
+6. Review direct media URLs while logged out and document the hosting behavior for the site owner.
+
+## Idempotency and resume checks
+
+1. Re-import the same ZIP.
+2. Confirm no duplicate posts are created for entries already marked complete.
+3. Confirm already-complete entries are reported as skipped.
+4. Simulate an incomplete import by changing `_day_one_import_complete` to `0` on one imported post.
+5. Re-import the same ZIP.
+6. Confirm the matching post is resumed/updated and no duplicate is created.
+7. Confirm the post is marked complete again after the rerun.
+
+## Invalid input and error handling checks
+
+Test each scenario and confirm errors are clear, escaped, and privacy-safe:
+
+1. Non-ZIP upload.
+2. ZIP with malformed JSON.
+3. ZIP without a JSON file containing `entries`.
+4. Entry missing `uuid`.
+5. Entry with an invalid date.
+6. Entry with a missing media file.
+7. Entry with an unsupported media extension.
+8. ZIP containing unsafe paths such as `../evil.php` or absolute paths, if safely generated for testing.
+
+Entry-level and media-level failures should not stop unrelated valid entries from importing.
+
+## Cleanup and security checks
+
+1. Confirm temporary ZIP and extraction directories are removed after successful import.
+2. Confirm temporary files are also removed after fatal validation failures when possible.
+3. Confirm imported posts remain private and are visible only to users who can read private posts.
+4. Confirm no imported content is sent to external services.
+5. Confirm admin output is escaped and no private entry text appears in notices.
+6. Confirm unsupported media or missing files generate warnings rather than public content exposure.
+
+## Final acceptance
+
+Before considering the plugin verified, confirm all of the following:
+
+- Day One importer appears under **Tools → Import**.
+- Sample export imports without exposing private text in notices/logs.
+- Posts are private and dated correctly.
+- Tags and supported photos are preserved.
+- Re-importing does not duplicate completed entries.
+- Media direct-URL privacy behavior has been reviewed for the target hosting environment.
