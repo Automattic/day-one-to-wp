@@ -2,12 +2,13 @@
 /**
  * wp-env smoke test for importing a local Day One sample export.
  *
- * Run from the plugin root after `wp-env start`:
- * wp-env run cli wp eval-file wp-content/plugins/day-one-importer/tests/wp-env-import-sample.php
+ * Run from the plugin root after `wp-env start`. In wp-env, the mounted plugin
+ * directory name follows the local checkout name, so see README.md for the
+ * robust command that resolves the plugin directory dynamically.
  *
  * The sample export is intentionally not committed because it can contain
- * personal journal data. Place a local ZIP at sample/05-07-2026_1-48-PM.zip
- * or update $sample_zip below before running this script.
+ * personal journal data. Place a local ZIP at sample/local-day-one-export.zip,
+ * set DAY_ONE_IMPORTER_SAMPLE_ZIP, or pass a path as the first WP-CLI argument.
  *
  * The script intentionally prints counts and statuses only, not journal content.
  * It bypasses browser upload handling so it can run under WP-CLI, but exercises
@@ -25,14 +26,39 @@ if ( ! class_exists( 'Day_One_Importer_Runner' ) ) {
 	exit( 1 );
 }
 
-$sample_zip = __DIR__ . '/../sample/05-07-2026_1-48-PM.zip';
+function day_one_importer_wp_env_is_absolute_path( $path ) {
+	return 1 === preg_match( '#^(?:/|[A-Za-z]:[\\\\/])#', (string) $path );
+}
+
+function day_one_importer_wp_env_sample_zip_path() {
+	global $args;
+
+	$configured = getenv( 'DAY_ONE_IMPORTER_SAMPLE_ZIP' );
+	if ( ( false === $configured || '' === trim( (string) $configured ) ) && ! empty( $args[0] ) ) {
+		$configured = $args[0];
+	}
+
+	if ( false === $configured || '' === trim( (string) $configured ) ) {
+		$configured = 'sample/local-day-one-export.zip';
+	}
+
+	$configured = (string) $configured;
+	if ( day_one_importer_wp_env_is_absolute_path( $configured ) ) {
+		return $configured;
+	}
+
+	return dirname( __DIR__ ) . '/' . ltrim( $configured, '/\\' );
+}
+
+$sample_zip = day_one_importer_wp_env_sample_zip_path();
 if ( ! is_readable( $sample_zip ) ) {
 	echo wp_json_encode(
 		array(
-			'status'  => 'skipped',
-			'reason'  => 'Local sample export ZIP not found.',
-			'path'    => $sample_zip,
-			'privacy' => 'Sample Day One exports are personal and are intentionally not committed.',
+			'status'            => 'skipped',
+			'reason'            => 'Local sample export ZIP not found.',
+			'sample_configured' => (bool) getenv( 'DAY_ONE_IMPORTER_SAMPLE_ZIP' ) || ! empty( $args[0] ),
+			'path_hint'         => 'Use sample/local-day-one-export.zip, DAY_ONE_IMPORTER_SAMPLE_ZIP, or a first WP-CLI argument.',
+			'privacy'           => 'Sample Day One exports are personal and are intentionally not committed.',
 		),
 		JSON_PRETTY_PRINT
 	) . "\n";

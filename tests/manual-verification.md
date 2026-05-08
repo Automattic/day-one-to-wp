@@ -22,10 +22,11 @@ Use this checklist on a local or staging WordPress site before relying on the im
 
 ## Sample import
 
-1. Import `sample/05-07-2026_1-48-PM.zip`.
-2. Confirm the results screen reports counts for journal JSON files, entries, created/skipped/resumed posts, tags, and media.
-3. Confirm warnings, if any, use UUIDs/dates/filenames only and do **not** display full private journal text.
-4. Confirm no plugin-created PHP warnings or logs include full journal entry text.
+1. Place a local Day One JSON export ZIP in the ignored `sample/` directory, for example `sample/local-day-one-export.zip`, or choose another private local path.
+2. Import that local sample ZIP through the Day One importer screen.
+3. Confirm the results screen reports counts for journal JSON files, entries, created/skipped/resumed posts, tags, and media.
+4. Confirm warnings, if any, use UUIDs/dates/filenames only and do **not** display full private journal text.
+5. Confirm no plugin-created PHP warnings or logs include full journal entry text.
 
 ## Imported post checks
 

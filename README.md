@@ -68,6 +68,14 @@ Photos are attached to the corresponding private post and importer metadata is s
 - ZIP files and extracted content are processed in a protected temporary location and cleaned up after the import when possible.
 - Uploaded ZIPs are not intentionally left in the plugin directory.
 
+## Local private data
+
+Local Day One exports, extracted photos, and prompt/reference images must not be committed. This repository ignores `sample/` and `prompt-images/` for local-only private data.
+
+## License
+
+Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
+
 ## Limitations
 
 - Day One rich text fidelity is not guaranteed; the importer uses the primary text field conservatively.
@@ -89,7 +97,7 @@ Photos are attached to the corresponding private post and importer metadata is s
 Run PHP linting:
 
 ```sh
-find . -name '*.php' -print0 | xargs -0 -n1 php -l
+find . -path './sample' -prune -o -path './prompt-images' -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l
 ```
 
 Run pure helper tests without WordPress:
@@ -103,9 +111,10 @@ Run a local WordPress smoke test with `wp-env`:
 ```sh
 wp-env start
 wp-env run cli wp eval '$admin = new Day_One_Importer_Admin(); $admin->register_importer(); global $wp_importers; echo isset( $wp_importers["day-one"] ) ? "day-one importer registered\n" : "missing importer\n";'
-wp-env run cli wp eval-file wp-content/plugins/day-one-importer-0-day-one-importer/tests/wp-env-import-sample.php
+PLUGIN_DIR=$(wp-env run cli wp eval 'echo basename( WP_PLUGIN_DIR . "/" . dirname( plugin_basename( DAY_ONE_IMPORTER_FILE ) ) );' 2>/dev/null | tail -n 1)
+wp-env run cli wp eval-file "wp-content/plugins/${PLUGIN_DIR}/tests/wp-env-import-sample.php"
 ```
 
-The wp-env smoke test imports a local, uncommitted sample export from `sample/05-07-2026_1-48-PM.zip` when present. It does not print journal content. With a local sample available, it verifies private posts/media are created, reruns the import, verifies completed entries are skipped, simulates an older importer-schema version and verifies it is reprocessed in place, moves one imported post to Trash, and verifies a later rerun recreates only that trashed entry. If the local sample ZIP is absent, the script exits successfully with a skipped status.
+The wp-env smoke test imports a local, uncommitted sample export from `sample/local-day-one-export.zip` when present. You can also set `DAY_ONE_IMPORTER_SAMPLE_ZIP` or pass a ZIP path as the first WP-CLI argument. The script does not print journal content. With a local sample available, it verifies private posts/media are created, reruns the import, verifies completed entries are skipped, simulates an older importer-schema version and verifies it is reprocessed in place, moves one imported post to Trash, and verifies a later rerun recreates only that trashed entry. If the local sample ZIP is absent, the script exits successfully with a skipped status.
 
 See `tests/manual-verification.md` for a WordPress manual verification checklist covering installation, import, privacy, idempotency, invalid inputs, media behavior, and cleanup.

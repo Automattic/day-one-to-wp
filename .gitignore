@@ -1,3 +1,14 @@
 .DS_Store
+
+# Local private Day One exports, extracted media, and prompt/reference images.
 sample/
 prompt-images/
+
+# Local development/generated artifacts and internal process notes.
+node_modules/
+vendor/
+pipelines/
+.wp-env.override.json
+.phpunit.result.cache
+coverage/
+*.log
