@@ -105,15 +105,12 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 
 ## Verification
 
-Run PHP linting:
+GitHub Actions runs the required CI checks on pull requests and pushes to `main`.
+
+Run the same required checks locally from the repository root:
 
 ```sh
-find . -path './sample' -prune -o -path './prompt-images' -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l
-```
-
-Run pure helper tests without WordPress:
-
-```sh
+find . -path './.git' -prune -o -path './sample' -prune -o -path './prompt-images' -prune -o -path './pipelines' -prune -o -path './vendor' -prune -o -path './node_modules' -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l
 php tests/pure-helper-tests.php
 ```
 
@@ -127,5 +124,7 @@ wp-env run cli wp eval-file "wp-content/plugins/${PLUGIN_DIR}/tests/wp-env-impor
 ```
 
 The wp-env smoke test imports the committed fictional fixture at `tests/fixtures/day-one-fictional.zip` by default. You can optionally set `DAY_ONE_IMPORTER_SAMPLE_ZIP` or pass a ZIP path as the first WP-CLI argument to test a developer-owned private export, such as an ignored `sample/local-day-one-export.zip`. The script does not print journal content. It verifies private posts/media are created, reruns the import, verifies completed entries are skipped, simulates an older importer-schema version and verifies it is reprocessed in place, moves one imported post to Trash, and verifies a later rerun recreates only that trashed entry. The committed default fixture is required; if it is missing, the script fails as a repository setup error.
+
+WordPress Plugin Check is not required by the first CI workflow. It can be added later as a separate GitHub Actions job using the official Plugin Check action or a `wp-env`/WP-CLI job once that path is verified as stable and publish-safe.
 
 See `tests/manual-verification.md` for a WordPress manual verification checklist covering installation, import, privacy, idempotency, invalid inputs, media behavior, and cleanup.
