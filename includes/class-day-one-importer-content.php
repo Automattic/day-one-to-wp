@@ -137,6 +137,7 @@ class Day_One_Importer_Content {
 			$date_label = function_exists( 'wp_date' ) ? wp_date( 'Y-m-d' ) : gmdate( 'Y-m-d' );
 		}
 
+		/* translators: %s: entry date. */
 		$format = function_exists( '__' ) ? __( 'Day One entry — %s', 'day-one-importer' ) : 'Day One entry — %s';
 		return sprintf( $format, $date_label );
 	}

@@ -23,11 +23,7 @@ class Day_One_Importer_Cleanup {
 		$base = trailingslashit( $base ) . 'day-one-importer';
 		$run  = $base . DIRECTORY_SEPARATOR . gmdate( 'Ymd-His' ) . '-' . wp_generate_password( 8, false, false );
 
-		if ( function_exists( 'wp_mkdir_p' ) ) {
-			if ( ! wp_mkdir_p( $run ) ) {
-				return false;
-			}
-		} elseif ( ! is_dir( $run ) && ! mkdir( $run, 0700, true ) ) {
+		if ( ! function_exists( 'wp_mkdir_p' ) || ! wp_mkdir_p( $run ) ) {
 			return false;
 		}
 
@@ -44,7 +40,7 @@ class Day_One_Importer_Cleanup {
 	 * @return void
 	 */
 	public static function protect_directory( $dir ) {
-		if ( ! is_dir( $dir ) || ! is_writable( $dir ) ) {
+		if ( ! is_dir( $dir ) || ( function_exists( 'wp_is_writable' ) && ! wp_is_writable( $dir ) ) ) {
 			return;
 		}
 
