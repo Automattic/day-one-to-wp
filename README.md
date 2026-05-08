@@ -22,7 +22,7 @@ Day One Importer is a WordPress admin importer for Day One JSON exports. It crea
 2. Keep the original ZIP export intact. Do not manually edit the JSON before importing.
 3. The importer expects a ZIP containing one or more journal JSON files with an `entries` array and, when photos are present, a `photos/` directory.
 
-The sample export used for development follows this shape: a journal JSON file such as `Diario.json` plus media files in `photos/`.
+A typical export follows this shape: a journal JSON file plus media files in `photos/`. Do not commit real Day One exports or photos to this repository; they can contain private journal content.
 
 ## Import into WordPress
 
@@ -47,6 +47,8 @@ The results screen is designed to be privacy-safe: it reports counts, UUIDs, dat
 ## Idempotency and resume behavior
 
 The importer stores Day One UUID metadata on posts and media. Re-importing the same export skips entries that were already imported and marked complete. If an earlier import created a post but did not finish, the importer resumes that post instead of creating a duplicate.
+
+If importer behavior changes in a way that requires existing imported posts to be refreshed, rerunning the same export reprocesses older importer-schema versions in place instead of skipping them. This lets import-time fixes, such as cleaner Day One text/title conversion, apply by rerunning the import rather than manually editing posts.
 
 If you move imported posts to Trash and rerun the import, the trashed imported copy is permanently removed and a fresh private post is created for that Day One UUID. This is useful when cleaning up a failed test import before retrying.
 
@@ -104,6 +106,6 @@ wp-env run cli wp eval '$admin = new Day_One_Importer_Admin(); $admin->register_
 wp-env run cli wp eval-file wp-content/plugins/day-one-importer-0-day-one-importer/tests/wp-env-import-sample.php
 ```
 
-The wp-env smoke test imports the bundled sample export without printing journal content, verifies private posts/media are created, reruns the import, verifies completed entries are skipped, moves one imported post to Trash, and verifies a later rerun recreates only that trashed entry.
+The wp-env smoke test imports a local, uncommitted sample export from `sample/05-07-2026_1-48-PM.zip` when present. It does not print journal content. With a local sample available, it verifies private posts/media are created, reruns the import, verifies completed entries are skipped, simulates an older importer-schema version and verifies it is reprocessed in place, moves one imported post to Trash, and verifies a later rerun recreates only that trashed entry. If the local sample ZIP is absent, the script exits successfully with a skipped status.
 
 See `tests/manual-verification.md` for a WordPress manual verification checklist covering installation, import, privacy, idempotency, invalid inputs, media behavior, and cleanup.

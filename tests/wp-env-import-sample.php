@@ -1,9 +1,13 @@
 <?php
 /**
- * wp-env smoke test for importing the bundled sample export.
+ * wp-env smoke test for importing a local Day One sample export.
  *
  * Run from the plugin root after `wp-env start`:
  * wp-env run cli wp eval-file wp-content/plugins/day-one-importer/tests/wp-env-import-sample.php
+ *
+ * The sample export is intentionally not committed because it can contain
+ * personal journal data. Place a local ZIP at sample/05-07-2026_1-48-PM.zip
+ * or update $sample_zip below before running this script.
  *
  * The script intentionally prints counts and statuses only, not journal content.
  * It bypasses browser upload handling so it can run under WP-CLI, but exercises
@@ -23,8 +27,16 @@ if ( ! class_exists( 'Day_One_Importer_Runner' ) ) {
 
 $sample_zip = __DIR__ . '/../sample/05-07-2026_1-48-PM.zip';
 if ( ! is_readable( $sample_zip ) ) {
-	fwrite( STDERR, "Sample export ZIP not found.\n" );
-	exit( 1 );
+	echo wp_json_encode(
+		array(
+			'status'  => 'skipped',
+			'reason'  => 'Local sample export ZIP not found.',
+			'path'    => $sample_zip,
+			'privacy' => 'Sample Day One exports are personal and are intentionally not committed.',
+		),
+		JSON_PRETTY_PRINT
+	) . "\n";
+	exit( 0 );
 }
 
 require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -127,14 +139,23 @@ $second_counts = $second->get_counts();
 $skipped       = isset( $second_counts['posts_skipped'] ) ? (int) $second_counts['posts_skipped'] : 0;
 day_one_importer_wp_env_assert( $skipped === $created, 'Second import skipped existing completed posts.' );
 
-$trashed_post_id = (int) reset( $imported_posts );
-wp_trash_post( $trashed_post_id );
-day_one_importer_wp_env_assert( 'trash' === get_post_status( $trashed_post_id ), 'Imported post moved to trash for retry test.' );
+$legacy_post_id = (int) reset( $imported_posts );
+update_post_meta( $legacy_post_id, '_day_one_import_version', '1' );
+$third         = day_one_importer_wp_env_import_from_zip( $sample_zip );
+$third_counts  = $third->get_counts();
+$resumed_legacy = isset( $third_counts['posts_resumed'] ) ? (int) $third_counts['posts_resumed'] : 0;
+$skipped_legacy = isset( $third_counts['posts_skipped'] ) ? (int) $third_counts['posts_skipped'] : 0;
+day_one_importer_wp_env_assert( 1 === $resumed_legacy, 'Legacy-version imported post was reprocessed on rerun.' );
+day_one_importer_wp_env_assert( ( $created - 1 ) === $skipped_legacy, 'Current-version completed posts were still skipped.' );
+day_one_importer_wp_env_assert( Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION === get_post_meta( $legacy_post_id, '_day_one_import_version', true ), 'Legacy-version imported post was upgraded.' );
 
-$third              = day_one_importer_wp_env_import_from_zip( $sample_zip );
-$third_counts       = $third->get_counts();
-$recreated          = isset( $third_counts['posts_created'] ) ? (int) $third_counts['posts_created'] : 0;
-$skipped_after_trash = isset( $third_counts['posts_skipped'] ) ? (int) $third_counts['posts_skipped'] : 0;
+wp_trash_post( $legacy_post_id );
+day_one_importer_wp_env_assert( 'trash' === get_post_status( $legacy_post_id ), 'Imported post moved to trash for retry test.' );
+
+$fourth              = day_one_importer_wp_env_import_from_zip( $sample_zip );
+$fourth_counts       = $fourth->get_counts();
+$recreated           = isset( $fourth_counts['posts_created'] ) ? (int) $fourth_counts['posts_created'] : 0;
+$skipped_after_trash = isset( $fourth_counts['posts_skipped'] ) ? (int) $fourth_counts['posts_skipped'] : 0;
 day_one_importer_wp_env_assert( 1 === $recreated, 'Trashed imported post was recreated on rerun.' );
 day_one_importer_wp_env_assert( ( $created - 1 ) === $skipped_after_trash, 'Non-trashed completed posts were still skipped.' );
 
@@ -143,6 +164,7 @@ echo wp_json_encode(
 		'status'                         => 'passed',
 		'posts_created'                  => $created,
 		'posts_skipped_rerun'            => $skipped,
+		'legacy_posts_reprocessed'       => $resumed_legacy,
 		'posts_recreated_after_trash'    => $recreated,
 		'posts_skipped_after_trash_test' => $skipped_after_trash,
 		'media_imported'                 => $media,
