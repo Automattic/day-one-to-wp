@@ -34,6 +34,23 @@ if ( ! function_exists( 'esc_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'esc_attr' ) ) {
+	function esc_attr( $text ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return htmlspecialchars( (string) $text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
+	}
+}
+
+if ( ! function_exists( 'wp_get_attachment_image_src' ) ) {
+	function wp_get_attachment_image_src( $id, $size, $icon = false ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		$id = (int) $id;
+		if ( ! in_array( $id, array( 101, 102, 202 ), true ) ) {
+			return false;
+		}
+
+		return array( 'https://example.test/' . $id . '.jpg', 1200, 800, false );
+	}
+}
+
 if ( ! function_exists( 'wp_kses_post' ) ) {
 	function wp_kses_post( $html ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
 		return $html;
@@ -52,7 +69,7 @@ if ( ! function_exists( 'wp_get_attachment_image' ) ) {
 			$class .= ' ' . $attr['class'];
 		}
 
-		return '<img class="' . htmlspecialchars( $class, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ) . '" src="https://example.test/' . $id . '.jpg" alt="" />';
+		return '<img width="1200" height="800" loading="lazy" decoding="async" srcset="https://example.test/' . $id . '-2x.jpg 2x" sizes="100vw" class="' . htmlspecialchars( $class, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ) . '" src="https://example.test/' . $id . '.jpg" alt="" />';
 	}
 }
 
@@ -79,6 +96,12 @@ function assert_true( $condition, $message ) {
 	if ( ! $condition ) {
 		fwrite( STDERR, "FAIL: {$message}\n" );
 		exit( 1 );
+	}
+}
+
+function assert_no_runtime_img_attrs( $html, $message ) {
+	foreach ( array( 'width=', 'height=', 'loading=', 'decoding=', 'srcset=', 'sizes=' ) as $attr ) {
+		assert_true( false === strpos( $html, $attr ), $message . ' omits ' . $attr );
 	}
 }
 
@@ -130,21 +153,25 @@ assert_true( $base_content === Day_One_Importer_Content::append_image_section( $
 assert_true( $base_content === Day_One_Importer_Content::append_image_section( $base_content, array( 0, 'bad', 404 ) ), 'No renderable attachments leave content unchanged.' );
 
 $single_image_content = Day_One_Importer_Content::append_image_section( '', array( 101 ) );
-assert_true( false !== strpos( $single_image_content, '<!-- wp:image {"id":101' ), 'One attachment appends an Image block.' );
+assert_true( false !== strpos( $single_image_content, '<!-- wp:image {"id":101,"sizeSlug":"large","linkDestination":"none"} -->' ), 'One attachment appends an Image block with deterministic attributes.' );
 assert_true( false === strpos( $single_image_content, '<!-- wp:gallery' ), 'One attachment does not append a Gallery block.' );
-assert_true( false !== strpos( $single_image_content, 'wp-image-101' ), 'Image block img includes matching wp-image class.' );
+assert_true( false !== strpos( $single_image_content, '<figure class="wp-block-image size-large"><img src="https://example.test/101.jpg" alt="" class="wp-image-101" /></figure>' ), 'Image block img markup is deterministic.' );
+assert_no_runtime_img_attrs( $single_image_content, 'Single image content' );
 
 $normalized_image_content = Day_One_Importer_Content::append_image_section( '', array( 202 ) );
-assert_true( false !== strpos( $normalized_image_content, 'attachment-large wp-image-202' ), 'Image markup missing the wp-image class is normalized.' );
+assert_true( false !== strpos( $normalized_image_content, 'class="wp-image-202"' ), 'Image markup uses only the expected wp-image class.' );
+assert_true( false === strpos( $normalized_image_content, 'attachment-large' ), 'Image markup omits helper-added attachment size class.' );
 
 $fallback_image_content = Day_One_Importer_Content::append_image_section( '', array( 303 ) );
 assert_true( false !== strpos( $fallback_image_content, '<!-- wp:image {"id":303' ), 'Attachment URL fallback appends an Image block.' );
-assert_true( false !== strpos( $fallback_image_content, 'wp-image-303' ), 'Fallback image includes matching wp-image class.' );
+assert_true( false !== strpos( $fallback_image_content, '<img src="https://example.test/303-fallback.jpg" alt="" class="wp-image-303" />' ), 'Fallback image tag is deterministic.' );
 
 $gallery_content = Day_One_Importer_Content::append_image_section( '', array( 101, 0, '101', 404, 102, 101 ) );
 assert_true( false !== strpos( $gallery_content, '<!-- wp:gallery {"linkTo":"none","ids":[101,102]} -->' ), 'Duplicate and zero IDs are normalized while preserving order for Gallery block IDs.' );
 assert_true( 2 === substr_count( $gallery_content, '<!-- wp:image' ), 'Gallery block contains nested Image blocks only for renderable unique IDs.' );
 assert_true( false !== strpos( $gallery_content, 'wp-image-101' ) && false !== strpos( $gallery_content, 'wp-image-102' ), 'Each nested gallery image has its matching wp-image class.' );
+assert_true( strpos( $gallery_content, 'wp-image-101' ) < strpos( $gallery_content, 'wp-image-102' ), 'Gallery images preserve attachment order.' );
+assert_no_runtime_img_attrs( $gallery_content, 'Gallery content' );
 assert_true( false === strpos( $gallery_content, '404' ) && false === strpos( $gallery_content, '/tmp/' ), 'Skipped invalid images do not leak IDs or filesystem paths.' );
 assert_true( false === strpos( $gallery_content, 'day-one-importer-photos' ) && false === strpos( $gallery_content, 'Imported photos' ), 'Old imported photo wrapper is not emitted.' );
 

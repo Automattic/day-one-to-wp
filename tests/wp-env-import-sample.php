@@ -94,6 +94,17 @@ function day_one_importer_wp_env_blocks_have_core_block( $blocks ) {
 	return false;
 }
 
+function day_one_importer_wp_env_collect_blocks_by_name( $blocks, $name, &$found ) {
+	foreach ( (array) $blocks as $block ) {
+		if ( isset( $block['blockName'] ) && $name === $block['blockName'] ) {
+			$found[] = $block;
+		}
+		if ( ! empty( $block['innerBlocks'] ) ) {
+			day_one_importer_wp_env_collect_blocks_by_name( $block['innerBlocks'], $name, $found );
+		}
+	}
+}
+
 function day_one_importer_wp_env_import_from_zip( $zip_path ) {
 	$run_dir = Day_One_Importer_Cleanup::create_run_directory();
 	day_one_importer_wp_env_assert( $run_dir, 'Run directory created.' );
@@ -166,7 +177,7 @@ if ( $using_default_zip ) {
 	day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
 }
 day_one_importer_wp_env_assert( $media > 0, 'Imported sample media attachments.' );
-day_one_importer_wp_env_assert( '3' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 3 for block content.' );
+day_one_importer_wp_env_assert( '4' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 4 for validation-compatible media blocks.' );
 
 $imported_posts = get_posts(
 	array(
@@ -193,8 +204,23 @@ foreach ( $imported_posts as $post_id ) {
 
 	$post_content = (string) get_post_field( 'post_content', $post_id );
 	day_one_importer_wp_env_assert( false !== strpos( $post_content, '<!-- wp:' ), 'Imported post content contains block comments.' );
+	foreach ( array( ' width=', ' height=', ' loading=', ' decoding=', ' srcset=', ' sizes=' ) as $attr ) {
+		day_one_importer_wp_env_assert( false === strpos( $post_content, $attr ), 'Imported block image markup omits runtime attribute ' . trim( $attr, ' =' ) . '.' );
+	}
+
+	$blocks         = array();
+	$image_blocks   = array();
+	$gallery_blocks = array();
 	if ( function_exists( 'parse_blocks' ) ) {
-		day_one_importer_wp_env_assert( day_one_importer_wp_env_blocks_have_core_block( parse_blocks( $post_content ) ), 'Imported post content parses as core blocks.' );
+		$blocks = parse_blocks( $post_content );
+		day_one_importer_wp_env_assert( day_one_importer_wp_env_blocks_have_core_block( $blocks ), 'Imported post content parses as core blocks.' );
+		day_one_importer_wp_env_collect_blocks_by_name( $blocks, 'core/image', $image_blocks );
+		day_one_importer_wp_env_collect_blocks_by_name( $blocks, 'core/gallery', $gallery_blocks );
+
+		if ( function_exists( 'serialize_blocks' ) ) {
+			$reserialized = serialize_blocks( $blocks );
+			day_one_importer_wp_env_assert( false !== strpos( $reserialized, '<!-- wp:' ), 'Parsed imported blocks can be serialized by WordPress.' );
+		}
 	}
 	day_one_importer_wp_env_assert( false === strpos( $post_content, 'day-one-importer-photos' ), 'Imported post content omits old photo wrapper.' );
 	day_one_importer_wp_env_assert( false === strpos( $post_content, '<h2>Imported photos</h2>' ), 'Imported post content omits old imported photos heading.' );
@@ -202,13 +228,33 @@ foreach ( $imported_posts as $post_id ) {
 	$attachments    = get_attached_media( 'image', $post_id );
 	$attachment_ids = array_map( 'intval', wp_list_pluck( $attachments, 'ID' ) );
 	if ( 1 === count( $attachment_ids ) ) {
-		day_one_importer_wp_env_assert( false !== strpos( $post_content, '<!-- wp:image' ), 'Post with one attachment contains an Image block.' );
+		day_one_importer_wp_env_assert( 1 === count( $image_blocks ), 'Post with one attachment contains exactly one Image block.' );
+		$image_id = isset( $image_blocks[0]['attrs']['id'] ) ? (int) $image_blocks[0]['attrs']['id'] : 0;
+		day_one_importer_wp_env_assert( in_array( $image_id, $attachment_ids, true ), 'Single Image block ID matches the attached media ID.' );
+		day_one_importer_wp_env_assert( false !== strpos( (string) $image_blocks[0]['innerHTML'], 'wp-image-' . $image_id ), 'Single Image block inner HTML contains matching wp-image class.' );
 	} elseif ( count( $attachment_ids ) >= 2 ) {
-		day_one_importer_wp_env_assert( false !== strpos( $post_content, '<!-- wp:gallery' ), 'Post with multiple attachments contains a Gallery block.' );
-	}
-	foreach ( $attachment_ids as $attachment_id ) {
-		if ( false !== strpos( $post_content, '"id":' . $attachment_id ) ) {
-			day_one_importer_wp_env_assert( false !== strpos( $post_content, 'wp-image-' . $attachment_id ), 'Image block contains matching wp-image class.' );
+		day_one_importer_wp_env_assert( ! empty( $gallery_blocks ), 'Post with multiple attachments contains a Gallery block.' );
+
+		$content_attachment_positions = array();
+		foreach ( $attachment_ids as $attachment_id ) {
+			$position = strpos( $post_content, 'wp-image-' . $attachment_id );
+			if ( false !== $position ) {
+				$content_attachment_positions[ $attachment_id ] = $position;
+			}
+		}
+		asort( $content_attachment_positions );
+		$ordered_content_attachment_ids = array_map( 'intval', array_keys( $content_attachment_positions ) );
+
+		$gallery_ids = isset( $gallery_blocks[0]['attrs']['ids'] ) && is_array( $gallery_blocks[0]['attrs']['ids'] ) ? array_map( 'intval', $gallery_blocks[0]['attrs']['ids'] ) : array();
+		day_one_importer_wp_env_assert( $ordered_content_attachment_ids === $gallery_ids, 'Gallery block IDs match the attached media IDs in content order.' );
+
+		$nested_image_blocks = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $gallery_blocks[0]['innerBlocks'], 'core/image', $nested_image_blocks );
+		day_one_importer_wp_env_assert( count( $nested_image_blocks ) === count( $gallery_ids ), 'Gallery contains one nested Image block for each Gallery ID.' );
+		foreach ( $gallery_ids as $index => $attachment_id ) {
+			$nested_id = isset( $nested_image_blocks[ $index ]['attrs']['id'] ) ? (int) $nested_image_blocks[ $index ]['attrs']['id'] : 0;
+			day_one_importer_wp_env_assert( $attachment_id === $nested_id, 'Nested Image block ID matches its Gallery ID.' );
+			day_one_importer_wp_env_assert( false !== strpos( (string) $nested_image_blocks[ $index ]['innerHTML'], 'wp-image-' . $attachment_id ), 'Nested Image block inner HTML contains matching wp-image class.' );
 		}
 	}
 

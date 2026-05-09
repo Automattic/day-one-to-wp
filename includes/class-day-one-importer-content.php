@@ -262,87 +262,80 @@ class Day_One_Importer_Content {
 	 * Build an image record for block serialization.
 	 *
 	 * @param int $attachment_id Attachment ID.
-	 * @return array{id:int,html:string}|null
+	 * @return array{id:int,url:string,alt:string,class:string}|null
 	 */
 	private static function build_attachment_image_record( $attachment_id ) {
 		$attachment_id = (int) $attachment_id;
-		$image_html    = '';
 		$image_class   = 'wp-image-' . $attachment_id;
+		$url           = '';
+		$alt           = '';
 
-		if ( function_exists( 'wp_get_attachment_image' ) ) {
-			$image_html = wp_get_attachment_image( $attachment_id, 'large', false, array( 'class' => $image_class ) );
-		}
-
-		if ( $image_html ) {
-			$image_html = self::ensure_image_html_class( $image_html, $image_class );
-		} elseif ( function_exists( 'wp_get_attachment_url' ) ) {
-			$url = wp_get_attachment_url( $attachment_id );
-			if ( $url ) {
-				$url        = function_exists( 'esc_url' ) ? esc_url( $url ) : htmlspecialchars( (string) $url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
-				$image_html = '<img class="' . $image_class . '" src="' . $url . '" alt="" />';
+		if ( function_exists( 'wp_get_attachment_image_src' ) ) {
+			$image_src = wp_get_attachment_image_src( $attachment_id, 'large' );
+			if ( is_array( $image_src ) && ! empty( $image_src[0] ) ) {
+				$url = (string) $image_src[0];
 			}
 		}
 
-		if ( ! $image_html ) {
+		if ( '' === $url && function_exists( 'wp_get_attachment_image' ) ) {
+			$image_html = wp_get_attachment_image( $attachment_id, 'large', false, array( 'class' => $image_class ) );
+			$url        = self::extract_img_src( $image_html );
+		}
+
+		if ( '' === $url && function_exists( 'wp_get_attachment_url' ) ) {
+			$url = wp_get_attachment_url( $attachment_id );
+			$url = $url ? (string) $url : '';
+		}
+
+		if ( '' === $url ) {
 			return null;
 		}
 
-		if ( function_exists( 'wp_kses_post' ) ) {
-			$image_html = wp_kses_post( $image_html );
+		if ( function_exists( 'get_post_meta' ) ) {
+			$alt = get_post_meta( $attachment_id, '_wp_attachment_image_alt', true );
+			$alt = is_scalar( $alt ) ? (string) $alt : '';
 		}
 
 		return array(
-			'id'   => $attachment_id,
-			'html' => $image_html,
+			'id'    => $attachment_id,
+			'url'   => (string) $url,
+			'alt'   => (string) $alt,
+			'class' => $image_class,
 		);
 	}
 
 	/**
-	 * Ensure an img tag contains the expected wp-image-{id} class.
+	 * Extract only the src attribute from an img tag.
 	 *
 	 * @param string $image_html Image markup.
-	 * @param string $class Class name.
 	 * @return string
 	 */
-	private static function ensure_image_html_class( $image_html, $class ) {
-		$replaced = 0;
-		$result   = preg_replace_callback(
-			'/<img\b([^>]*)>/i',
-			static function ( $matches ) use ( $class ) {
-				$attrs = $matches[1];
+	private static function extract_img_src( $image_html ) {
+		if ( preg_match( '/<img\b[^>]*\ssrc\s*=\s*(["\'])(.*?)\1/i', (string) $image_html, $matches ) ) {
+			return html_entity_decode( $matches[2], ENT_QUOTES, 'UTF-8' );
+		}
 
-				if ( preg_match( '/\sclass\s*=\s*(["\'])(.*?)\1/i', $attrs, $class_matches ) ) {
-					$classes = preg_split( '/\s+/', trim( $class_matches[2] ) );
-					$classes = is_array( $classes ) ? array_filter( $classes ) : array();
-					if ( ! in_array( $class, $classes, true ) ) {
-						$classes[] = $class;
-					}
-					$new_class_attr = ' class=' . $class_matches[1] . implode( ' ', $classes ) . $class_matches[1];
-					$attrs          = preg_replace( '/\sclass\s*=\s*(["\']).*?\1/i', $new_class_attr, $attrs, 1 );
+		return '';
+	}
 
-					return '<img' . $attrs . '>';
-				}
+	/**
+	 * Serialize validation-compatible img markup for a block save body.
+	 *
+	 * @param array{id:int,url:string,alt:string,class:string} $image Image record.
+	 * @return string
+	 */
+	private static function serialize_image_tag( $image ) {
+		$src   = function_exists( 'esc_url' ) ? esc_url( $image['url'] ) : htmlspecialchars( (string) $image['url'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
+		$alt   = function_exists( 'esc_attr' ) ? esc_attr( $image['alt'] ) : htmlspecialchars( (string) $image['alt'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
+		$class = function_exists( 'esc_attr' ) ? esc_attr( $image['class'] ) : htmlspecialchars( (string) $image['class'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
 
-				$self_closing = '';
-				if ( preg_match( '/\s*\/\s*$/', $attrs ) ) {
-					$attrs        = preg_replace( '/\s*\/\s*$/', '', $attrs );
-					$self_closing = ' /';
-				}
-
-				return '<img' . rtrim( $attrs ) . ' class="' . $class . '"' . $self_closing . '>';
-			},
-			(string) $image_html,
-			1,
-			$replaced
-		);
-
-		return $replaced ? $result : (string) $image_html;
+		return '<img src="' . $src . '" alt="' . $alt . '" class="' . $class . '" />';
 	}
 
 	/**
 	 * Serialize an Image block.
 	 *
-	 * @param array{id:int,html:string} $image Image record.
+	 * @param array{id:int,url:string,alt:string,class:string} $image Image record.
 	 * @return string
 	 */
 	private static function serialize_image_block( $image ) {
@@ -352,7 +345,7 @@ class Day_One_Importer_Content {
 			'sizeSlug'        => 'large',
 			'linkDestination' => 'none',
 		);
-		$inner_html    = '<figure class="wp-block-image size-large">' . $image['html'] . '</figure>';
+		$inner_html    = '<figure class="wp-block-image size-large">' . self::serialize_image_tag( $image ) . '</figure>';
 
 		return self::serialize_block( 'image', $attrs, $inner_html );
 	}
@@ -360,7 +353,7 @@ class Day_One_Importer_Content {
 	/**
 	 * Serialize a Gallery block with nested Image blocks.
 	 *
-	 * @param array<int,array{id:int,html:string}> $images Image records.
+	 * @param array<int,array{id:int,url:string,alt:string,class:string}> $images Image records.
 	 * @return string
 	 */
 	private static function serialize_gallery_block( $images ) {
