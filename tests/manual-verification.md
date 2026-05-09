@@ -19,14 +19,34 @@ Use this checklist on a local or staging WordPress site before relying on the im
    - Imported posts are private by default.
    - Media URL privacy depends on WordPress/hosting configuration.
 4. Confirm the upload form has a ZIP file input and submit button.
+5. Confirm the page tells users to keep the tab open until the import summary appears.
+
+## Import started/status feedback
+
+With JavaScript enabled:
+
+1. Choose a ZIP file and submit the form.
+2. Confirm an import-started status appears immediately and says large exports can take time and to keep the tab open.
+3. Confirm the submit button changes to a running/loading label and duplicate clicks are blocked.
+4. Confirm the status area is exposed as a live region/status for assistive technology.
+5. Confirm the running status displays only generic text, with no journal text, private filenames, local paths, raw uploaded data, or media previews.
+
+With JavaScript disabled:
+
+1. Choose a ZIP file and submit the same form.
+2. Confirm the form still submits normally and the final summary or errors render after the synchronous request.
+3. Confirm the no-JavaScript flow does not depend on the running status UI.
 
 ## Sample import
 
 1. Import the committed fictional fixture `tests/fixtures/day-one-fictional.zip` through the Day One importer screen.
 2. Confirm the results screen reports counts for journal JSON files, entries, created/skipped/resumed posts, tags, and media.
-3. Confirm warnings, if any, use UUIDs/dates/filenames only and do **not** display full journal text.
-4. Confirm no plugin-created PHP warnings or logs include full journal entry text.
-5. Optional: test a real developer-owned Day One JSON export ZIP from the ignored `sample/` directory, for example `sample/local-day-one-export.zip`, or from another private local path. Do not commit real Day One exports, extracted photos, screenshots, or prompt/reference images.
+3. Confirm a successful import without warnings shows “Day One import complete.”
+4. Confirm a successful import with warnings shows “Day One import complete with warnings.” plus the warning list.
+5. Confirm fatal/import-level errors show “Day One import did not complete.” plus actionable error text.
+6. Confirm warnings, if any, use UUIDs/dates/filenames only and do **not** display full journal text.
+7. Confirm no plugin-created PHP warnings or logs include full journal entry text.
+8. Optional: test a real developer-owned Day One JSON export ZIP from the ignored `sample/` directory, for example `sample/local-day-one-export.zip`, or from another private local path. Do not commit real Day One exports, extracted photos, screenshots, or prompt/reference images.
 
 ## Imported post checks
 
@@ -66,14 +86,15 @@ For entries with photos:
 
 Test each scenario and confirm errors are clear, escaped, and privacy-safe:
 
-1. Non-ZIP upload.
-2. ZIP with malformed JSON.
-3. ZIP without a JSON file containing `entries`.
-4. Entry missing `uuid`.
-5. Entry with an invalid date.
-6. Entry with a missing media file.
-7. Entry with an unsupported media extension.
-8. ZIP containing unsafe paths such as `../evil.php` or absolute paths, if safely generated for testing.
+1. Missing file submission; browser/server validation should not leave a persisted “running” state after the response.
+2. Non-ZIP upload.
+3. ZIP with malformed JSON.
+4. ZIP without a JSON file containing `entries`.
+5. Entry missing `uuid`.
+6. Entry with an invalid date.
+7. Entry with a missing media file.
+8. Entry with an unsupported media extension.
+9. ZIP containing unsafe paths such as `../evil.php` or absolute paths, if safely generated for testing.
 
 Entry-level and media-level failures should not stop unrelated valid entries from importing.
 
@@ -91,6 +112,7 @@ Entry-level and media-level failures should not stop unrelated valid entries fro
 Before considering the plugin verified, confirm all of the following:
 
 - Day One importer appears under **Tools → Import**.
+- Import submission shows immediate accessible status feedback with JavaScript and still works without JavaScript.
 - Fictional sample export imports without exposing journal text in notices/logs.
 - Posts are private and dated correctly.
 - Tags and supported photos are preserved.

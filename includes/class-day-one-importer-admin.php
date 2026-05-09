@@ -27,6 +27,7 @@ class Day_One_Importer_Admin {
 	 */
 	public function init() {
 		add_action( 'admin_init', array( $this, 'register_importer' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 	}
 
 	/**
@@ -48,6 +49,27 @@ class Day_One_Importer_Admin {
 			__( 'Day One', 'day-one-importer' ),
 			__( 'Import Day One journal exports into private WordPress posts.', 'day-one-importer' ),
 			array( $this, 'render_importer' )
+		);
+	}
+
+	/**
+	 * Enqueue importer screen assets.
+	 *
+	 * @return void
+	 */
+	public function enqueue_assets() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only screen check for asset scoping.
+		$importer = isset( $_GET['import'] ) ? sanitize_key( wp_unslash( $_GET['import'] ) ) : '';
+		if ( 'day-one' !== $importer || ! $this->current_user_can_import() ) {
+			return;
+		}
+
+		wp_enqueue_script(
+			'day-one-importer-admin-status',
+			DAY_ONE_IMPORTER_URL . 'assets/admin-import-status.js',
+			array(),
+			DAY_ONE_IMPORTER_VERSION,
+			true
 		);
 	}
 
@@ -114,8 +136,9 @@ class Day_One_Importer_Admin {
 	 */
 	private function render_form() {
 		?>
-		<form method="post" enctype="multipart/form-data">
+		<form method="post" enctype="multipart/form-data" id="day-one-importer-form">
 			<?php wp_nonce_field( self::NONCE_ACTION ); ?>
+			<input type="hidden" name="day_one_importer_submit" value="1" />
 			<table class="form-table" role="presentation">
 				<tr>
 					<th scope="row">
@@ -127,7 +150,14 @@ class Day_One_Importer_Admin {
 					</td>
 				</tr>
 			</table>
-			<?php submit_button( __( 'Import Day One export', 'day-one-importer' ), 'primary', 'day_one_importer_submit' ); ?>
+			<p class="description"><?php esc_html_e( 'After submitting, keep this tab open until the import summary appears.', 'day-one-importer' ); ?></p>
+			<div id="day-one-importer-status" class="notice notice-info inline screen-reader-text" role="status" aria-live="polite" aria-atomic="true" data-running-label="<?php echo esc_attr__( 'Importing…', 'day-one-importer' ); ?>" data-started-message="<?php echo esc_attr__( 'Import started. This can take a while for large exports; keep this tab open.', 'day-one-importer' ); ?>">
+				<p>
+					<span class="spinner" aria-hidden="true"></span>
+					<span class="day-one-importer-status-message"></span>
+				</p>
+			</div>
+			<?php submit_button( __( 'Import Day One export', 'day-one-importer' ), 'primary', 'day_one_importer_submit_button' ); ?>
 		</form>
 		<?php
 	}
@@ -139,9 +169,21 @@ class Day_One_Importer_Admin {
 	 * @return void
 	 */
 	private function render_results( Day_One_Importer_Results $result ) {
-		$notice_class = $result->has_errors() ? 'notice notice-error' : 'notice notice-success';
+		$warnings = $result->get_warnings();
+
+		if ( $result->has_errors() ) {
+			$notice_class = 'notice notice-error';
+			$headline     = __( 'Day One import did not complete.', 'day-one-importer' );
+		} elseif ( ! empty( $warnings ) ) {
+			$notice_class = 'notice notice-warning';
+			$headline     = __( 'Day One import complete with warnings.', 'day-one-importer' );
+		} else {
+			$notice_class = 'notice notice-success';
+			$headline     = __( 'Day One import complete.', 'day-one-importer' );
+		}
+
 		echo '<div class="' . esc_attr( $notice_class ) . ' inline"><p><strong>';
-		echo esc_html( $result->has_errors() ? __( 'Day One import did not complete.', 'day-one-importer' ) : __( 'Day One import complete.', 'day-one-importer' ) );
+		echo esc_html( $headline );
 		echo '</strong></p>';
 
 		$counts = $result->get_counts();
@@ -159,7 +201,6 @@ class Day_One_Importer_Admin {
 			echo '</ul></div>';
 		}
 
-		$warnings = $result->get_warnings();
 		if ( ! empty( $warnings ) ) {
 			echo '<div class="notice notice-warning inline"><p><strong>' . esc_html__( 'Warnings', 'day-one-importer' ) . '</strong></p><ul>';
 			foreach ( $warnings as $warning ) {
