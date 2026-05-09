@@ -22,6 +22,52 @@ if ( ! function_exists( 'sanitize_file_name' ) ) {
 	}
 }
 
+if ( ! function_exists( 'absint' ) ) {
+	function absint( $value ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return abs( (int) $value );
+	}
+}
+
+if ( ! function_exists( 'esc_url' ) ) {
+	function esc_url( $url ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return htmlspecialchars( (string) $url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
+	}
+}
+
+if ( ! function_exists( 'wp_kses_post' ) ) {
+	function wp_kses_post( $html ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return $html;
+	}
+}
+
+if ( ! function_exists( 'wp_get_attachment_image' ) ) {
+	function wp_get_attachment_image( $id, $size, $icon = false, $attr = array() ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		$id = (int) $id;
+		if ( ! in_array( $id, array( 101, 102, 202 ), true ) ) {
+			return '';
+		}
+
+		$class = 'attachment-' . $size;
+		if ( 202 !== $id && ! empty( $attr['class'] ) ) {
+			$class .= ' ' . $attr['class'];
+		}
+
+		return '<img class="' . htmlspecialchars( $class, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' ) . '" src="https://example.test/' . $id . '.jpg" alt="" />';
+	}
+}
+
+if ( ! function_exists( 'wp_get_attachment_url' ) ) {
+	function wp_get_attachment_url( $id ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return 303 === (int) $id ? 'https://example.test/303-fallback.jpg' : false;
+	}
+}
+
+if ( ! function_exists( 'wp_json_encode' ) ) {
+	function wp_json_encode( $data, $flags = 0 ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return json_encode( $data, $flags );
+	}
+}
+
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-results.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-cleanup.php';
@@ -37,18 +83,52 @@ function assert_true( $condition, $message ) {
 }
 
 $content = Day_One_Importer_Content::convert_text_to_content( "# Heading\n\nParagraph with [gallery] and <script>alert(1)</script>.\n- item" );
-assert_true( false !== strpos( $content, '<h1>Heading</h1>' ), 'Markdown heading is converted.' );
+assert_true( false !== strpos( $content, '<!-- wp:heading {"level":1} -->' ), 'Markdown heading is serialized as a Heading block.' );
+assert_true( false !== strpos( $content, '<h1>Heading</h1>' ), 'Markdown heading markup is converted.' );
+assert_true( false !== strpos( $content, '<!-- wp:paragraph -->' ), 'Paragraph content is serialized as a Paragraph block.' );
 assert_true( false === strpos( $content, '<script>' ), 'Raw script tags are escaped.' );
+assert_true( false !== strpos( $content, '&lt;script&gt;alert(1)&lt;/script&gt;' ), 'Raw script tags remain visible as escaped text.' );
 assert_true( false === strpos( $content, '[gallery]' ), 'Shortcode brackets are neutralized.' );
 assert_true( false !== strpos( $content, '&#91;gallery&#93;' ), 'Shortcode-like text remains visible as entities.' );
 
+$multiline_content = Day_One_Importer_Content::convert_text_to_content( "Line one\nLine two" );
+assert_true( false !== strpos( $multiline_content, "<p>Line one<br />\nLine two</p>" ), 'Multiline prose preserves line breaks inside a Paragraph block.' );
+
+$list_content = Day_One_Importer_Content::convert_text_to_content( "- one\n- two" );
+assert_true( 1 === substr_count( $list_content, '<!-- wp:list -->' ), 'Consecutive list items create one List block.' );
+assert_true( false !== strpos( $list_content, '<li>one</li>' ) && false !== strpos( $list_content, '<li>two</li>' ), 'List block contains both list items.' );
+
 $placeholder_content = Day_One_Importer_Content::convert_text_to_content( "![](dayone-moment://C3E4A1AA78264398801ED7B7D984F859)\n\nCaption text" );
 assert_true( false === strpos( $placeholder_content, 'dayone-moment://' ), 'Day One media placeholders are omitted from content.' );
+assert_true( false !== strpos( $placeholder_content, '<!-- wp:paragraph -->' ), 'Text after media placeholder remains in a Paragraph block.' );
 assert_true( false !== strpos( $placeholder_content, 'Caption text' ), 'Text after media placeholder is preserved.' );
 
 $escaped_content = Day_One_Importer_Content::convert_text_to_content( 'Un año sin usar Day One\\. Como pasa el tiempo\\!' );
 assert_true( false !== strpos( $escaped_content, 'Day One.' ), 'Markdown-escaped periods are normalized in content.' );
 assert_true( false !== strpos( $escaped_content, 'tiempo!' ), 'Markdown-escaped exclamation marks are normalized in content.' );
+
+$base_content = '<!-- wp:paragraph -->' . "\n" . '<p>Existing</p>' . "\n" . '<!-- /wp:paragraph -->';
+assert_true( $base_content === Day_One_Importer_Content::append_image_section( $base_content, array() ), 'No attachments leave content unchanged.' );
+assert_true( $base_content === Day_One_Importer_Content::append_image_section( $base_content, array( 0, 'bad', 404 ) ), 'No renderable attachments leave content unchanged.' );
+
+$single_image_content = Day_One_Importer_Content::append_image_section( '', array( 101 ) );
+assert_true( false !== strpos( $single_image_content, '<!-- wp:image {"id":101' ), 'One attachment appends an Image block.' );
+assert_true( false === strpos( $single_image_content, '<!-- wp:gallery' ), 'One attachment does not append a Gallery block.' );
+assert_true( false !== strpos( $single_image_content, 'wp-image-101' ), 'Image block img includes matching wp-image class.' );
+
+$normalized_image_content = Day_One_Importer_Content::append_image_section( '', array( 202 ) );
+assert_true( false !== strpos( $normalized_image_content, 'attachment-large wp-image-202' ), 'Image markup missing the wp-image class is normalized.' );
+
+$fallback_image_content = Day_One_Importer_Content::append_image_section( '', array( 303 ) );
+assert_true( false !== strpos( $fallback_image_content, '<!-- wp:image {"id":303' ), 'Attachment URL fallback appends an Image block.' );
+assert_true( false !== strpos( $fallback_image_content, 'wp-image-303' ), 'Fallback image includes matching wp-image class.' );
+
+$gallery_content = Day_One_Importer_Content::append_image_section( '', array( 101, 0, '101', 404, 102, 101 ) );
+assert_true( false !== strpos( $gallery_content, '<!-- wp:gallery {"linkTo":"none","ids":[101,102]} -->' ), 'Duplicate and zero IDs are normalized while preserving order for Gallery block IDs.' );
+assert_true( 2 === substr_count( $gallery_content, '<!-- wp:image' ), 'Gallery block contains nested Image blocks only for renderable unique IDs.' );
+assert_true( false !== strpos( $gallery_content, 'wp-image-101' ) && false !== strpos( $gallery_content, 'wp-image-102' ), 'Each nested gallery image has its matching wp-image class.' );
+assert_true( false === strpos( $gallery_content, '404' ) && false === strpos( $gallery_content, '/tmp/' ), 'Skipped invalid images do not leak IDs or filesystem paths.' );
+assert_true( false === strpos( $gallery_content, 'day-one-importer-photos' ) && false === strpos( $gallery_content, 'Imported photos' ), 'Old imported photo wrapper is not emitted.' );
 
 $title = Day_One_Importer_Content::derive_title( "# A safe title\nBody", '2026-05-08 12:00:00' );
 assert_true( 'A safe title' === $title, 'Title is derived from first heading.' );

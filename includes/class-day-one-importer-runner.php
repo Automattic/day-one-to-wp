@@ -18,7 +18,7 @@ class Day_One_Importer_Runner {
 	 *
 	 * @var string
 	 */
-	const IMPORT_SCHEMA_VERSION = '2';
+	const IMPORT_SCHEMA_VERSION = '3';
 
 	/**
 	 * Run import for an uploaded ZIP file.

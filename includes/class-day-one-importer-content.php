@@ -27,29 +27,25 @@ class Day_One_Importer_Content {
 		$text  = self::normalize_day_one_markdown_escapes( self::normalize_line_endings( $text ) );
 		$lines = explode( "\n", $text );
 
-		$html       = '';
+		$content    = '';
 		$paragraph  = array();
 		$list_items = array();
 
-		$flush_paragraph = static function () use ( &$html, &$paragraph ) {
+		$flush_paragraph = static function () use ( &$content, &$paragraph ) {
 			if ( empty( $paragraph ) ) {
 				return;
 			}
 
-			$html     .= '<p>' . implode( "<br />\n", array_map( array( 'Day_One_Importer_Content', 'escape_imported_text_fragment' ), $paragraph ) ) . '</p>' . "\n";
+			$content  .= self::serialize_paragraph_block( $paragraph );
 			$paragraph = array();
 		};
 
-		$flush_list = static function () use ( &$html, &$list_items ) {
+		$flush_list = static function () use ( &$content, &$list_items ) {
 			if ( empty( $list_items ) ) {
 				return;
 			}
 
-			$html .= '<ul>' . "\n";
-			foreach ( $list_items as $item ) {
-				$html .= '<li>' . self::escape_imported_text_fragment( $item ) . '</li>' . "\n";
-			}
-			$html      .= '</ul>' . "\n";
+			$content   .= self::serialize_list_block( $list_items );
 			$list_items = array();
 		};
 
@@ -71,8 +67,7 @@ class Day_One_Importer_Content {
 			if ( preg_match( '/^(#{1,6})\s+(.+)$/', $trimmed, $matches ) ) {
 				$flush_paragraph();
 				$flush_list();
-				$level = strlen( $matches[1] );
-				$html .= '<h' . $level . '>' . self::escape_imported_text_fragment( $matches[2] ) . '</h' . $level . '>' . "\n";
+				$content .= self::serialize_heading_block( strlen( $matches[1] ), $matches[2] );
 				continue;
 			}
 
@@ -89,12 +84,7 @@ class Day_One_Importer_Content {
 		$flush_paragraph();
 		$flush_list();
 
-		$html = trim( $html );
-		if ( function_exists( 'wp_kses_post' ) ) {
-			$html = wp_kses_post( $html );
-		}
-
-		return $html;
+		return trim( $content );
 	}
 
 	/**
@@ -182,25 +172,217 @@ class Day_One_Importer_Content {
 			return $content;
 		}
 
-		$section  = "\n\n" . '<h2>' . esc_html__( 'Imported photos', 'day-one-importer' ) . '</h2>' . "\n";
-		$section .= '<div class="day-one-importer-photos">' . "\n";
-
+		$images = array();
 		foreach ( $attachment_ids as $attachment_id ) {
-			$image = wp_get_attachment_image( $attachment_id, 'large' );
-			if ( ! $image ) {
-				$url = wp_get_attachment_url( $attachment_id );
-				if ( ! $url ) {
-					continue;
-				}
-				$image = '<img src="' . esc_url( $url ) . '" alt="" />';
+			$image = self::build_attachment_image_record( $attachment_id );
+			if ( $image ) {
+				$images[] = $image;
 			}
-
-			$section .= '<figure class="wp-block-image day-one-importer-photo">' . $image . '</figure>' . "\n";
 		}
 
-		$section .= '</div>';
+		if ( empty( $images ) ) {
+			return $content;
+		}
 
-		return wp_kses_post( $content . $section );
+		$section = 1 === count( $images ) ? self::serialize_image_block( $images[0] ) : self::serialize_gallery_block( $images );
+		$prefix  = '' !== (string) $content ? rtrim( (string) $content ) . "\n\n" : '';
+
+		return $prefix . trim( $section );
+	}
+
+	/**
+	 * Serialize a WordPress block with escaped/sanitized inner markup.
+	 *
+	 * @param string $block_name Block name without core/ prefix.
+	 * @param array  $attrs Block attributes.
+	 * @param string $inner_html Inner HTML.
+	 * @return string
+	 */
+	private static function serialize_block( $block_name, $attrs, $inner_html ) {
+		$attrs = is_array( $attrs ) ? $attrs : array();
+		$flags = 0;
+		if ( defined( 'JSON_UNESCAPED_SLASHES' ) ) {
+			$flags |= JSON_UNESCAPED_SLASHES;
+		}
+		if ( defined( 'JSON_UNESCAPED_UNICODE' ) ) {
+			$flags |= JSON_UNESCAPED_UNICODE;
+		}
+
+		$encoded_attrs = '';
+		if ( ! empty( $attrs ) ) {
+			$encoded_attrs = function_exists( 'wp_json_encode' ) ? wp_json_encode( $attrs, $flags ) : json_encode( $attrs, $flags );
+			$encoded_attrs = is_string( $encoded_attrs ) ? ' ' . $encoded_attrs : '';
+		}
+
+		return '<!-- wp:' . $block_name . $encoded_attrs . ' -->' . "\n" . $inner_html . "\n" . '<!-- /wp:' . $block_name . ' -->' . "\n";
+	}
+
+	/**
+	 * Serialize paragraph lines as a Paragraph block.
+	 *
+	 * @param string[] $lines Paragraph lines.
+	 * @return string
+	 */
+	private static function serialize_paragraph_block( $lines ) {
+		$escaped_lines = array_map( array( 'Day_One_Importer_Content', 'escape_imported_text_fragment' ), (array) $lines );
+		return self::serialize_block( 'paragraph', array(), '<p>' . implode( "<br />\n", $escaped_lines ) . '</p>' );
+	}
+
+	/**
+	 * Serialize text as a Heading block.
+	 *
+	 * @param int    $level Heading level.
+	 * @param string $text Heading text.
+	 * @return string
+	 */
+	private static function serialize_heading_block( $level, $text ) {
+		$level = max( 1, min( 6, (int) $level ) );
+		$attrs = 2 === $level ? array() : array( 'level' => $level );
+
+		return self::serialize_block( 'heading', $attrs, '<h' . $level . '>' . self::escape_imported_text_fragment( $text ) . '</h' . $level . '>' );
+	}
+
+	/**
+	 * Serialize items as a List block.
+	 *
+	 * @param string[] $items List item text.
+	 * @return string
+	 */
+	private static function serialize_list_block( $items ) {
+		$inner_html = '<ul>' . "\n";
+		foreach ( (array) $items as $item ) {
+			$inner_html .= '<li>' . self::escape_imported_text_fragment( $item ) . '</li>' . "\n";
+		}
+		$inner_html .= '</ul>';
+
+		return self::serialize_block( 'list', array(), $inner_html );
+	}
+
+	/**
+	 * Build an image record for block serialization.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return array{id:int,html:string}|null
+	 */
+	private static function build_attachment_image_record( $attachment_id ) {
+		$attachment_id = (int) $attachment_id;
+		$image_html    = '';
+		$image_class   = 'wp-image-' . $attachment_id;
+
+		if ( function_exists( 'wp_get_attachment_image' ) ) {
+			$image_html = wp_get_attachment_image( $attachment_id, 'large', false, array( 'class' => $image_class ) );
+		}
+
+		if ( $image_html ) {
+			$image_html = self::ensure_image_html_class( $image_html, $image_class );
+		} elseif ( function_exists( 'wp_get_attachment_url' ) ) {
+			$url = wp_get_attachment_url( $attachment_id );
+			if ( $url ) {
+				$url        = function_exists( 'esc_url' ) ? esc_url( $url ) : htmlspecialchars( (string) $url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
+				$image_html = '<img class="' . $image_class . '" src="' . $url . '" alt="" />';
+			}
+		}
+
+		if ( ! $image_html ) {
+			return null;
+		}
+
+		if ( function_exists( 'wp_kses_post' ) ) {
+			$image_html = wp_kses_post( $image_html );
+		}
+
+		return array(
+			'id'   => $attachment_id,
+			'html' => $image_html,
+		);
+	}
+
+	/**
+	 * Ensure an img tag contains the expected wp-image-{id} class.
+	 *
+	 * @param string $image_html Image markup.
+	 * @param string $class Class name.
+	 * @return string
+	 */
+	private static function ensure_image_html_class( $image_html, $class ) {
+		$replaced = 0;
+		$result   = preg_replace_callback(
+			'/<img\b([^>]*)>/i',
+			static function ( $matches ) use ( $class ) {
+				$attrs = $matches[1];
+
+				if ( preg_match( '/\sclass\s*=\s*(["\'])(.*?)\1/i', $attrs, $class_matches ) ) {
+					$classes = preg_split( '/\s+/', trim( $class_matches[2] ) );
+					$classes = is_array( $classes ) ? array_filter( $classes ) : array();
+					if ( ! in_array( $class, $classes, true ) ) {
+						$classes[] = $class;
+					}
+					$new_class_attr = ' class=' . $class_matches[1] . implode( ' ', $classes ) . $class_matches[1];
+					$attrs          = preg_replace( '/\sclass\s*=\s*(["\']).*?\1/i', $new_class_attr, $attrs, 1 );
+
+					return '<img' . $attrs . '>';
+				}
+
+				$self_closing = '';
+				if ( preg_match( '/\s*\/\s*$/', $attrs ) ) {
+					$attrs        = preg_replace( '/\s*\/\s*$/', '', $attrs );
+					$self_closing = ' /';
+				}
+
+				return '<img' . rtrim( $attrs ) . ' class="' . $class . '"' . $self_closing . '>';
+			},
+			(string) $image_html,
+			1,
+			$replaced
+		);
+
+		return $replaced ? $result : (string) $image_html;
+	}
+
+	/**
+	 * Serialize an Image block.
+	 *
+	 * @param array{id:int,html:string} $image Image record.
+	 * @return string
+	 */
+	private static function serialize_image_block( $image ) {
+		$attachment_id = (int) $image['id'];
+		$attrs         = array(
+			'id'              => $attachment_id,
+			'sizeSlug'        => 'large',
+			'linkDestination' => 'none',
+		);
+		$inner_html    = '<figure class="wp-block-image size-large">' . $image['html'] . '</figure>';
+
+		return self::serialize_block( 'image', $attrs, $inner_html );
+	}
+
+	/**
+	 * Serialize a Gallery block with nested Image blocks.
+	 *
+	 * @param array<int,array{id:int,html:string}> $images Image records.
+	 * @return string
+	 */
+	private static function serialize_gallery_block( $images ) {
+		$ids = array();
+		foreach ( $images as $image ) {
+			$ids[] = (int) $image['id'];
+		}
+
+		$inner_html = '<figure class="wp-block-gallery has-nested-images columns-default is-cropped">' . "\n";
+		foreach ( $images as $image ) {
+			$inner_html .= self::serialize_image_block( $image );
+		}
+		$inner_html .= '</figure>';
+
+		return self::serialize_block(
+			'gallery',
+			array(
+				'linkTo' => 'none',
+				'ids'    => $ids,
+			),
+			$inner_html
+		);
 	}
 
 	/**
