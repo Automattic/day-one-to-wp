@@ -402,8 +402,12 @@ class Day_One_Importer_Media {
 		add_filter( 'upload_dir', array( __CLASS__, 'filter_private_upload_dir' ) );
 		add_filter( 'intermediate_image_sizes_advanced', array( __CLASS__, 'filter_import_image_sizes' ), 10, 3 );
 		add_filter( 'big_image_size_threshold', '__return_false' );
+		$private_file = '';
 		try {
 			$attachment_id = media_handle_sideload( $file_array, $post_id );
+			if ( ! is_wp_error( $attachment_id ) ) {
+				$private_file = get_attached_file( $attachment_id );
+			}
 		} finally {
 			remove_filter( 'upload_dir', array( __CLASS__, 'filter_private_upload_dir' ) );
 			remove_filter( 'intermediate_image_sizes_advanced', array( __CLASS__, 'filter_import_image_sizes' ), 10 );
@@ -413,6 +417,10 @@ class Day_One_Importer_Media {
 		if ( is_wp_error( $attachment_id ) ) {
 			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
 			return 0;
+		}
+
+		if ( $private_file && is_readable( $private_file ) ) {
+			update_attached_file( $attachment_id, $private_file );
 		}
 
 		return (int) $attachment_id;
@@ -441,29 +449,113 @@ class Day_One_Importer_Media {
 	 * @return array<string,mixed> Filtered upload directory data.
 	 */
 	public static function filter_private_upload_dir( $dirs ) {
-		$basedir = isset( $dirs['basedir'] ) ? untrailingslashit( (string) $dirs['basedir'] ) : '';
 		$baseurl = isset( $dirs['baseurl'] ) ? untrailingslashit( (string) $dirs['baseurl'] ) : '';
 		$subdir  = isset( $dirs['subdir'] ) ? (string) $dirs['subdir'] : '';
+		$private = self::prepare_private_media_base_dir();
 
-		if ( '' === $basedir || '' === $baseurl ) {
+		if ( '' === $baseurl || '' === $private ) {
+			$dirs['error'] = __( 'The private media directory could not be prepared.', 'day-one-importer' );
 			return $dirs;
 		}
 
-		$private_subdir = '/' . self::PRIVATE_UPLOAD_SUBDIR . $subdir;
-		$private_path   = $basedir . $private_subdir;
+		$private_subdir = $subdir;
+		$private_path   = untrailingslashit( $private ) . $private_subdir;
 
 		if ( function_exists( 'wp_mkdir_p' ) ) {
 			wp_mkdir_p( $private_path );
 		}
 
-		self::protect_private_upload_directory( $basedir . '/' . self::PRIVATE_UPLOAD_SUBDIR );
+		self::protect_private_upload_directory( $private );
 		self::protect_private_upload_directory( $private_path );
 
-		$dirs['subdir'] = $private_subdir;
-		$dirs['path']   = $private_path;
-		$dirs['url']    = $baseurl . $private_subdir;
+		if ( ! is_dir( $private_path ) || ( function_exists( 'wp_is_writable' ) && ! wp_is_writable( $private_path ) ) || ( ! function_exists( 'wp_is_writable' ) && ! is_writable( $private_path ) ) ) {
+			$dirs['error'] = __( 'The private media directory is not writable.', 'day-one-importer' );
+			return $dirs;
+		}
+
+		$dirs['basedir'] = untrailingslashit( $private );
+		$dirs['baseurl'] = $baseurl . '/' . self::PRIVATE_UPLOAD_SUBDIR;
+		$dirs['subdir']  = $private_subdir;
+		$dirs['path']    = $private_path;
+		$dirs['url']     = $dirs['baseurl'] . $private_subdir;
 
 		return $dirs;
+	}
+
+	/**
+	 * Prepare the private media base directory.
+	 *
+	 * @return string Absolute directory path, or empty string on failure.
+	 */
+	public static function prepare_private_media_base_dir() {
+		$dir = self::private_media_base_dir();
+		if ( '' === $dir ) {
+			return '';
+		}
+
+		if ( function_exists( 'wp_mkdir_p' ) && ! wp_mkdir_p( $dir ) ) {
+			return '';
+		}
+
+		if ( ! is_dir( $dir ) || ( function_exists( 'wp_is_writable' ) && ! wp_is_writable( $dir ) ) || ( ! function_exists( 'wp_is_writable' ) && ! is_writable( $dir ) ) ) {
+			return '';
+		}
+
+		self::protect_private_upload_directory( $dir );
+		return $dir;
+	}
+
+	/**
+	 * Return the private media base directory outside the web root where possible.
+	 *
+	 * @return string Directory path.
+	 */
+	public static function private_media_base_dir() {
+		$candidates = array();
+		if ( defined( 'ABSPATH' ) ) {
+			$candidates[] = dirname( untrailingslashit( ABSPATH ) ) . DIRECTORY_SEPARATOR . self::PRIVATE_UPLOAD_SUBDIR;
+		}
+		if ( function_exists( 'get_temp_dir' ) ) {
+			$candidates[] = trailingslashit( get_temp_dir() ) . self::PRIVATE_UPLOAD_SUBDIR;
+		} else {
+			$candidates[] = trailingslashit( sys_get_temp_dir() ) . self::PRIVATE_UPLOAD_SUBDIR;
+		}
+		if ( defined( 'WP_CONTENT_DIR' ) ) {
+			$candidates[] = untrailingslashit( WP_CONTENT_DIR ) . DIRECTORY_SEPARATOR . self::PRIVATE_UPLOAD_SUBDIR;
+		}
+
+		$default = self::first_writable_private_media_dir( $candidates );
+		if ( function_exists( 'apply_filters' ) ) {
+			$default = (string) apply_filters( 'day_one_importer_private_media_dir', $default );
+		}
+
+		return $default ? untrailingslashit( $default ) : '';
+	}
+
+	/**
+	 * Pick the first candidate whose parent directory is writable.
+	 *
+	 * @param string[] $candidates Directory candidates.
+	 * @return string Directory path, or the first candidate if none can be proven writable.
+	 */
+	private static function first_writable_private_media_dir( $candidates ) {
+		$first = '';
+		foreach ( $candidates as $candidate ) {
+			$candidate = untrailingslashit( (string) $candidate );
+			if ( '' === $candidate ) {
+				continue;
+			}
+			if ( '' === $first ) {
+				$first = $candidate;
+			}
+
+			$parent = dirname( $candidate );
+			if ( is_dir( $parent ) && ( ( function_exists( 'wp_is_writable' ) && wp_is_writable( $parent ) ) || ( ! function_exists( 'wp_is_writable' ) && is_writable( $parent ) ) ) ) {
+				return $candidate;
+			}
+		}
+
+		return $first;
 	}
 
 	/**
@@ -569,13 +661,7 @@ class Day_One_Importer_Media {
 	 * @return bool True when private.
 	 */
 	public static function is_private_upload_path( $file ) {
-		$uploads = function_exists( 'wp_get_upload_dir' ) ? wp_get_upload_dir() : array();
-		$basedir = isset( $uploads['basedir'] ) ? (string) $uploads['basedir'] : '';
-		if ( '' === $basedir ) {
-			return false;
-		}
-
-		$private_root = realpath( untrailingslashit( $basedir ) . '/' . self::PRIVATE_UPLOAD_SUBDIR );
+		$private_root = realpath( self::private_media_base_dir() );
 		$file_real    = realpath( $file );
 		if ( false === $private_root || false === $file_real ) {
 			return false;

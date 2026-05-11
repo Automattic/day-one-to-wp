@@ -3,7 +3,7 @@
 ## Requirements
 
 - Newly imported Day One media must not be stored under the public WordPress uploads tree.
-- Use a persistent plugin-private filesystem directory outside the web root (`ABSPATH`) when possible.
+- Use a plugin-private filesystem directory outside the public uploads tree, preferring a location outside the web root (`ABSPATH`) when possible.
 - If a private storage directory cannot be created or written, fail the media item safely instead of falling back to public uploads.
 - Continue serving imported media through the existing permission-checked WordPress endpoint.
 - Preserve idempotency/resume behavior and existing Day One media metadata.

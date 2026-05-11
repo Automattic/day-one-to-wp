@@ -20,11 +20,11 @@ The importer is designed for local or private archive migration workflows:
 * Re-importing the same export skips completed entries using Day One UUID metadata.
 * Interrupted or older-schema imports can be resumed or refreshed in place.
 * Supported photos are imported into the Media Library and attached to their posts.
-* New Day One media is stored in an importer-private uploads directory and served through a permission-checked WordPress endpoint.
+* New Day One media is stored outside the public uploads tree and served through a permission-checked WordPress endpoint.
 * Generated image sub-sizes are skipped during import to reduce timeout risk on large exports.
 * Result screens report counts, UUIDs, dates, filenames, and generic warnings rather than full journal content.
 
-Privacy note: the importer writes best-effort server protection files for its private media directory and serves imported media only to logged-in users who can read the associated private post or attachment. If media privacy is critical, confirm your host blocks direct requests to files under `wp-content/uploads/day-one-importer-private/`, because some Nginx or custom configurations may ignore `.htaccess` or `web.config` files.
+Privacy note: the importer stores new imported media outside the public uploads tree, preferring a location outside the WordPress web root when the host allows it. It writes best-effort server protection files as defense in depth and serves imported media only to logged-in users who can read the associated private post or attachment. If media privacy is critical, confirm your host does not expose the private filesystem directory through custom server configuration.
 
 The plugin does not send journal content or media to external services.
 
@@ -54,7 +54,7 @@ Yes. The importer stores Day One UUID metadata and skips entries that were alrea
 
 = What media types are imported? =
 
-The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Unsupported or missing media generates warnings without stopping unrelated entries. New imported media is stored under the importer-private uploads directory and served through a permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
+The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Unsupported or missing media generates warnings without stopping unrelated entries. New imported media is stored outside the public uploads tree and served through a permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
 
 = Does the plugin contact external services? =
 

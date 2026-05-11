@@ -8,6 +8,9 @@
 
 define( 'DAY_ONE_IMPORTER_TESTING', true );
 define( 'DAY_ONE_IMPORTER_TEXT_DOMAIN', 'day-one-importer' );
+$day_one_importer_test_webroot = sys_get_temp_dir() . '/day-one-importer-webroot-' . uniqid() . '/public/';
+mkdir( $day_one_importer_test_webroot, 0777, true );
+define( 'ABSPATH', $day_one_importer_test_webroot );
 
 if ( ! function_exists( '__' ) ) {
 	function __( $text, $domain = null ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
@@ -248,21 +251,26 @@ $filtered_sizes = Day_One_Importer_Media::filter_import_image_sizes(
 );
 assert_true( array() === $filtered_sizes, 'Importer sideloads disable generated image sub-sizes.' );
 
-$private_upload_root = sys_get_temp_dir() . '/day-one-importer-private-upload-test-' . uniqid();
-$upload_dirs         = Day_One_Importer_Media::filter_private_upload_dir(
+$public_upload_root = sys_get_temp_dir() . '/day-one-importer-public-upload-test-' . uniqid();
+$upload_dirs        = Day_One_Importer_Media::filter_private_upload_dir(
 	array(
-		'basedir' => $private_upload_root,
+		'basedir' => $public_upload_root,
 		'baseurl' => 'https://example.test/wp-content/uploads',
 		'subdir'  => '/2026/05',
-		'path'    => $private_upload_root . '/2026/05',
+		'path'    => $public_upload_root . '/2026/05',
 		'url'     => 'https://example.test/wp-content/uploads/2026/05',
 	)
 );
-assert_true( '/day-one-importer-private/2026/05' === $upload_dirs['subdir'], 'Private media upload subdir is namespaced.' );
-assert_true( false !== strpos( $upload_dirs['path'], '/day-one-importer-private/2026/05' ), 'Private media upload path is namespaced.' );
-assert_true( false !== strpos( $upload_dirs['url'], '/day-one-importer-private/2026/05' ), 'Private media upload URL is namespaced before URL filtering.' );
-assert_true( file_exists( $private_upload_root . '/day-one-importer-private/.htaccess' ), 'Private media root receives protection files.' );
-Day_One_Importer_Cleanup::remove( $private_upload_root );
+$private_media_root = Day_One_Importer_Media::private_media_base_dir();
+assert_true( '/2026/05' === $upload_dirs['subdir'], 'Private media upload subdir preserves WordPress date structure.' );
+assert_true( 0 === strpos( $upload_dirs['path'], $private_media_root ), 'Private media upload path is outside the public uploads tree.' );
+assert_true( false === strpos( $upload_dirs['path'], $public_upload_root ), 'Private media upload path does not use the public uploads root.' );
+assert_true( file_exists( $private_media_root . '/.htaccess' ), 'Private media root receives defense-in-depth protection files.' );
+$private_test_file = $upload_dirs['path'] . '/private-test.jpg';
+file_put_contents( $private_test_file, 'fake' );
+assert_true( Day_One_Importer_Media::is_private_upload_path( $private_test_file ), 'Private media path validator accepts files under the private root.' );
+Day_One_Importer_Cleanup::remove( dirname( $private_media_root ) );
+Day_One_Importer_Cleanup::remove( $public_upload_root );
 
 $private_media_url = Day_One_Importer_Media::private_media_url( 123 );
 assert_true( 'https://example.test/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=123' === $private_media_url, 'Private media URL uses the authenticated AJAX endpoint.' );
