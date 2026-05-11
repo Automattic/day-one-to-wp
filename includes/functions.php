@@ -39,6 +39,24 @@ function day_one_importer_sanitize_text( $value ) {
 	return trim( (string) $value );
 }
 
+/**
+ * Ask WordPress/PHP for limits suitable for a long-running admin import.
+ *
+ * Hosts may enforce hard request limits outside PHP control, so this is best
+ * effort only. The importer remains resumable when a host stops the request.
+ *
+ * @return void
+ */
+function day_one_importer_prepare_long_running_import() {
+	if ( function_exists( 'wp_raise_memory_limit' ) ) {
+		wp_raise_memory_limit( 'admin' );
+	}
+
+	if ( function_exists( 'set_time_limit' ) ) {
+		@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Best-effort host-dependent request limit adjustment.
+	}
+}
+
 if ( ! function_exists( 'wp_strip_all_tags' ) ) {
 	/**
 	 * Minimal fallback for tests outside WordPress.

@@ -385,13 +385,37 @@ class Day_One_Importer_Media {
 			'tmp_name' => $tmp,
 		);
 
-		$attachment_id = media_handle_sideload( $file_array, $post_id );
+		add_filter( 'intermediate_image_sizes_advanced', array( __CLASS__, 'filter_import_image_sizes' ), 10, 3 );
+		add_filter( 'big_image_size_threshold', '__return_false' );
+		try {
+			$attachment_id = media_handle_sideload( $file_array, $post_id );
+		} finally {
+			remove_filter( 'intermediate_image_sizes_advanced', array( __CLASS__, 'filter_import_image_sizes' ), 10 );
+			remove_filter( 'big_image_size_threshold', '__return_false' );
+		}
+
 		if ( is_wp_error( $attachment_id ) ) {
 			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
 			return 0;
 		}
 
 		return (int) $attachment_id;
+	}
+
+	/**
+	 * Disable generated image sizes during Day One import sideloads.
+	 *
+	 * WordPress creates thumbnails and other sub-sizes synchronously during
+	 * media sideloads. Large journal exports can spend enough time in Imagick
+	 * resizing to hit PHP request limits, so importer media keeps only the
+	 * original uploaded file and lets WordPress generate sizes later if an
+	 * operator explicitly requests that outside the import.
+	 *
+	 * @param array<string,array<string,int>> $sizes Existing size definitions.
+	 * @return array<string,array<string,int>> Empty size list.
+	 */
+	public static function filter_import_image_sizes( $sizes ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- WordPress filter signature.
+		return array();
 	}
 
 	/**

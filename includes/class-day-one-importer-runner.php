@@ -27,6 +27,8 @@ class Day_One_Importer_Runner {
 	 * @return Day_One_Importer_Results
 	 */
 	public function run_upload( $file ) {
+		day_one_importer_prepare_long_running_import();
+
 		$results     = new Day_One_Importer_Results();
 		$run_dir     = '';
 		$zip_path    = '';
@@ -81,6 +83,7 @@ class Day_One_Importer_Runner {
 			}
 
 			foreach ( $entries as $entry ) {
+				day_one_importer_prepare_long_running_import();
 				$this->import_entry( $entry, $extract_dir, $results );
 			}
 		} catch ( Exception $e ) {
