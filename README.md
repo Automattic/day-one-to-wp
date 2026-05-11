@@ -68,9 +68,11 @@ Supported initial image types are JPEG/JPG, PNG, and other image formats that th
 
 Photos are attached to the corresponding private post and importer metadata is stored on the attachment to support reuse on reruns.
 
+New Day One media is stored under a dedicated `day-one-importer-private` uploads directory. The importer writes best-effort server protection files there and uses a WordPress media endpoint instead of raw upload URLs for imported attachments. The endpoint only serves a Day One media file to a logged-in user who can read the associated private post or attachment.
+
 To reduce timeout risk during large imports, the importer asks WordPress/PHP for long-running admin request limits where the host allows it and skips generated image sub-sizes during Day One media sideloads. Imported posts use the original uploaded image file. If you need WordPress thumbnail sizes for imported media later, regenerate thumbnails after the import using your preferred trusted maintenance tool.
 
-**Important media caveat:** WordPress Media Library files may be accessible by direct URL depending on your hosting and WordPress configuration, even when attached to private posts. If media privacy is critical, confirm your host or site configuration blocks public access to uploaded media URLs before relying on this importer as a private archive.
+**Important media caveat:** The private uploads directory protection depends on server support for files such as `.htaccess` or `web.config`. Apache and IIS-style configurations commonly honor these files, but some Nginx or custom hosts may ignore them. If media privacy is critical, confirm direct requests to files under `wp-content/uploads/day-one-importer-private/` are blocked on your host.
 
 ## Temporary files and external services
 
@@ -92,6 +94,7 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 
 - Day One rich text fidelity is not guaranteed; the importer uses the primary text field conservatively.
 - Images are appended after entry text rather than placed at exact original inline positions.
+- Private media file blocking depends on server support for the protection files written into the importer-private uploads directory.
 - Unsupported or missing media produces warnings but does not stop the entry import.
 - Very large exports may still hit host-enforced upload, timeout, or memory limits even though the importer reduces image-processing work. Increase server limits, rerun to resume, or split exports if needed.
 - WordPress Playground is useful for quick testing, but browser-backed uploads/media handling may differ from a normal WordPress host, especially for large Day One ZIP exports or photo-heavy imports.

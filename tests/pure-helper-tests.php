@@ -28,6 +28,36 @@ if ( ! function_exists( 'absint' ) ) {
 	}
 }
 
+if ( ! function_exists( 'untrailingslashit' ) ) {
+	function untrailingslashit( $value ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return rtrim( (string) $value, '/\\' );
+	}
+}
+
+if ( ! function_exists( 'trailingslashit' ) ) {
+	function trailingslashit( $value ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return untrailingslashit( $value ) . DIRECTORY_SEPARATOR;
+	}
+}
+
+if ( ! function_exists( 'wp_mkdir_p' ) ) {
+	function wp_mkdir_p( $path ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return is_dir( $path ) || mkdir( $path, 0777, true );
+	}
+}
+
+if ( ! function_exists( 'admin_url' ) ) {
+	function admin_url( $path = '' ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return 'https://example.test/wp-admin/' . ltrim( (string) $path, '/' );
+	}
+}
+
+if ( ! function_exists( 'add_query_arg' ) ) {
+	function add_query_arg( $args, $url ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return $url . '?' . http_build_query( $args, '', '&' );
+	}
+}
+
 if ( ! function_exists( 'esc_url' ) ) {
 	function esc_url( $url ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
 		return htmlspecialchars( (string) $url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
@@ -217,6 +247,25 @@ $filtered_sizes = Day_One_Importer_Media::filter_import_image_sizes(
 	)
 );
 assert_true( array() === $filtered_sizes, 'Importer sideloads disable generated image sub-sizes.' );
+
+$private_upload_root = sys_get_temp_dir() . '/day-one-importer-private-upload-test-' . uniqid();
+$upload_dirs         = Day_One_Importer_Media::filter_private_upload_dir(
+	array(
+		'basedir' => $private_upload_root,
+		'baseurl' => 'https://example.test/wp-content/uploads',
+		'subdir'  => '/2026/05',
+		'path'    => $private_upload_root . '/2026/05',
+		'url'     => 'https://example.test/wp-content/uploads/2026/05',
+	)
+);
+assert_true( '/day-one-importer-private/2026/05' === $upload_dirs['subdir'], 'Private media upload subdir is namespaced.' );
+assert_true( false !== strpos( $upload_dirs['path'], '/day-one-importer-private/2026/05' ), 'Private media upload path is namespaced.' );
+assert_true( false !== strpos( $upload_dirs['url'], '/day-one-importer-private/2026/05' ), 'Private media upload URL is namespaced before URL filtering.' );
+assert_true( file_exists( $private_upload_root . '/day-one-importer-private/.htaccess' ), 'Private media root receives protection files.' );
+Day_One_Importer_Cleanup::remove( $private_upload_root );
+
+$private_media_url = Day_One_Importer_Media::private_media_url( 123 );
+assert_true( 'https://example.test/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=123' === $private_media_url, 'Private media URL uses the authenticated AJAX endpoint.' );
 
 $tmp = sys_get_temp_dir() . '/day-one-importer-test-' . uniqid();
 mkdir( $tmp . '/Export/photos', 0777, true );

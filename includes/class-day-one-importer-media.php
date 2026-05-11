@@ -14,6 +14,20 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
  */
 class Day_One_Importer_Media {
 	/**
+	 * Private uploads subdirectory for Day One media.
+	 *
+	 * @var string
+	 */
+	const PRIVATE_UPLOAD_SUBDIR = 'day-one-importer-private';
+
+	/**
+	 * AJAX action used to serve protected Day One media.
+	 *
+	 * @var string
+	 */
+	const PRIVATE_MEDIA_ACTION = 'day_one_importer_media';
+
+	/**
 	 * Extraction root.
 	 *
 	 * @var string
@@ -385,11 +399,13 @@ class Day_One_Importer_Media {
 			'tmp_name' => $tmp,
 		);
 
+		add_filter( 'upload_dir', array( __CLASS__, 'filter_private_upload_dir' ) );
 		add_filter( 'intermediate_image_sizes_advanced', array( __CLASS__, 'filter_import_image_sizes' ), 10, 3 );
 		add_filter( 'big_image_size_threshold', '__return_false' );
 		try {
 			$attachment_id = media_handle_sideload( $file_array, $post_id );
 		} finally {
+			remove_filter( 'upload_dir', array( __CLASS__, 'filter_private_upload_dir' ) );
 			remove_filter( 'intermediate_image_sizes_advanced', array( __CLASS__, 'filter_import_image_sizes' ), 10 );
 			remove_filter( 'big_image_size_threshold', '__return_false' );
 		}
@@ -416,6 +432,157 @@ class Day_One_Importer_Media {
 	 */
 	public static function filter_import_image_sizes( $sizes ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- WordPress filter signature.
 		return array();
+	}
+
+	/**
+	 * Route Day One media sideloads into a dedicated private uploads directory.
+	 *
+	 * @param array<string,mixed> $dirs Upload directory data.
+	 * @return array<string,mixed> Filtered upload directory data.
+	 */
+	public static function filter_private_upload_dir( $dirs ) {
+		$basedir = isset( $dirs['basedir'] ) ? untrailingslashit( (string) $dirs['basedir'] ) : '';
+		$baseurl = isset( $dirs['baseurl'] ) ? untrailingslashit( (string) $dirs['baseurl'] ) : '';
+		$subdir  = isset( $dirs['subdir'] ) ? (string) $dirs['subdir'] : '';
+
+		if ( '' === $basedir || '' === $baseurl ) {
+			return $dirs;
+		}
+
+		$private_subdir = '/' . self::PRIVATE_UPLOAD_SUBDIR . $subdir;
+		$private_path   = $basedir . $private_subdir;
+
+		if ( function_exists( 'wp_mkdir_p' ) ) {
+			wp_mkdir_p( $private_path );
+		}
+
+		self::protect_private_upload_directory( $basedir . '/' . self::PRIVATE_UPLOAD_SUBDIR );
+		self::protect_private_upload_directory( $private_path );
+
+		$dirs['subdir'] = $private_subdir;
+		$dirs['path']   = $private_path;
+		$dirs['url']    = $baseurl . $private_subdir;
+
+		return $dirs;
+	}
+
+	/**
+	 * Add best-effort access-control files to a private upload directory.
+	 *
+	 * @param string $dir Directory path.
+	 * @return void
+	 */
+	private static function protect_private_upload_directory( $dir ) {
+		if ( class_exists( 'Day_One_Importer_Cleanup' ) ) {
+			Day_One_Importer_Cleanup::protect_directory( $dir );
+		}
+	}
+
+	/**
+	 * Replace raw upload URLs for Day One media with an authenticated endpoint.
+	 *
+	 * @param string $url Attachment URL.
+	 * @param int    $attachment_id Attachment ID.
+	 * @return string Filtered URL.
+	 */
+	public static function filter_attachment_url( $url, $attachment_id ) {
+		$attachment_id = absint( $attachment_id );
+		if ( ! $attachment_id || ! function_exists( 'get_post_meta' ) || 'day-one-export' !== (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
+			return $url;
+		}
+
+		return self::private_media_url( $attachment_id );
+	}
+
+	/**
+	 * Build the stable authenticated endpoint URL for a Day One attachment.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return string URL.
+	 */
+	public static function private_media_url( $attachment_id ) {
+		if ( ! function_exists( 'admin_url' ) || ! function_exists( 'add_query_arg' ) ) {
+			return '';
+		}
+
+		return add_query_arg(
+			array(
+				'action'        => self::PRIVATE_MEDIA_ACTION,
+				'attachment_id' => absint( $attachment_id ),
+			),
+			admin_url( 'admin-ajax.php' )
+		);
+	}
+
+	/**
+	 * Serve protected Day One media to users who can read the associated post.
+	 *
+	 * @return void
+	 */
+	public static function serve_private_media() {
+		$attachment_id = isset( $_GET['attachment_id'] ) ? absint( wp_unslash( $_GET['attachment_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only media endpoint with capability checks.
+		if ( ! $attachment_id || 'day-one-export' !== (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
+			self::private_media_status( 404 );
+		}
+
+		$parent_id = wp_get_post_parent_id( $attachment_id );
+		$can_read  = $parent_id ? current_user_can( 'read_post', $parent_id ) : current_user_can( 'read_post', $attachment_id );
+		if ( ! $can_read ) {
+			self::private_media_status( is_user_logged_in() ? 403 : 401 );
+		}
+
+		$file = get_attached_file( $attachment_id );
+		if ( ! $file || ! is_readable( $file ) || ! self::is_private_upload_path( $file ) ) {
+			self::private_media_status( 404 );
+		}
+
+		$mime = get_post_mime_type( $attachment_id );
+		if ( ! $mime || 0 !== strpos( (string) $mime, 'image/' ) ) {
+			$type = wp_check_filetype( $file );
+			$mime = ! empty( $type['type'] ) ? (string) $type['type'] : 'application/octet-stream';
+		}
+
+		nocache_headers();
+		header( 'Content-Type: ' . $mime );
+		header( 'Content-Length: ' . filesize( $file ) );
+		header( 'X-Content-Type-Options: nosniff' );
+		readfile( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
+		exit;
+	}
+
+	/**
+	 * Stop a private media request with an HTTP status.
+	 *
+	 * @param int $status HTTP status.
+	 * @return void
+	 */
+	private static function private_media_status( $status ) {
+		status_header( $status );
+		nocache_headers();
+		exit;
+	}
+
+	/**
+	 * Confirm a file lives under the Day One private uploads directory.
+	 *
+	 * @param string $file File path.
+	 * @return bool True when private.
+	 */
+	public static function is_private_upload_path( $file ) {
+		$uploads = function_exists( 'wp_get_upload_dir' ) ? wp_get_upload_dir() : array();
+		$basedir = isset( $uploads['basedir'] ) ? (string) $uploads['basedir'] : '';
+		if ( '' === $basedir ) {
+			return false;
+		}
+
+		$private_root = realpath( untrailingslashit( $basedir ) . '/' . self::PRIVATE_UPLOAD_SUBDIR );
+		$file_real    = realpath( $file );
+		if ( false === $private_root || false === $file_real ) {
+			return false;
+		}
+
+		$prefix = rtrim( $private_root, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+		return $file_real === $private_root || 0 === strpos( $file_real, $prefix );
 	}
 
 	/**
