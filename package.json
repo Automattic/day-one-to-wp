@@ -1,0 +1,22 @@
+{
+	"name": "day-one-importer",
+	"version": "0.1.0",
+	"description": "WordPress admin importer for Day One JSON exports.",
+	"license": "GPL-2.0-or-later",
+	"private": true,
+	"files": [
+		"assets",
+		"includes",
+		"day-one-importer.php",
+		"README.md",
+		"readme.txt",
+		"LICENSE"
+	],
+	"scripts": {
+		"plugin-zip": "wp-scripts plugin-zip",
+		"build:zip": "wp-scripts plugin-zip"
+	},
+	"devDependencies": {
+		"@wordpress/scripts": "30.23.0"
+	}
+}

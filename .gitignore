@@ -12,3 +12,4 @@ pipelines/
 .phpunit.result.cache
 coverage/
 *.log
+/day-one-importer.zip

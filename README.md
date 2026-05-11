@@ -103,6 +103,17 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 - **Photos missing:** confirm the export includes a `photos/` directory and that the media type is accepted by WordPress.
 - **Duplicate import concerns:** rerun the same ZIP; completed entries should be skipped because Day One UUID metadata is stored on imported posts.
 
+## Build a plugin ZIP
+
+Install Node dependencies and create a local plugin ZIP from the repository root:
+
+```sh
+npm install
+npm run plugin-zip
+```
+
+The ZIP is generated in the repository root. Included files are controlled by the `files` list in `package.json` so development-only files are left out.
+
 ## Verification
 
 GitHub Actions runs the required CI checks on pull requests and pushes to `main`.
