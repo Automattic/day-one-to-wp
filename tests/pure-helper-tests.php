@@ -208,6 +208,16 @@ $upload_filename = Day_One_Importer_Media::build_upload_filename(
 );
 assert_true( 'IMG_1234.jpeg' === $upload_filename, 'Sideload filename keeps original base but matches resolved JPEG extension.' );
 
+$filtered_sizes = Day_One_Importer_Media::filter_import_image_sizes(
+	array(
+		'thumbnail' => array(
+			'width'  => 150,
+			'height' => 150,
+		),
+	)
+);
+assert_true( array() === $filtered_sizes, 'Importer sideloads disable generated image sub-sizes.' );
+
 $tmp = sys_get_temp_dir() . '/day-one-importer-test-' . uniqid();
 mkdir( $tmp . '/Export/photos', 0777, true );
 file_put_contents( $tmp . '/Export/photos/abcdef0123456789abcdef0123456789.jpeg', 'fake' );

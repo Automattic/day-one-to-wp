@@ -20,6 +20,7 @@ The importer is designed for local or private archive migration workflows:
 * Re-importing the same export skips completed entries using Day One UUID metadata.
 * Interrupted or older-schema imports can be resumed or refreshed in place.
 * Supported photos are imported into the Media Library and attached to their posts.
+* Generated image sub-sizes are skipped during import to reduce timeout risk on large exports.
 * Result screens report counts, UUIDs, dates, filenames, and generic warnings rather than full journal content.
 
 Privacy note: WordPress Media Library files may be accessible by direct URL depending on your hosting and WordPress configuration, even when attached to private posts. If media privacy is critical, confirm your site blocks public access to uploaded media URLs before relying on this importer as a private archive.
@@ -52,7 +53,7 @@ Yes. The importer stores Day One UUID metadata and skips entries that were alrea
 
 = What media types are imported? =
 
-The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Unsupported or missing media generates warnings without stopping unrelated entries.
+The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Unsupported or missing media generates warnings without stopping unrelated entries. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
 
 = Does the plugin contact external services? =
 
