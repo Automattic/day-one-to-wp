@@ -49,6 +49,12 @@ if ( ! function_exists( 'wp_mkdir_p' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_is_writable' ) ) {
+	function wp_is_writable( $path ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return is_writable( $path );
+	}
+}
+
 if ( ! function_exists( 'admin_url' ) ) {
 	function admin_url( $path = '' ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
 		return 'https://example.test/wp-admin/' . ltrim( (string) $path, '/' );
