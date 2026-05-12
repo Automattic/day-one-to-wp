@@ -393,7 +393,7 @@ assert_true( '' !== $fixture_photo_path && is_file( $fixture_photo_path ), 'Comm
 
 $batch_results = new Day_One_Importer_Results();
 $batch_job     = array(
-	'manifest_path'        => sys_get_temp_dir() . '/day-one-importer-manifest-' . uniqid() . '.jsonl',
+	'manifest_path'        => sys_get_temp_dir() . '/day-one-importer-manifest-' . uniqid() . '/entries.jsonl',
 	'zip_json_candidates'  => array( 'Fictional Journal.json' ),
 	'zip_photo_dirs'       => array( 'photos' ),
 	'json_files'           => array(),
