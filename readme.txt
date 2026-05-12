@@ -4,7 +4,7 @@ Tags: import, importer, day-one, journal, privacy
 Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Requires PHP extensions: ZipArchive
+Recommended PHP extensions: ZipArchive (for resumable batched imports)
 Stable tag: 0.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -34,7 +34,7 @@ For development and testing, the repository includes a wholly fictional sample D
 
 == Installation ==
 
-1. Confirm PHP has the ZipArchive extension enabled. Chunked Day One imports cannot run without it.
+1. Optionally confirm PHP has the ZipArchive extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
 2. Upload the plugin files to the `/wp-content/plugins/day-one-importer/` directory, or install the plugin ZIP through the WordPress Plugins screen.
 3. Activate the plugin through the Plugins screen in WordPress.
 4. Go to Tools > Import and choose Day One.

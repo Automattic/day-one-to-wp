@@ -15,11 +15,11 @@ Playground runs in your browser and is useful for checking the importer screens 
 - WordPress 6.4 or newer
 - PHP 7.4 or newer
 - A user account with permissions to import, upload files, and edit posts
-- PHP `ZipArchive` extension is required for imports to run
+- PHP `ZipArchive` extension is recommended for resumable batched imports; without it the importer falls back to a single-request synchronous import that may time out on very large or photo-heavy exports
 
 ## Install and activate
 
-1. Confirm PHP has the `ZipArchive` extension enabled. Chunked Day One imports cannot run without it.
+1. Optionally confirm PHP has the `ZipArchive` extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
 2. Copy this plugin directory to `wp-content/plugins/day-one-importer/` on your WordPress site.
 3. In WordPress admin, go to **Plugins → Installed Plugins**.
 4. Activate **Day One Importer**.

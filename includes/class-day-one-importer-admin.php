@@ -147,7 +147,14 @@ class Day_One_Importer_Admin {
 			return $results;
 		}
 
-		$file     = isset( $_FILES['day_one_export'] ) ? $_FILES['day_one_export'] : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$file = isset( $_FILES['day_one_export'] ) ? $_FILES['day_one_export'] : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+
+		if ( ! class_exists( 'ZipArchive' ) ) {
+			Day_One_Importer_Cleanup::remove( $run_dir );
+			$runner = new Day_One_Importer_Runner();
+			return $runner->run_upload( $file );
+		}
+
 		$uploader = new Day_One_Importer_Uploader();
 		$zip_path = $uploader->handle_upload( $file, $run_dir, $results );
 		if ( ! $zip_path ) {
@@ -186,6 +193,10 @@ class Day_One_Importer_Admin {
 		echo '<div class="notice notice-info inline"><p>' . esc_html__( 'Privacy note: imported posts and imported Day One media are protected and served only to authorized WordPress users, but review your hosting backups and filesystem access policies for private journals.', 'day-one-importer' ) . '</p></div>';
 		echo '<p>' . esc_html__( 'For best results, export your journal from Day One as JSON in its original ZIP format and upload that ZIP without editing it.', 'day-one-importer' ) . '</p>';
 		echo '<p>' . esc_html__( 'Large imports run as a resumable job advanced by short browser requests with a cron fallback, so refreshing the page or continuing after a network interruption is safe.', 'day-one-importer' ) . '</p>';
+
+		if ( ! class_exists( 'ZipArchive' ) ) {
+			echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'The PHP ZipArchive extension is not available on this host, so the importer will fall back to a single-request synchronous import. Small and medium exports should still work, but very large or photo-heavy exports may exceed your server or proxy timeout. Ask your host to enable the PHP zip extension for resumable batched imports.', 'day-one-importer' ) . '</p></div>';
+		}
 	}
 
 	/**
