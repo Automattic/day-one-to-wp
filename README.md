@@ -56,7 +56,7 @@ The results/status screen is designed to be privacy-safe: it reports counts, UUI
 
 ## Batched jobs, idempotency, and resume behavior
 
-Large exports are processed as persisted import jobs instead of one long admin request. Each processing request handles a bounded amount of ZIP preflight/extraction, JSON indexing, entry creation, or media import work and returns status before typical proxy/PHP timeout limits are reached. Browser polling normally advances the job; WP-Cron can also continue queued work as a fallback.
+Large exports are processed as persisted import jobs instead of one long admin request. Each processing request handles a bounded amount of ZIP preflight/extraction, JSON indexing, entry creation, or media import work and returns status before typical proxy/PHP timeout limits are reached. Browser polling normally advances the job; WP-Cron can also continue queued work as a fallback. The importer screen shows the current phase, counts, warnings/errors, and an estimated progress bar so a paused, canceled, retried, or re-opened job is visible instead of leaving a blank page.
 
 The importer stores Day One UUID metadata on posts and media. Re-importing the same export, refreshing the browser, retrying a failed batch, or continuing after a temporary interruption skips entries that were already imported and marked complete. If an earlier import created a post but did not finish, the importer resumes that post instead of creating a duplicate.
 

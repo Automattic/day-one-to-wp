@@ -91,6 +91,8 @@ class Day_One_Importer_Admin {
 					'interrupted' => __( 'Connection interrupted. You can safely continue this job.', 'day-one-importer' ),
 					'continue'    => __( 'Retry / Continue', 'day-one-importer' ),
 					'cancel'      => __( 'Cancel import', 'day-one-importer' ),
+					'errors'      => __( 'Errors', 'day-one-importer' ),
+					'warnings'    => __( 'Warnings', 'day-one-importer' ),
 				),
 			)
 		);
@@ -228,6 +230,7 @@ class Day_One_Importer_Admin {
 		echo '<p class="day-one-importer-job-message">' . esc_html( $status['message'] ) . '</p>';
 		echo '<p class="day-one-importer-job-phase">' . esc_html( $status['phase_label'] ) . '</p>';
 		echo '<p class="day-one-importer-job-progress">' . esc_html( $this->format_progress_label( $status ) ) . '</p>';
+		echo '<p class="day-one-importer-job-progress-bar"><progress max="100" value="' . esc_attr( (int) $status['progress_percent'] ) . '"></progress> <span class="day-one-importer-job-progress-percent">' . esc_html( sprintf( __( '%d%% complete', 'day-one-importer' ), (int) $status['progress_percent'] ) ) . '</span></p>';
 		echo '<div class="day-one-importer-job-counts">' . $this->render_counts_html( $status['counts'] ) . '</div>';
 		echo '<div class="day-one-importer-job-details">' . $this->render_details_html( $status ) . '</div>';
 		echo '<p class="day-one-importer-job-actions">';
