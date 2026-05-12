@@ -5,8 +5,10 @@
  * @package Day_One_Importer
  */
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-	exit;
+if ( ! defined( 'ABSPATH' ) ) {
+	if ( ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+		exit;
+	}
 }
 
 /**
@@ -468,7 +470,7 @@ class Day_One_Importer_Media {
 		self::protect_private_upload_directory( $private );
 		self::protect_private_upload_directory( $private_path );
 
-		if ( ! is_dir( $private_path ) || ( function_exists( 'wp_is_writable' ) && ! wp_is_writable( $private_path ) ) || ( ! function_exists( 'wp_is_writable' ) && ! is_writable( $private_path ) ) ) {
+		if ( ! is_dir( $private_path ) || ! wp_is_writable( $private_path ) ) {
 			$dirs['error'] = __( 'The private media directory is not writable.', 'day-one-importer' );
 			return $dirs;
 		}
@@ -497,7 +499,7 @@ class Day_One_Importer_Media {
 			return '';
 		}
 
-		if ( ! is_dir( $dir ) || ( function_exists( 'wp_is_writable' ) && ! wp_is_writable( $dir ) ) || ( ! function_exists( 'wp_is_writable' ) && ! is_writable( $dir ) ) ) {
+		if ( ! is_dir( $dir ) || ! wp_is_writable( $dir ) ) {
 			return '';
 		}
 
@@ -550,7 +552,7 @@ class Day_One_Importer_Media {
 			}
 
 			$parent = dirname( $candidate );
-			if ( is_dir( $parent ) && ( ( function_exists( 'wp_is_writable' ) && wp_is_writable( $parent ) ) || ( ! function_exists( 'wp_is_writable' ) && is_writable( $parent ) ) ) ) {
+			if ( is_dir( $parent ) && wp_is_writable( $parent ) ) {
 				return $candidate;
 			}
 		}

@@ -53,7 +53,7 @@ function day_one_importer_prepare_long_running_import() {
 	}
 
 	if ( function_exists( 'set_time_limit' ) ) {
-		@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Best-effort host-dependent request limit adjustment.
+		@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Squiz.PHP.DiscouragedFunctions.Discouraged -- Best-effort host-dependent request limit adjustment for long-running imports; no WP wrapper extends the request time budget.
 	}
 }
 

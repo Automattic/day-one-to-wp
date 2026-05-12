@@ -62,6 +62,9 @@ No. The plugin processes ZIP files and extracted content locally in WordPress te
 
 == Changelog ==
 
+= Unreleased =
+* Plugin Check compliance cleanup with no user-facing behavior change: private media writability checks now call `wp_is_writable()` directly (the prior `is_writable()` fallback is moved to the test bootstrap as a polyfill), the long-running-import `set_time_limit()` call is kept with a narrowly scoped, justified `phpcs:ignore`, and the media class direct-access guard is rewritten in the nested form already used elsewhere in the plugin.
+
 = 0.1.0 =
 * Initial release.
 * Import Day One JSON export ZIP entries as private WordPress posts.
