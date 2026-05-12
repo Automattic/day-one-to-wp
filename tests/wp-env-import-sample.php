@@ -69,6 +69,17 @@ if ( ! is_readable( $sample_zip ) ) {
 
 require_once ABSPATH . 'wp-admin/includes/file.php';
 
+$day_one_importer_admin_users = get_users(
+	array(
+		'role'   => 'administrator',
+		'number' => 1,
+		'fields' => 'ids',
+	)
+);
+if ( ! empty( $day_one_importer_admin_users ) ) {
+	wp_set_current_user( (int) $day_one_importer_admin_users[0] );
+}
+
 if ( ! function_exists( 'WP_Filesystem' ) ) {
 	require_once ABSPATH . 'wp-admin/includes/file.php';
 }
@@ -132,17 +143,52 @@ function day_one_importer_wp_env_import_from_zip( $zip_path ) {
 		day_one_importer_wp_env_assert( ! empty( $entries ), 'Parsed importable entries.' );
 
 		$runner = new Day_One_Importer_Runner();
-		$method = new ReflectionMethod( $runner, 'import_entry' );
-		$method->setAccessible( true );
-
 		foreach ( $entries as $entry ) {
-			$method->invoke( $runner, $entry, $extract_dir, $results );
+			$runner->import_entry( $entry, $extract_dir, $results );
 		}
 
 		return $results;
 	} finally {
 		Day_One_Importer_Cleanup::remove( $run_dir );
 	}
+}
+
+function day_one_importer_wp_env_import_from_zip_async( $zip_path ) {
+	day_one_importer_wp_env_assert( class_exists( 'ZipArchive' ), 'Async import requires ZipArchive for chunked ZIP processing.' );
+
+	$run_dir = Day_One_Importer_Cleanup::create_run_directory();
+	day_one_importer_wp_env_assert( $run_dir, 'Async run directory created.' );
+	$target_zip = trailingslashit( $run_dir ) . 'day-one-export.zip';
+	day_one_importer_wp_env_assert( copy( $zip_path, $target_zip ), 'Async ZIP copied into protected run directory.' );
+	Day_One_Importer_Cleanup::set_owner_only_permissions( $target_zip );
+
+	$store = new Day_One_Importer_Job_Store();
+	$job   = $store->create_job( get_current_user_id(), $run_dir, $target_zip, new Day_One_Importer_Results() );
+	day_one_importer_wp_env_assert( is_array( $job ), 'Async job created.' );
+
+	$processor = new Day_One_Importer_Job_Processor( $store );
+	$batches   = 0;
+	$status    = array();
+	while ( $batches < 500 ) {
+		++$batches;
+		$status = $processor->process_batch( $job['id'], 'manual' );
+		if ( ! empty( $status['is_terminal'] ) || 'failed' === $status['status'] ) {
+			break;
+		}
+	}
+
+	day_one_importer_wp_env_assert( $batches > 1, 'Async import required multiple processor batches with forced low limits.' );
+	day_one_importer_wp_env_assert( ! empty( $status['is_terminal'] ) && 'completed' === $status['status'], 'Async import completed.' );
+
+	$final_job = $store->get_job( $job['id'] );
+	day_one_importer_wp_env_assert( is_array( $final_job ), 'Completed async job remains displayable.' );
+	day_one_importer_wp_env_assert( ! is_dir( $run_dir ), 'Completed async import cleaned temporary files.' );
+
+	return array(
+		'results' => Day_One_Importer_Results::from_array( $final_job['results'] ),
+		'batches' => $batches,
+		'job'     => $final_job,
+	);
 }
 
 // Start from a clean sample-import state so this smoke test is repeatable.
@@ -164,7 +210,16 @@ foreach ( $existing as $post_id ) {
 	}
 }
 
-$first        = day_one_importer_wp_env_import_from_zip( $sample_zip );
+$day_one_importer_wp_env_return_one = static function () {
+	return 1;
+};
+add_filter( 'day_one_importer_batch_zip_limit', $day_one_importer_wp_env_return_one );
+add_filter( 'day_one_importer_batch_index_entry_limit', $day_one_importer_wp_env_return_one );
+add_filter( 'day_one_importer_batch_entry_limit', $day_one_importer_wp_env_return_one );
+add_filter( 'day_one_importer_batch_media_limit', $day_one_importer_wp_env_return_one );
+
+$first_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
+$first        = $first_async['results'];
 $first_counts = $first->get_counts();
 
 $created = isset( $first_counts['posts_created'] ) ? (int) $first_counts['posts_created'] : 0;
@@ -266,7 +321,8 @@ if ( $using_default_zip ) {
 	day_one_importer_wp_env_assert( $found_fixture_tag, 'Expected fictional fixture tag exists on imported posts.' );
 }
 
-$second        = day_one_importer_wp_env_import_from_zip( $sample_zip );
+$second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
+$second        = $second_async['results'];
 $second_counts = $second->get_counts();
 $skipped       = isset( $second_counts['posts_skipped'] ) ? (int) $second_counts['posts_skipped'] : 0;
 day_one_importer_wp_env_assert( $skipped === $created, 'Second import skipped existing completed posts.' );
@@ -296,6 +352,8 @@ echo wp_json_encode(
 		'status'                         => 'passed',
 		'sample'                         => $using_default_zip ? 'committed fictional fixture' : 'configured override',
 		'posts_created'                  => $created,
+		'async_batches_first_import'     => $first_async['batches'],
+		'async_batches_rerun'            => $second_async['batches'],
 		'posts_skipped_rerun'            => $skipped,
 		'legacy_posts_reprocessed'       => $resumed_legacy,
 		'posts_recreated_after_trash'    => $recreated,

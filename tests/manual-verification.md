@@ -4,117 +4,59 @@ Use this checklist on a local or staging WordPress site before relying on the im
 
 ## Environment setup
 
-1. Install WordPress 6.4+ with PHP 7.4+.
+1. Install WordPress 6.4+ with PHP 7.4+ and the PHP `ZipArchive` extension enabled.
 2. Enable `WP_DEBUG` and review PHP logs during testing.
-3. Copy this plugin to `wp-content/plugins/day-one-importer/`.
-4. Activate **Day One Importer** in **Plugins → Installed Plugins**.
-5. Confirm the testing user can import, upload files, and edit posts.
+3. Copy this plugin to `wp-content/plugins/day-one-importer/` and activate it.
+4. Confirm the testing user can import, upload files, and edit posts.
+5. In a test-only environment, optionally force small batches with filters returning `1` for `day_one_importer_batch_zip_limit`, `day_one_importer_batch_index_entry_limit`, `day_one_importer_batch_entry_limit`, and `day_one_importer_batch_media_limit`.
 
-## Importer registration and upload flow
+## Async upload and progress flow
 
-1. Go to **Tools → Import**.
-2. Confirm **Day One** is listed.
-3. Open the importer and verify the page explains:
-   - A Day One JSON export ZIP is expected.
-   - Imported posts are private by default.
-   - Media URL privacy depends on WordPress/hosting configuration.
-4. Confirm the upload form has a ZIP file input and submit button.
-5. Confirm the page tells users to keep the tab open until the import summary appears.
+1. Go to **Tools → Import → Day One**.
+2. Confirm the page explains that a Day One JSON export ZIP is queued and then advanced by short resumable requests.
+3. Upload `tests/fixtures/day-one-fictional.zip`.
+4. Confirm the initial POST redirects back quickly with a `day_one_importer_job` query arg rather than waiting for all entries/media to import.
+5. With forced batch sizes of `1`, confirm multiple AJAX `day_one_importer_job_process` requests occur before completion.
+6. Confirm the status panel shows phase, progress, counters, warnings/errors, final state, and Retry/Continue and Cancel controls.
+7. Confirm status output does **not** include private journal text, raw JSON, local filesystem paths, or media previews.
 
-## Import started/status feedback
+## Resume/retry/interruption checks
 
-With JavaScript enabled:
+1. Refresh the browser mid-import and confirm the same job continues.
+2. Disable the network or stop polling mid-import, then restore it and click **Retry / Continue**; confirm only unfinished work resumes.
+3. Trigger overlapping AJAX/cron processing and confirm one request reports busy/safe status while the other owns the lock.
+4. Simulate interruption after post creation by stopping a job with an incomplete post, then continue; confirm one post exists for the Day One UUID.
+5. Simulate interruption after one media item, then continue; confirm one attachment exists per media item and content has no duplicate image/gallery blocks.
+6. Re-run the same ZIP after completion and confirm completed current-schema posts are skipped and media is reused.
+7. Change one imported post to an old `_day_one_import_version` and rerun; confirm it is resumed/upgraded without duplicates.
+8. Trash one imported post and rerun; confirm it is recreated while other complete posts are skipped.
 
-1. Choose a ZIP file and submit the form.
-2. Confirm an import-started status appears immediately and says large exports can take time and to keep the tab open.
-3. Confirm the submit button changes to a running/loading label and duplicate clicks are blocked.
-4. Confirm the status area is exposed as a live region/status for assistive technology.
-5. Confirm the running status displays only generic text, with no journal text, private filenames, local paths, raw uploaded data, or media previews.
+## Invalid input and authorization checks
 
-With JavaScript disabled:
+Confirm clear, escaped, privacy-safe failures for:
 
-1. Choose a ZIP file and submit the same form.
-2. Confirm the form still submits normally and the final summary or errors render after the synchronous request.
-3. Confirm the no-JavaScript flow does not depend on the running status UI.
-
-## Sample import
-
-1. Import the committed fictional fixture `tests/fixtures/day-one-fictional.zip` through the Day One importer screen.
-2. Confirm the results screen reports counts for journal JSON files, entries, created/skipped/resumed posts, tags, and media.
-3. Confirm a successful import without warnings shows “Day One import complete.”
-4. Confirm a successful import with warnings shows “Day One import complete with warnings.” plus the warning list.
-5. Confirm fatal/import-level errors show “Day One import did not complete.” plus actionable error text.
-6. Confirm warnings, if any, use UUIDs/dates/filenames only and do **not** display full journal text.
-7. Confirm no plugin-created PHP warnings or logs include full journal entry text.
-8. Optional: test a real developer-owned Day One JSON export ZIP from the ignored `sample/` directory, for example `sample/local-day-one-export.zip`, or from another private local path. Do not commit real Day One exports, extracted photos, screenshots, or prompt/reference images.
-
-## Imported post checks
-
-Inspect several imported posts in **Posts → All Posts**:
-
-1. Status is `private`.
-2. Post date matches the Day One `creationDate`.
-3. Text is readable and paragraph breaks/headings are preserved sufficiently.
-4. Raw HTML from Day One text is escaped rather than executed.
-5. Shortcode-like text such as `[gallery]` remains visible text and does not render as a shortcode.
-6. Day One tags are assigned as WordPress post tags when present.
-7. Day One UUID/source/import metadata exists on the post.
-8. Entries with no photos still import successfully.
-
-## Media checks
-
-For entries with photos:
-
-1. Photos are imported into the Media Library.
-2. Photos are attached to the corresponding imported post.
-3. Photos appear/appended in the post content in entry order when possible.
-4. Attachment metadata includes Day One media identifiers or MD5 values when available.
-5. Reused/skipped media is counted correctly on reruns.
-6. Review direct media URLs while logged out and document the hosting behavior for the site owner.
-
-## Idempotency and resume checks
-
-1. Re-import the same ZIP.
-2. Confirm no duplicate posts are created for entries already marked complete.
-3. Confirm already-complete entries are reported as skipped.
-4. Simulate an incomplete import by changing `_day_one_import_complete` to `0` on one imported post.
-5. Re-import the same ZIP.
-6. Confirm the matching post is resumed/updated and no duplicate is created.
-7. Confirm the post is marked complete again after the rerun.
-
-## Invalid input and error handling checks
-
-Test each scenario and confirm errors are clear, escaped, and privacy-safe:
-
-1. Missing file submission; browser/server validation should not leave a persisted “running” state after the response.
+1. Missing file upload.
 2. Non-ZIP upload.
-3. ZIP with malformed JSON.
-4. ZIP without a JSON file containing `entries`.
-5. Entry missing `uuid`.
-6. Entry with an invalid date.
-7. Entry with a missing media file.
-8. Entry with an unsupported media extension.
-9. ZIP containing unsafe paths such as `../evil.php` or absolute paths, if safely generated for testing.
+3. ZIP without a JSON file containing an `entries` array.
+4. ZIP with malformed entries or entries missing UUIDs.
+5. ZIP containing unsafe paths such as `../evil.php`, absolute paths, or symlink entries.
+6. Missing or unsupported media files.
+7. AJAX requests with a bad nonce.
+8. AJAX requests by a user without import/upload/edit capabilities.
+9. AJAX requests for another user’s job ID.
 
-Entry-level and media-level failures should not stop unrelated valid entries from importing.
+## Cleanup and final state checks
 
-## Cleanup and security checks
-
-1. Confirm temporary ZIP and extraction directories are removed after successful import.
-2. Confirm temporary files are also removed after fatal validation failures when possible.
-3. Confirm imported posts remain private and are visible only to users who can read private posts.
-4. Confirm no imported content is sent to external services.
-5. Confirm admin output is escaped and no private entry text appears in notices.
-6. Confirm unsupported media or missing files generate warnings rather than public content exposure.
+1. Confirm completed jobs remove the protected temporary ZIP/extraction directory while retaining final counts/status for refresh display.
+2. Confirm failed jobs retain enough state/files to retry until canceled or stale.
+3. Cancel a job and confirm temporary files are removed and status becomes canceled.
+4. Force a stale job/lock past retention and run cleanup; confirm stale files/options/locks are removed without deleting an unexpired lock.
+5. Confirm imported posts are private and imported Day One media is served only through the authenticated media endpoint to users who can read the parent post.
 
 ## Final acceptance
 
-Before considering the plugin verified, confirm all of the following:
-
-- Day One importer appears under **Tools → Import**.
-- Import submission shows immediate accessible status feedback with JavaScript and still works without JavaScript.
-- Fictional sample export imports without exposing journal text in notices/logs.
-- Posts are private and dated correctly.
-- Tags and supported photos are preserved.
-- Re-importing does not duplicate completed entries.
-- Media direct-URL privacy behavior has been reviewed for the target hosting environment.
+- Large imports advance through bounded requests rather than one long HTTP request.
+- Browser refresh/network interruption can continue safely.
+- Reruns do not duplicate posts or media.
+- Progress and final summaries are understandable and privacy-safe.
+- Invalid archives/uploads/permissions fail safely.

@@ -40,6 +40,19 @@ function day_one_importer_sanitize_text( $value ) {
 }
 
 /**
+ * Check the shared capabilities required to run Day One imports.
+ *
+ * @return bool
+ */
+function day_one_importer_current_user_can_import() {
+	if ( ! function_exists( 'current_user_can' ) ) {
+		return false;
+	}
+
+	return current_user_can( 'import' ) && current_user_can( 'upload_files' ) && current_user_can( 'edit_posts' );
+}
+
+/**
  * Ask WordPress/PHP for limits suitable for a long-running admin import.
  *
  * Hosts may enforce hard request limits outside PHP control, so this is best

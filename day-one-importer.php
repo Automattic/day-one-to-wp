@@ -26,11 +26,16 @@ define( 'DAY_ONE_IMPORTER_TEXT_DOMAIN', 'day-one-importer' );
 
 require_once DAY_ONE_IMPORTER_DIR . 'includes/functions.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-results.php';
+require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-job-state.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-cleanup.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-content.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-parser.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-media.php';
+require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-uploader.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-runner.php';
+require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-job-store.php';
+require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-job-processor.php';
+require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-jobs-controller.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-admin.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-plugin.php';
 

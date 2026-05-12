@@ -71,6 +71,29 @@ class Day_One_Importer_Admin {
 			DAY_ONE_IMPORTER_VERSION,
 			true
 		);
+
+		$store = new Day_One_Importer_Job_Store();
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only job selection for localized polling config.
+		$requested_job_id = isset( $_GET['day_one_importer_job'] ) ? Day_One_Importer_Job_Store::sanitize_job_id( wp_unslash( $_GET['day_one_importer_job'] ) ) : '';
+		$job              = $store->get_user_job( get_current_user_id(), $requested_job_id );
+
+		wp_localize_script(
+			'day-one-importer-admin-status',
+			'DayOneImporterJobs',
+			array(
+				'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
+				'nonce'       => wp_create_nonce( Day_One_Importer_Jobs_Controller::NONCE_ACTION ),
+				'jobId'       => $job ? $job['id'] : '',
+				'countLabels' => self::count_labels(),
+				'labels'      => array(
+					'uploading'   => __( 'Queuing import…', 'day-one-importer' ),
+					'processing'  => __( 'Processing import…', 'day-one-importer' ),
+					'interrupted' => __( 'Connection interrupted. You can safely continue this job.', 'day-one-importer' ),
+					'continue'    => __( 'Retry / Continue', 'day-one-importer' ),
+					'cancel'      => __( 'Cancel import', 'day-one-importer' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -83,17 +106,23 @@ class Day_One_Importer_Admin {
 			wp_die( esc_html__( 'You do not have permission to import Day One exports.', 'day-one-importer' ) );
 		}
 
+		$submission_results = null;
+		$request_method     = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
+		if ( 'POST' === $request_method && isset( $_POST['day_one_importer_submit'] ) ) {
+			$submission_results = $this->handle_submission();
+		}
+
+		$store = new Day_One_Importer_Job_Store();
+		$store->cleanup_stale_jobs();
+
 		echo '<div class="wrap">';
 		echo '<h1>' . esc_html__( 'Import Day One', 'day-one-importer' ) . '</h1>';
 
-		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
-		if ( 'POST' === $request_method ) {
-			check_admin_referer( self::NONCE_ACTION );
-			if ( isset( $_POST['day_one_importer_submit'] ) ) {
-				$this->handle_submission();
-			}
+		if ( $submission_results instanceof Day_One_Importer_Results ) {
+			self::render_results( $submission_results );
 		}
 
+		$this->render_job_panel();
 		$this->render_intro();
 		$this->render_form();
 		echo '</div>';
@@ -102,7 +131,7 @@ class Day_One_Importer_Admin {
 	/**
 	 * Handle form submission.
 	 *
-	 * @return void
+	 * @return Day_One_Importer_Results|null Results on setup failure; exits on success.
 	 */
 	private function handle_submission() {
 		check_admin_referer( self::NONCE_ACTION );
@@ -111,11 +140,40 @@ class Day_One_Importer_Admin {
 			wp_die( esc_html__( 'You do not have permission to import Day One exports.', 'day-one-importer' ) );
 		}
 
-		$file   = isset( $_FILES['day_one_export'] ) ? $_FILES['day_one_export'] : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$runner = new Day_One_Importer_Runner();
-		$result = $runner->run_upload( $file );
+		$results = new Day_One_Importer_Results();
+		$run_dir = Day_One_Importer_Cleanup::create_run_directory();
+		if ( ! $run_dir ) {
+			$results->add_error( __( 'A protected temporary directory could not be created.', 'day-one-importer' ) );
+			return $results;
+		}
 
-		$this->render_results( $result );
+		$file     = isset( $_FILES['day_one_export'] ) ? $_FILES['day_one_export'] : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$uploader = new Day_One_Importer_Uploader();
+		$zip_path = $uploader->handle_upload( $file, $run_dir, $results );
+		if ( ! $zip_path ) {
+			Day_One_Importer_Cleanup::remove( $run_dir );
+			return $results;
+		}
+
+		$store = new Day_One_Importer_Job_Store();
+		$job   = $store->create_job( get_current_user_id(), $run_dir, $zip_path, $results );
+		if ( ! $job ) {
+			Day_One_Importer_Cleanup::remove( $run_dir );
+			$results->add_error( __( 'The import job could not be created.', 'day-one-importer' ) );
+			return $results;
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'import'               => 'day-one',
+					'day_one_importer_job' => $job['id'],
+					'queued'               => 1,
+				),
+				admin_url( 'admin.php' )
+			)
+		);
+		exit;
 	}
 
 	/**
@@ -125,8 +183,136 @@ class Day_One_Importer_Admin {
 	 */
 	private function render_intro() {
 		echo '<p>' . esc_html__( 'Upload a Day One export ZIP. The importer will create one private WordPress post per Day One entry and will attempt to import supported photos from the export.', 'day-one-importer' ) . '</p>';
-		echo '<div class="notice notice-info inline"><p>' . esc_html__( 'Privacy note: imported posts are private by default, but Media Library files may still be accessible by direct URL depending on your WordPress and hosting configuration.', 'day-one-importer' ) . '</p></div>';
+		echo '<div class="notice notice-info inline"><p>' . esc_html__( 'Privacy note: imported posts and imported Day One media are protected and served only to authorized WordPress users, but review your hosting backups and filesystem access policies for private journals.', 'day-one-importer' ) . '</p></div>';
 		echo '<p>' . esc_html__( 'For best results, export your journal from Day One as JSON in its original ZIP format and upload that ZIP without editing it.', 'day-one-importer' ) . '</p>';
+		echo '<p>' . esc_html__( 'Large imports run as a resumable job advanced by short browser requests with a cron fallback, so refreshing the page or continuing after a network interruption is safe.', 'day-one-importer' ) . '</p>';
+	}
+
+	/**
+	 * Render the active/recent job panel.
+	 *
+	 * @return void
+	 */
+	private function render_job_panel() {
+		$store = new Day_One_Importer_Job_Store();
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only job selection for display.
+		$requested_job_id = isset( $_GET['day_one_importer_job'] ) ? Day_One_Importer_Job_Store::sanitize_job_id( wp_unslash( $_GET['day_one_importer_job'] ) ) : '';
+		$job              = $store->get_user_job( get_current_user_id(), $requested_job_id );
+		if ( ! $job ) {
+			return;
+		}
+
+		$status       = Day_One_Importer_Job_State::status_response( $job );
+		$notice_class = 'notice notice-info inline';
+		if ( Day_One_Importer_Job_State::STATUS_COMPLETED === $status['status'] ) {
+			$notice_class = empty( $status['warnings'] ) ? 'notice notice-success inline' : 'notice notice-warning inline';
+		} elseif ( Day_One_Importer_Job_State::STATUS_FAILED === $status['status'] ) {
+			$notice_class = 'notice notice-error inline';
+		} elseif ( Day_One_Importer_Job_State::STATUS_CANCELED === $status['status'] ) {
+			$notice_class = 'notice notice-warning inline';
+		}
+
+		echo '<div id="day-one-importer-job-panel" class="' . esc_attr( $notice_class ) . '" data-job-id="' . esc_attr( $job['id'] ) . '" role="status" aria-live="polite">';
+		echo '<p><strong>' . esc_html__( 'Current import job', 'day-one-importer' ) . '</strong></p>';
+		echo '<p class="day-one-importer-job-message">' . esc_html( $status['message'] ) . '</p>';
+		echo '<p class="day-one-importer-job-phase">' . esc_html( $status['phase_label'] ) . '</p>';
+		echo '<p class="day-one-importer-job-progress">' . esc_html( $this->format_progress_label( $status ) ) . '</p>';
+		echo '<div class="day-one-importer-job-counts">' . $this->render_counts_html( $status['counts'] ) . '</div>';
+		echo '<div class="day-one-importer-job-details">' . $this->render_details_html( $status ) . '</div>';
+		echo '<p class="day-one-importer-job-actions">';
+		echo '<button type="button" class="button day-one-importer-job-retry"' . ( $status['can_retry'] ? '' : ' disabled' ) . '>' . esc_html__( 'Retry / Continue', 'day-one-importer' ) . '</button> ';
+		echo '<button type="button" class="button day-one-importer-job-cancel"' . ( $status['is_terminal'] ? ' disabled' : '' ) . '>' . esc_html__( 'Cancel import', 'day-one-importer' ) . '</button>';
+		echo '</p>';
+		echo '</div>';
+	}
+
+	/**
+	 * Format a short progress label from a status payload.
+	 *
+	 * @param array<string,mixed> $status Status payload.
+	 * @return string
+	 */
+	private function format_progress_label( $status ) {
+		$progress = isset( $status['progress'] ) && is_array( $status['progress'] ) ? $status['progress'] : array();
+		$phase    = isset( $status['phase'] ) ? (string) $status['phase'] : '';
+
+		if ( 'preflighting' === $phase && ! empty( $progress['zip_total'] ) ) {
+			return sprintf(
+				/* translators: 1: current ZIP member, 2: total ZIP members. */
+				__( 'Checked %1$d of %2$d ZIP members.', 'day-one-importer' ),
+				(int) $progress['zip_index'],
+				(int) $progress['zip_total']
+			);
+		}
+		if ( 'extracting' === $phase && ! empty( $progress['extract_total'] ) ) {
+			return sprintf(
+				/* translators: 1: current ZIP member, 2: total ZIP members. */
+				__( 'Extracted %1$d of %2$d ZIP members.', 'day-one-importer' ),
+				(int) $progress['extract_index'],
+				(int) $progress['extract_total']
+			);
+		}
+		if ( 'indexing_entries' === $phase ) {
+			return sprintf(
+				/* translators: 1: current JSON file, 2: total JSON files, 3: entries indexed. */
+				__( 'Indexed JSON file %1$d of %2$d; %3$d entries queued.', 'day-one-importer' ),
+				(int) $progress['json_file_index'],
+				(int) $progress['json_files_found'],
+				(int) $progress['entries_total']
+			);
+		}
+		if ( 'importing' === $phase && ! empty( $progress['entries_total'] ) ) {
+			return sprintf(
+				/* translators: 1: current entry, 2: total entries, 3: current media item, 4: total media items for current entry. */
+				__( 'Imported %1$d of %2$d entries. Current media: %3$d of %4$d.', 'day-one-importer' ),
+				(int) $progress['entry_index'],
+				(int) $progress['entries_total'],
+				(int) $progress['current_media_index'],
+				(int) $progress['current_media_total']
+			);
+		}
+
+		return __( 'Progress will update as the job runs.', 'day-one-importer' );
+	}
+
+	/**
+	 * Render counts HTML for a status payload.
+	 *
+	 * @param array<string,int> $counts Counts.
+	 * @return string
+	 */
+	private function render_counts_html( $counts ) {
+		$html = '<ul>';
+		foreach ( self::count_labels() as $key => $label ) {
+			$html .= '<li>' . esc_html( $label ) . ': ' . esc_html( number_format_i18n( isset( $counts[ $key ] ) ? (int) $counts[ $key ] : 0 ) ) . '</li>';
+		}
+		$html .= '</ul>';
+
+		return $html;
+	}
+
+	/**
+	 * Render warning/error details HTML for a status payload.
+	 *
+	 * @param array<string,mixed> $status Status payload.
+	 * @return string
+	 */
+	private function render_details_html( $status ) {
+		$html = '';
+		foreach ( array( 'errors' => __( 'Errors', 'day-one-importer' ), 'warnings' => __( 'Warnings', 'day-one-importer' ) ) as $key => $label ) {
+			$messages = isset( $status[ $key ] ) && is_array( $status[ $key ] ) ? $status[ $key ] : array();
+			if ( empty( $messages ) ) {
+				continue;
+			}
+
+			$html .= '<p><strong>' . esc_html( $label ) . '</strong></p><ul class="day-one-importer-job-' . esc_attr( $key ) . '">';
+			foreach ( $messages as $message ) {
+				$html .= '<li>' . esc_html( $message ) . '</li>';
+			}
+			$html .= '</ul>';
+		}
+
+		return $html;
 	}
 
 	/**
@@ -150,8 +336,8 @@ class Day_One_Importer_Admin {
 					</td>
 				</tr>
 			</table>
-			<p class="description"><?php esc_html_e( 'After submitting, keep this tab open until the import summary appears.', 'day-one-importer' ); ?></p>
-			<div id="day-one-importer-status" class="notice notice-info inline screen-reader-text" role="status" aria-live="polite" aria-atomic="true" data-running-label="<?php echo esc_attr__( 'Importing…', 'day-one-importer' ); ?>" data-started-message="<?php echo esc_attr__( 'Import started. This can take a while for large exports; keep this tab open.', 'day-one-importer' ); ?>">
+			<p class="description"><?php esc_html_e( 'After submitting, the ZIP is queued quickly and the browser advances the import in short requests. You can refresh and continue the same job safely.', 'day-one-importer' ); ?></p>
+			<div id="day-one-importer-status" class="notice notice-info inline screen-reader-text" role="status" aria-live="polite" aria-atomic="true" data-running-label="<?php echo esc_attr__( 'Queuing…', 'day-one-importer' ); ?>" data-started-message="<?php echo esc_attr__( 'Upload submitted. The import job is being queued.', 'day-one-importer' ); ?>">
 				<p>
 					<span class="spinner" aria-hidden="true"></span>
 					<span class="day-one-importer-status-message"></span>
@@ -168,7 +354,7 @@ class Day_One_Importer_Admin {
 	 * @param Day_One_Importer_Results $result Results.
 	 * @return void
 	 */
-	private function render_results( Day_One_Importer_Results $result ) {
+	public static function render_results( Day_One_Importer_Results $result ) {
 		$warnings = $result->get_warnings();
 
 		if ( $result->has_errors() ) {
@@ -188,7 +374,7 @@ class Day_One_Importer_Admin {
 
 		$counts = $result->get_counts();
 		echo '<ul>';
-		foreach ( $this->count_labels() as $key => $label ) {
+		foreach ( self::count_labels() as $key => $label ) {
 			echo '<li>' . esc_html( $label ) . ': ' . esc_html( number_format_i18n( isset( $counts[ $key ] ) ? $counts[ $key ] : 0 ) ) . '</li>';
 		}
 		echo '</ul></div>';
@@ -215,7 +401,7 @@ class Day_One_Importer_Admin {
 	 *
 	 * @return array<string,string>
 	 */
-	private function count_labels() {
+	public static function count_labels() {
 		return array(
 			'json_files_found' => __( 'Journal JSON files found', 'day-one-importer' ),
 			'entries_found'    => __( 'Entries found', 'day-one-importer' ),
@@ -239,6 +425,6 @@ class Day_One_Importer_Admin {
 	 * @return bool
 	 */
 	private function current_user_can_import() {
-		return current_user_can( 'import' ) && current_user_can( 'upload_files' ) && current_user_can( 'edit_posts' );
+		return day_one_importer_current_user_can_import();
 	}
 }
