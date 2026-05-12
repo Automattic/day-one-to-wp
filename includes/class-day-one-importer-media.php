@@ -5,8 +5,10 @@
  * @package Day_One_Importer
  */
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-	exit;
+if ( ! defined( 'ABSPATH' ) ) {
+	if ( ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+		exit;
+	}
 }
 
 /**
