@@ -52,6 +52,18 @@
 		} );
 	}
 
+	function escapeHtml( value ) {
+		return String( value || '' ).replace( /[&<>"']/g, function ( character ) {
+			return {
+				'&': '&amp;',
+				'<': '&lt;',
+				'>': '&gt;',
+				'"': '&quot;',
+				"'": '&#039;',
+			}[ character ];
+		} );
+	}
+
 	function renderCounts( counts ) {
 		var keys = [
 			'json_files_found',
@@ -70,30 +82,20 @@
 		];
 		return '<ul>' + keys.map( function ( key ) {
 			var value = counts && Object.prototype.hasOwnProperty.call( counts, key ) ? parseInt( counts[ key ], 10 ) || 0 : 0;
-			return '<li>' + countLabel( key ) + ': ' + value + '</li>';
+			return '<li>' + escapeHtml( countLabel( key ) ) + ': ' + value + '</li>';
 		} ).join( '' ) + '</ul>';
 	}
 
-	function escapeHtml( value ) {
-		return String( value || '' ).replace( /[&<>"']/g, function ( character ) {
-			return {
-				'&': '&amp;',
-				'<': '&lt;',
-				'>': '&gt;',
-				'"': '&quot;',
-				"'": '&#039;',
-			}[ character ];
-		} );
-	}
-
 	function renderDetails( data ) {
+		var config = window.DayOneImporterJobs || {};
+		var labels = config.labels || {};
 		var html = '';
-		[ [ 'errors', 'Errors' ], [ 'warnings', 'Warnings' ] ].forEach( function ( group ) {
+		[ [ 'errors', labels.errors || 'Errors' ], [ 'warnings', labels.warnings || 'Warnings' ] ].forEach( function ( group ) {
 			var messages = Array.isArray( data[ group[ 0 ] ] ) ? data[ group[ 0 ] ] : [];
 			if ( ! messages.length ) {
 				return;
 			}
-			html += '<p><strong>' + group[ 1 ] + '</strong></p><ul>';
+			html += '<p><strong>' + escapeHtml( group[ 1 ] ) + '</strong></p><ul>';
 			messages.forEach( function ( message ) {
 				html += '<li>' + escapeHtml( message ) + '</li>';
 			} );
@@ -139,6 +141,13 @@
 		text( '#day-one-importer-job-panel .day-one-importer-job-message', data.message );
 		text( '#day-one-importer-job-panel .day-one-importer-job-phase', data.phase_label );
 		text( '#day-one-importer-job-panel .day-one-importer-job-progress', progressLabel( data ) );
+
+		var percent = Math.max( 0, Math.min( 100, parseInt( data.progress_percent, 10 ) || 0 ) );
+		var progressBar = panel.querySelector( '.day-one-importer-job-progress-bar progress' );
+		if ( progressBar ) {
+			progressBar.value = percent;
+		}
+		text( '#day-one-importer-job-panel .day-one-importer-job-progress-percent', percent + '% complete' );
 
 		var counts = panel.querySelector( '.day-one-importer-job-counts' );
 		if ( counts ) {

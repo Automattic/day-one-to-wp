@@ -204,21 +204,22 @@ class Day_One_Importer_Job_State {
 		$results = Day_One_Importer_Results::from_array( isset( $job['results'] ) ? $job['results'] : array() );
 
 		$response = array(
-			'job_id'       => isset( $job['id'] ) && is_scalar( $job['id'] ) ? day_one_importer_sanitize_text( $job['id'] ) : '',
-			'status'       => $status,
-			'phase'        => $phase,
-			'phase_label'  => self::phase_label( $phase ),
-			'busy'         => (bool) $busy,
-			'is_terminal'  => self::is_terminal_status( $status ),
-			'can_retry'    => self::is_retryable_status( $status ),
-			'created_at'   => isset( $job['created_at'] ) ? (int) $job['created_at'] : 0,
-			'updated_at'   => isset( $job['updated_at'] ) ? (int) $job['updated_at'] : 0,
-			'expires_at'   => isset( $job['expires_at'] ) ? (int) $job['expires_at'] : 0,
-			'counts'       => array_map( 'intval', $results->get_counts() ),
-			'warnings'     => array_values( array_map( array( __CLASS__, 'sanitize_status_detail' ), $results->get_warnings() ) ),
-			'errors'       => array_values( array_map( array( __CLASS__, 'sanitize_status_detail' ), $results->get_errors() ) ),
-			'progress'     => self::progress_response( $job ),
-			'message'      => self::status_message( $status, $phase, (bool) $busy ),
+			'job_id'           => isset( $job['id'] ) && is_scalar( $job['id'] ) ? day_one_importer_sanitize_text( $job['id'] ) : '',
+			'status'           => $status,
+			'phase'            => $phase,
+			'phase_label'      => self::phase_label( $phase ),
+			'busy'             => (bool) $busy,
+			'is_terminal'      => self::is_terminal_status( $status ),
+			'can_retry'        => self::is_retryable_status( $status ),
+			'created_at'       => isset( $job['created_at'] ) ? (int) $job['created_at'] : 0,
+			'updated_at'       => isset( $job['updated_at'] ) ? (int) $job['updated_at'] : 0,
+			'expires_at'       => isset( $job['expires_at'] ) ? (int) $job['expires_at'] : 0,
+			'counts'           => array_map( 'intval', $results->get_counts() ),
+			'warnings'         => array_values( array_map( array( __CLASS__, 'sanitize_status_detail' ), $results->get_warnings() ) ),
+			'errors'           => array_values( array_map( array( __CLASS__, 'sanitize_status_detail' ), $results->get_errors() ) ),
+			'progress'         => self::progress_response( $job ),
+			'progress_percent' => self::progress_percent( $job, $status, $phase ),
+			'message'          => self::status_message( $status, $phase, (bool) $busy ),
 		);
 
 		return $response;
@@ -287,6 +288,73 @@ class Day_One_Importer_Job_State {
 		}
 
 		return $progress;
+	}
+
+	/**
+	 * Estimate overall import completion for admin progress display.
+	 *
+	 * @param array<string,mixed> $job Job state.
+	 * @param string              $status Normalized status.
+	 * @param string              $phase Normalized phase.
+	 * @return int Percentage from 0 to 100.
+	 */
+	private static function progress_percent( $job, $status, $phase ) {
+		if ( self::STATUS_COMPLETED === $status ) {
+			return 100;
+		}
+
+		$progress = self::progress_response( $job );
+		$percent  = 0;
+
+		switch ( $phase ) {
+			case 'preflight_open':
+				$percent = 2;
+				break;
+			case 'preflighting':
+				$percent = 5 + self::fraction_percent( $progress['zip_index'], $progress['zip_total'], 15 );
+				break;
+			case 'extracting':
+				$percent = 20 + self::fraction_percent( $progress['extract_index'], $progress['extract_total'], 25 );
+				break;
+			case 'validating_tree':
+				$percent = 48;
+				break;
+			case 'indexing_discover':
+				$percent = 52;
+				break;
+			case 'indexing_entries':
+				$percent = 55 + self::fraction_percent( $progress['json_file_index'], $progress['json_files_found'], 10 );
+				break;
+			case 'importing':
+				$percent = 65 + self::fraction_percent( $progress['entry_index'], $progress['entries_total'], 30 );
+				break;
+			case 'cleanup':
+				$percent = 98;
+				break;
+			case 'done':
+				$percent = 100;
+				break;
+		}
+
+		return max( 0, min( 100, (int) $percent ) );
+	}
+
+	/**
+	 * Convert a cursor pair to a bounded percentage span.
+	 *
+	 * @param int $current Current cursor.
+	 * @param int $total Total units.
+	 * @param int $span Percentage points allocated to the phase.
+	 * @return int Percentage points within the span.
+	 */
+	private static function fraction_percent( $current, $total, $span ) {
+		$total = max( 0, (int) $total );
+		if ( 0 === $total ) {
+			return 0;
+		}
+
+		$current = max( 0, min( (int) $current, $total ) );
+		return (int) floor( ( $current / $total ) * max( 0, (int) $span ) );
 	}
 
 	/**
