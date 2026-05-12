@@ -16,15 +16,17 @@ Use this checklist on a local or staging WordPress site before relying on the im
 2. Confirm the page explains that a Day One JSON export ZIP is queued and then advanced by short resumable requests.
 3. Upload `tests/fixtures/day-one-fictional.zip`.
 4. Confirm the initial POST redirects back quickly with a `day_one_importer_job` query arg rather than waiting for all entries/media to import.
-5. With forced batch sizes of `1`, confirm multiple AJAX `day_one_importer_job_process` requests occur before completion.
-6. Confirm the status panel shows phase, progress, counters, warnings/errors, final state, and Retry/Continue and Cancel controls.
-7. Confirm status output does **not** include private journal text, raw JSON, local filesystem paths, or media previews.
+5. With forced batch sizes of `1`, confirm multiple AJAX `day_one_importer_job_process` requests occur before completion and no single request performs the entire import.
+6. In browser developer tools or server logs, confirm each processing request returns promptly rather than remaining open until all entries/media are finished.
+7. Temporarily stop browser polling after a job is queued and trigger WP-Cron; confirm cron can advance or finish the job as a fallback.
+8. Confirm the status panel shows phase, progress, counters, warnings/errors, final state, and Retry/Continue and Cancel controls.
+9. Confirm status output does **not** include private journal text, raw JSON, local filesystem paths, or media previews.
 
 ## Resume/retry/interruption checks
 
 1. Refresh the browser mid-import and confirm the same job continues.
-2. Disable the network or stop polling mid-import, then restore it and click **Retry / Continue**; confirm only unfinished work resumes.
-3. Trigger overlapping AJAX/cron processing and confirm one request reports busy/safe status while the other owns the lock.
+2. Disable the network or stop polling mid-import, then restore it and click **Retry / Continue**; confirm only unfinished work resumes and counters continue from the last safe checkpoint.
+3. Trigger overlapping AJAX/cron processing and confirm one request reports busy/safe status while the other owns the lock and no older status overwrites newer progress.
 4. Simulate interruption after post creation by stopping a job with an incomplete post, then continue; confirm one post exists for the Day One UUID.
 5. Simulate interruption after one media item, then continue; confirm one attachment exists per media item and content has no duplicate image/gallery blocks.
 6. Re-run the same ZIP after completion and confirm completed current-schema posts are skipped and media is reused.
