@@ -18,6 +18,14 @@ if ( ! function_exists( '__' ) ) {
 	}
 }
 
+$GLOBALS['day_one_importer_test_filters'] = array();
+if ( ! function_exists( 'apply_filters' ) ) {
+	function apply_filters( $tag, $value ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		$filters = isset( $GLOBALS['day_one_importer_test_filters'] ) && is_array( $GLOBALS['day_one_importer_test_filters'] ) ? $GLOBALS['day_one_importer_test_filters'] : array();
+		return isset( $filters[ $tag ] ) && is_callable( $filters[ $tag ] ) ? call_user_func( $filters[ $tag ], $value ) : $value;
+	}
+}
+
 if ( ! function_exists( 'sanitize_file_name' ) ) {
 	function sanitize_file_name( $filename ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
 		$filename = basename( (string) $filename );
@@ -126,7 +134,9 @@ if ( ! function_exists( 'wp_json_encode' ) ) {
 
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-results.php';
+require_once __DIR__ . '/../includes/class-day-one-importer-job-state.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-cleanup.php';
+require_once __DIR__ . '/../includes/class-day-one-importer-job-store.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-content.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-parser.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-media.php';
@@ -161,6 +171,60 @@ assert_true( $suppressed_warning_results->has_warnings(), 'Suppressed warnings s
 $error_results = new Day_One_Importer_Results();
 $error_results->add_error( 'Privacy-safe error.' );
 assert_true( $error_results->has_errors(), 'Existing error behavior is unchanged.' );
+
+assert_true( Day_One_Importer_Job_State::is_terminal_status( 'completed' ), 'Completed job status is terminal.' );
+assert_true( Day_One_Importer_Job_State::is_terminal_status( 'canceled' ), 'Canceled job status is terminal.' );
+assert_true( ! Day_One_Importer_Job_State::is_terminal_status( 'running' ), 'Running job status is not terminal.' );
+assert_true( Day_One_Importer_Job_State::is_retryable_status( 'failed' ), 'Failed job status can be retried.' );
+$deadline = Day_One_Importer_Job_State::deadline_from_budget( 5, 100.0 );
+assert_true( 105.0 === $deadline, 'Deadline helper adds the requested budget.' );
+
+$status_results = new Day_One_Importer_Results();
+$status_results->add_error( 'Failure in /tmp/private/export/Journal.json' );
+$status_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'id'              => 'job-123',
+		'status'          => 'running',
+		'phase'           => 'importing',
+		'run_dir'         => '/tmp/private/export',
+		'extract_dir'     => '/tmp/private/export/extract',
+		'entries_total'   => 10,
+		'entry_index'     => 3,
+		'current_media_index' => 1,
+		'current_media_total' => 2,
+		'results'         => $status_results->to_array(),
+	)
+);
+assert_true( 'job-123' === $status_payload['job_id'], 'Status payload includes the opaque job ID.' );
+assert_true( 3 === $status_payload['progress']['entry_index'], 'Status payload includes safe progress cursors.' );
+assert_true( false === strpos( json_encode( $status_payload ), '/tmp/private' ), 'Status payload omits filesystem paths.' );
+
+$store = new Day_One_Importer_Job_Store();
+$token = $store->acquire_lock( 'lock-test', 'owner-a', 30 );
+assert_true( 'owner-a' === $token, 'Job lock can be acquired with an owner token.' );
+assert_true( false === $store->acquire_lock( 'lock-test', 'owner-b', 30 ), 'Concurrent job lock acquisition fails.' );
+assert_true( ! $store->release_lock( 'lock-test', 'owner-b' ), 'Only the lock owner can release the lock.' );
+assert_true( $store->release_lock( 'lock-test', 'owner-a' ), 'The lock owner can release the lock.' );
+$stale_token = $store->acquire_lock( 'stale-lock-test', 'stale-owner', 1 );
+assert_true( 'stale-owner' === $stale_token, 'Stale lock test lock acquired.' );
+sleep( 2 );
+assert_true( 'new-owner' === $store->acquire_lock( 'stale-lock-test', 'new-owner', 30 ), 'Expired locks can be recovered.' );
+assert_true( $store->release_lock( 'stale-lock-test', 'new-owner' ), 'Recovered lock can be released.' );
+$renew_token = $store->acquire_lock( 'renew-lock-test', 'renew-owner', 1 );
+assert_true( 'renew-owner' === $renew_token, 'Renew test lock acquired.' );
+assert_true( $store->renew_lock( 'renew-lock-test', 'renew-owner', 5 ), 'Lock owner can renew an active lock.' );
+sleep( 2 );
+assert_true( false === $store->acquire_lock( 'renew-lock-test', 'other-owner', 1 ), 'Renewed lock is not treated as stale after original TTL.' );
+assert_true( $store->release_lock( 'renew-lock-test', 'renew-owner' ), 'Renewed lock can be released by owner.' );
+$retry_job = $store->create_job( 7, sys_get_temp_dir() . '/day-one-retry-run', sys_get_temp_dir() . '/day-one-retry-run/day-one-export.zip', new Day_One_Importer_Results() );
+assert_true( is_array( $retry_job ), 'Retry race test job created.' );
+$retry_job['status'] = Day_One_Importer_Job_State::STATUS_RUNNING;
+$store->save_job( $retry_job );
+assert_true( 'active-worker' === $store->acquire_lock( $retry_job['id'], 'active-worker', 30 ), 'Active worker lock acquired for retry race test.' );
+$retried_while_locked = $store->retry_job( $retry_job['id'], 7 );
+assert_true( is_array( $retried_while_locked ) && Day_One_Importer_Job_State::STATUS_RUNNING === $retried_while_locked['status'], 'Retry while active lock is held is a no-op and preserves running state.' );
+assert_true( $store->release_lock( $retry_job['id'], 'active-worker' ), 'Active worker lock released for retry race test.' );
+$store->delete_job( $retry_job['id'] );
 
 $content = Day_One_Importer_Content::convert_text_to_content( "# Heading\n\nParagraph with [gallery] and <script>alert(1)</script>.\n- item" );
 assert_true( false !== strpos( $content, '<!-- wp:heading {"level":1} -->' ), 'Markdown heading is serialized as a Heading block.' );
@@ -326,5 +390,56 @@ assert_true( empty( $fixture_results->get_warnings() ), 'Committed fictional fix
 assert_true( ! empty( $fixture_entries[0]['photos'] ), 'Committed fictional fixture includes photo metadata.' );
 $fixture_photo_path = Day_One_Importer_Media::resolve_photo_path( $fixture_dir, $fixture_entries[0]['photos'][0] );
 assert_true( '' !== $fixture_photo_path && is_file( $fixture_photo_path ), 'Committed fictional fixture photo resolves on disk.' );
+
+$batch_results = new Day_One_Importer_Results();
+$batch_job     = array(
+	'manifest_path'        => sys_get_temp_dir() . '/day-one-importer-manifest-' . uniqid() . '/entries.jsonl',
+	'zip_json_candidates'  => array( 'Fictional Journal.json' ),
+	'zip_photo_dirs'       => array( 'photos' ),
+	'json_files'           => array(),
+	'json_file_index'      => 0,
+	'json_entry_index'     => 0,
+	'entries_total'        => 0,
+	'seen_uuids'           => array(),
+);
+$parser->discover_json_files_batch( $fixture_dir, $batch_job, $batch_results, 1.0E+30 );
+$checkpoint_count = 0;
+$checkpoint       = static function () use ( &$checkpoint_count ) {
+	++$checkpoint_count;
+};
+$batch_index = $parser->index_export_batch( $fixture_dir, $batch_job, $batch_results, 1.0E+30, $checkpoint );
+assert_true( ! empty( $batch_index['done'] ) && 3 === $batch_job['entries_total'], 'Batch parser indexes fixture entries into a manifest.' );
+assert_true( $checkpoint_count >= 3, 'Batch parser checkpoints after safe manifest units.' );
+$manifest_entry = $parser->read_manifest_entry( $batch_job['manifest_path'], 0 );
+assert_true( is_array( $manifest_entry ) && 'FICTIONAL-SAMPLE-ENTRY-0001' === $manifest_entry['uuid'], 'Batch parser can read a manifest entry by cursor.' );
+Day_One_Importer_Cleanup::remove( dirname( $batch_job['manifest_path'] ) );
+
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_batch_discovery_limit']    = static function () {
+	return 1;
+};
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_batch_index_entry_limit'] = static function () {
+	return 1;
+};
+$bounded_results = new Day_One_Importer_Results();
+$bounded_job     = array(
+	'manifest_path'       => sys_get_temp_dir() . '/day-one-importer-bounded-manifest-' . uniqid() . '/entries.jsonl',
+	'zip_json_candidates' => array( 'Fictional Journal.json' ),
+	'zip_photo_dirs'      => array( 'photos' ),
+	'json_files'          => array(),
+	'entries_total'       => 0,
+	'seen_uuids'          => array(),
+);
+$bounded_batches = 0;
+do {
+	$bounded_discovery = $parser->discover_json_files_batch( $fixture_dir, $bounded_job, $bounded_results, 1.0E+30 );
+	++$bounded_batches;
+} while ( empty( $bounded_discovery['done'] ) && $bounded_batches < 100 );
+do {
+	$bounded_index = $parser->index_export_batch( $fixture_dir, $bounded_job, $bounded_results, 1.0E+30 );
+	++$bounded_batches;
+} while ( empty( $bounded_index['done'] ) && $bounded_batches < 100 );
+assert_true( 3 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
+Day_One_Importer_Cleanup::remove( dirname( $bounded_job['manifest_path'] ) );
+$GLOBALS['day_one_importer_test_filters'] = array();
 
 echo "All pure helper tests passed.\n";

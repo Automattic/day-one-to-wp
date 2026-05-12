@@ -15,14 +15,15 @@ Playground runs in your browser and is useful for checking the importer screens 
 - WordPress 6.4 or newer
 - PHP 7.4 or newer
 - A user account with permissions to import, upload files, and edit posts
-- PHP ZIP support is recommended for safest ZIP preflight checks
+- PHP `ZipArchive` extension is recommended for resumable batched imports; without it the importer falls back to a single-request synchronous import that may time out on very large or photo-heavy exports
 
 ## Install and activate
 
-1. Copy this plugin directory to `wp-content/plugins/day-one-importer/` on your WordPress site.
-2. In WordPress admin, go to **Plugins → Installed Plugins**.
-3. Activate **Day One Importer**.
-4. Go to **Tools → Import** and confirm **Day One** is listed.
+1. Optionally confirm PHP has the `ZipArchive` extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
+2. Copy this plugin directory to `wp-content/plugins/day-one-importer/` on your WordPress site.
+3. In WordPress admin, go to **Plugins → Installed Plugins**.
+4. Activate **Day One Importer**.
+5. Go to **Tools → Import** and confirm **Day One** is listed.
 
 ## Export from Day One
 
@@ -37,11 +38,12 @@ A typical export follows this shape: a journal JSON file plus media files in `ph
 1. In WordPress admin, go to **Tools → Import**.
 2. Choose **Day One**.
 3. Upload the Day One JSON export ZIP.
-4. Run the import.
-5. Review the summary counts and any warnings.
-6. Spot-check the imported private posts before deleting or closing a Day One account.
+4. Click **Import Day One export**. The upload is queued quickly, then the browser advances the import in short resumable requests with a WP-Cron fallback.
+5. Keep the importer page open when possible and watch the job panel for phase, progress, counters, warnings, and errors. You may refresh the page or use **Retry / Continue** after a network interruption.
+6. When the job is complete, review the summary counts and any warnings.
+7. Spot-check the imported private posts before deleting or closing a Day One account.
 
-The results screen is designed to be privacy-safe: it reports counts, UUIDs, dates, filenames, and generic warning text rather than full journal entry content.
+The results/status screen is designed to be privacy-safe: it reports counts, UUIDs, dates, filenames, and generic warning text rather than full journal entry content.
 
 ## What is imported
 
@@ -52,15 +54,17 @@ The results screen is designed to be privacy-safe: it reports counts, UUIDs, dat
 - Day One text is imported conservatively as safe HTML. Raw HTML is escaped and shortcode-like text such as `[gallery]` is neutralized so it remains visible text rather than executing.
 - Supported photos are imported into the Media Library, attached to the imported post, and appended to the post content in Day One entry order when possible.
 
-## Idempotency and resume behavior
+## Batched jobs, idempotency, and resume behavior
 
-The importer stores Day One UUID metadata on posts and media. Re-importing the same export skips entries that were already imported and marked complete. If an earlier import created a post but did not finish, the importer resumes that post instead of creating a duplicate.
+Large exports are processed as persisted import jobs instead of one long admin request. Each processing request handles a bounded amount of ZIP preflight/extraction, JSON indexing, entry creation, or media import work and returns status before typical proxy/PHP timeout limits are reached. Browser polling normally advances the job; WP-Cron can also continue queued work as a fallback.
+
+The importer stores Day One UUID metadata on posts and media. Re-importing the same export, refreshing the browser, retrying a failed batch, or continuing after a temporary interruption skips entries that were already imported and marked complete. If an earlier import created a post but did not finish, the importer resumes that post instead of creating a duplicate.
 
 If importer behavior changes in a way that requires existing imported posts to be refreshed, rerunning the same export reprocesses older importer-schema versions in place instead of skipping them. This lets import-time fixes, such as cleaner Day One text/title conversion, apply by rerunning the import rather than manually editing posts.
 
 If you move imported posts to Trash and rerun the import, the trashed imported copy is permanently removed and a fresh private post is created for that Day One UUID. This is useful when cleaning up a failed test import before retrying.
 
-This means you can normally rerun the same export after an interruption without creating duplicate posts for the same Day One UUIDs.
+This means you can normally click **Retry / Continue** or rerun the same export after an interruption without creating duplicate posts or attachments for the same Day One UUIDs/media items. Use **Cancel import** only when you want to abandon the queued job and remove its temporary files.
 
 ## Media behavior and privacy
 
@@ -77,7 +81,8 @@ To reduce timeout risk during large imports, the importer asks WordPress/PHP for
 ## Temporary files and external services
 
 - The plugin does not send journal content or media to external services.
-- ZIP files and extracted content are processed in a protected temporary location and cleaned up after the import when possible.
+- ZIP files, extracted content, and job manifests are processed in a protected temporary location and cleaned up after the import completes or is canceled when possible.
+- Failed/interrupted jobs retain enough temporary state to retry until they are canceled or expire as stale.
 - Uploaded ZIPs are not intentionally left in the plugin directory.
 
 ## Local private data
@@ -95,8 +100,8 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 - Day One rich text fidelity is not guaranteed; the importer uses the primary text field conservatively.
 - Images are appended after entry text rather than placed at exact original inline positions.
 - Private media storage depends on the host allowing WordPress to create a private filesystem directory outside public uploads. Media import fails safely rather than falling back to public uploads if that directory cannot be prepared.
-- Unsupported or missing media produces warnings but does not stop the entry import.
-- Very large exports may still hit host-enforced upload, timeout, or memory limits even though the importer reduces image-processing work. Increase server limits, rerun to resume, or split exports if needed.
+- Unsupported or missing media produces warnings but does not stop unrelated entries from importing.
+- Very large exports may still hit host-enforced upload-size or memory limits before a job can be queued, and exceptionally slow hosts may require using **Retry / Continue**. Increase upload/memory limits, rerun to resume, or split exports if needed.
 - WordPress Playground is useful for quick testing, but browser-backed uploads/media handling may differ from a normal WordPress host, especially for large Day One ZIP exports or photo-heavy imports.
 - The importer does not sync with Day One, delete Day One accounts, or publish imported entries publicly.
 
@@ -105,8 +110,9 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 - **Importer is not listed:** confirm the plugin is activated and that the current user has import permissions.
 - **ZIP upload fails:** check PHP upload size limits, WordPress upload permissions, and that the file is a Day One JSON export ZIP.
 - **No entries found:** confirm the ZIP contains a journal JSON file with a top-level `entries` array.
+- **Import appears paused:** keep the importer screen open, refresh it, or click **Retry / Continue**. Continuing is safe and resumes unfinished work.
 - **Photos missing:** confirm the export includes a `photos/` directory and that the media type is accepted by WordPress.
-- **Duplicate import concerns:** rerun the same ZIP; completed entries should be skipped because Day One UUID metadata is stored on imported posts.
+- **Duplicate import concerns:** click **Retry / Continue** or rerun the same ZIP; completed entries should be skipped because Day One UUID metadata is stored on imported posts and media.
 
 ## Build a plugin ZIP
 

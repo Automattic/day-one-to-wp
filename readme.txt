@@ -4,6 +4,7 @@ Tags: import, importer, day-one, journal, privacy
 Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
+Recommended PHP extensions: ZipArchive (for resumable batched imports)
 Stable tag: 0.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -17,8 +18,9 @@ Day One Importer is made by Automattic. It adds a WordPress admin importer for D
 The importer is designed for local or private archive migration workflows:
 
 * Imported posts are private by default.
+* Large exports run as resumable jobs advanced by short browser requests with a WP-Cron fallback, reducing gateway timeout risk.
 * Re-importing the same export skips completed entries using Day One UUID metadata.
-* Interrupted or older-schema imports can be resumed or refreshed in place.
+* Interrupted, failed, or older-schema imports can be retried, continued, or refreshed in place without duplicating completed posts or media.
 * Supported photos are imported into the Media Library and attached to their posts.
 * New Day One media is stored outside the public uploads tree and served through a permission-checked WordPress endpoint.
 * Generated image sub-sizes are skipped during import to reduce timeout risk on large exports.
@@ -32,11 +34,13 @@ For development and testing, the repository includes a wholly fictional sample D
 
 == Installation ==
 
-1. Upload the plugin files to the `/wp-content/plugins/day-one-importer/` directory, or install the plugin ZIP through the WordPress Plugins screen.
-2. Activate the plugin through the Plugins screen in WordPress.
-3. Go to Tools > Import and choose Day One.
-4. Upload the original Day One JSON export ZIP.
-5. Review the import summary and spot-check the resulting private posts.
+1. Optionally confirm PHP has the ZipArchive extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
+2. Upload the plugin files to the `/wp-content/plugins/day-one-importer/` directory, or install the plugin ZIP through the WordPress Plugins screen.
+3. Activate the plugin through the Plugins screen in WordPress.
+4. Go to Tools > Import and choose Day One.
+5. Upload the original Day One JSON export ZIP and click Import Day One export.
+6. Watch the import job panel for phase, progress, counters, warnings, and errors. If the browser connection is interrupted, refresh the page or click Retry / Continue.
+7. Review the final import summary and spot-check the resulting private posts.
 
 == Frequently Asked Questions ==
 
@@ -46,11 +50,11 @@ Export your journal from Day One as JSON and keep the original ZIP intact. The i
 
 = Are imported entries public? =
 
-No. Imported entries are created as private WordPress posts by default. However, attached Media Library files may still be accessible by direct URL depending on your hosting and WordPress configuration.
+No. Imported entries are created as private WordPress posts by default. New Day One media is stored outside the public uploads tree and served through a permission-checked endpoint, but you should still confirm your host does not expose the private filesystem directory through custom server configuration.
 
 = Can I rerun the same export? =
 
-Yes. The importer stores Day One UUID metadata and skips entries that were already imported and marked complete. It can also resume incomplete imports and refresh older importer-schema versions in place.
+Yes. The importer stores Day One UUID metadata and skips entries that were already imported and marked complete. It can also resume incomplete imports, safely retry failed/interrupted batches, and refresh older importer-schema versions in place.
 
 = What media types are imported? =
 
@@ -58,7 +62,7 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 
 = Does the plugin contact external services? =
 
-No. The plugin processes ZIP files and extracted content locally in WordPress temporary locations and cleans them up when possible.
+No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
 
@@ -69,7 +73,7 @@ No. The plugin processes ZIP files and extracted content locally in WordPress te
 * Initial release.
 * Import Day One JSON export ZIP entries as private WordPress posts.
 * Preserve dates, tags, conservative text formatting, and supported photos.
-* Support idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
+* Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
 

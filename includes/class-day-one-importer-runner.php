@@ -41,7 +41,8 @@ class Day_One_Importer_Runner {
 				return $results;
 			}
 
-			$zip_path = $this->handle_upload( $file, $run_dir, $results );
+			$uploader = new Day_One_Importer_Uploader();
+			$zip_path = $uploader->handle_upload( $file, $run_dir, $results );
 			if ( ! $zip_path ) {
 				return $results;
 			}
@@ -77,7 +78,7 @@ class Day_One_Importer_Runner {
 				$results->add_error( __( 'No Day One journal JSON file with an entries array was found in the archive.', 'day-one-importer' ) );
 				return $results;
 			}
-				if ( empty( $entries ) ) {
+			if ( empty( $entries ) ) {
 				$results->add_error( __( 'No importable Day One entries were found in the archive.', 'day-one-importer' ) );
 				return $results;
 			}
@@ -101,97 +102,6 @@ class Day_One_Importer_Runner {
 	}
 
 	/**
-	 * Validate and move uploaded ZIP into the protected run directory.
-	 *
-	 * @param array<string,mixed>      $file Upload file array.
-	 * @param string                   $run_dir Run directory.
-	 * @param Day_One_Importer_Results $results Results.
-	 * @return string Empty on failure.
-	 */
-	private function handle_upload( $file, $run_dir, Day_One_Importer_Results $results ) {
-		if ( empty( $file ) || empty( $file['tmp_name'] ) || ! isset( $file['error'] ) ) {
-			$results->add_error( __( 'No ZIP file was uploaded.', 'day-one-importer' ) );
-			return '';
-		}
-
-		if ( UPLOAD_ERR_OK !== (int) $file['error'] ) {
-			$results->add_error(
-				sprintf(
-					/* translators: %d: PHP file upload error code. */
-					__( 'The upload failed with PHP upload error code %d.', 'day-one-importer' ),
-					(int) $file['error']
-				)
-			);
-			return '';
-		}
-
-		$name = isset( $file['name'] ) ? sanitize_file_name( wp_unslash( $file['name'] ) ) : '';
-		if ( 'zip' !== strtolower( pathinfo( $name, PATHINFO_EXTENSION ) ) ) {
-			$results->add_error( __( 'Only Day One ZIP exports are supported.', 'day-one-importer' ) );
-			return '';
-		}
-
-		$tmp_name = isset( $file['tmp_name'] ) ? (string) $file['tmp_name'] : '';
-		if ( ! is_uploaded_file( $tmp_name ) ) {
-			$results->add_error( __( 'The uploaded ZIP file could not be verified.', 'day-one-importer' ) );
-			return '';
-		}
-
-		$zip_type = wp_check_filetype( $name, array( 'zip' => 'application/zip' ) );
-		if ( 'zip' !== strtolower( (string) $zip_type['ext'] ) ) {
-			$results->add_error( __( 'Only Day One ZIP exports are supported.', 'day-one-importer' ) );
-			return '';
-		}
-
-		if ( ! function_exists( 'wp_handle_upload' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
-		}
-
-		$upload_dir_filter = static function ( $dirs ) use ( $run_dir ) {
-			$run_dir = untrailingslashit( $run_dir );
-
-			$dirs['path']    = $run_dir;
-			$dirs['basedir'] = $run_dir;
-			$dirs['subdir']  = '';
-			$dirs['url']     = '';
-			$dirs['baseurl'] = '';
-			$dirs['error']   = false;
-
-			return $dirs;
-		};
-
-		add_filter( 'upload_dir', $upload_dir_filter );
-		try {
-			$uploaded = wp_handle_upload(
-				$file,
-				array(
-					'test_form'                => false,
-					'mimes'                    => array( 'zip' => 'application/zip' ),
-					'unique_filename_callback' => static function ( $dir, $name, $ext ) {
-						return 'day-one-export.zip';
-					},
-				)
-			);
-		} finally {
-			remove_filter( 'upload_dir', $upload_dir_filter );
-		}
-
-		if ( empty( $uploaded['file'] ) || ! empty( $uploaded['error'] ) ) {
-			$results->add_error( __( 'The uploaded ZIP file could not be moved into the protected import directory.', 'day-one-importer' ) );
-			return '';
-		}
-
-		$target = (string) $uploaded['file'];
-		if ( ! Day_One_Importer_Cleanup::set_owner_only_permissions( $target ) ) {
-			@unlink( $target ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
-			$results->add_error( __( 'The uploaded ZIP file could not be secured in the protected import directory.', 'day-one-importer' ) );
-			return '';
-		}
-
-		return $target;
-	}
-
-	/**
 	 * Extract ZIP archive.
 	 *
 	 * @param string $zip_path Zip path.
@@ -212,20 +122,50 @@ class Day_One_Importer_Runner {
 	}
 
 	/**
-	 * Import or resume one normalized entry.
+	 * Import or resume one normalized entry synchronously.
 	 *
 	 * @param array<string,mixed>      $entry Entry.
 	 * @param string                   $extract_dir Extraction root.
 	 * @param Day_One_Importer_Results $results Results.
 	 * @return void
 	 */
-	private function import_entry( $entry, $extract_dir, Day_One_Importer_Results $results ) {
-		$uuid = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
-		if ( '' === $uuid ) {
-			$results->increment( 'entries_failed' );
+	public function import_entry( $entry, $extract_dir, Day_One_Importer_Results $results ) {
+		$prepared = $this->prepare_imported_entry_post( $entry, $results );
+		if ( 'ready' !== $prepared['status'] ) {
 			return;
 		}
 
+		$job = array(
+			'current_media_index'          => 0,
+			'current_media_total'          => 0,
+			'current_attachment_ids'       => array(),
+			'current_entry_media_counted'  => false,
+			'current_entry_media_complete' => false,
+		);
+
+		$deadline = 1.0E+30;
+		while ( ! $this->import_entry_media_batch( $entry, $extract_dir, (int) $prepared['post_id'], $job, $deadline, $results ) ) {
+			day_one_importer_prepare_long_running_import();
+		}
+
+		$this->finalize_imported_entry( $entry, (int) $prepared['post_id'], $job['current_attachment_ids'], $results );
+	}
+
+	/**
+	 * Prepare/create/resume the WordPress post for an entry without importing media.
+	 *
+	 * @param array<string,mixed>      $entry Entry.
+	 * @param Day_One_Importer_Results $results Results.
+	 * @return array<string,mixed> status: ready, skipped, or failed.
+	 */
+	public function prepare_imported_entry_post( $entry, Day_One_Importer_Results $results ) {
+		$uuid = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
+		if ( '' === $uuid ) {
+			$results->increment( 'entries_failed' );
+			return array( 'status' => 'failed', 'post_id' => 0 );
+		}
+
+		$post_id          = 0;
 		$existing_post_id = $this->find_existing_post_id( $uuid, $results );
 		if ( $existing_post_id ) {
 			if ( 'trash' === get_post_status( $existing_post_id ) ) {
@@ -236,16 +176,12 @@ class Day_One_Importer_Runner {
 				$version  = get_post_meta( $existing_post_id, '_day_one_import_version', true );
 				if ( '1' === (string) $complete && self::IMPORT_SCHEMA_VERSION === (string) $version ) {
 					$results->increment( 'posts_skipped' );
-					return;
+					return array( 'status' => 'skipped', 'post_id' => (int) $existing_post_id );
 				}
 
-				$post_id = $existing_post_id;
+				$post_id = (int) $existing_post_id;
 				$results->increment( 'posts_resumed' );
 			}
-		}
-
-		if ( ! $existing_post_id ) {
-			$post_id = 0;
 		}
 
 		$creation = Day_One_Importer_Content::parse_day_one_date( isset( $entry['creationDate'] ) ? $entry['creationDate'] : '' );
@@ -290,11 +226,19 @@ class Day_One_Importer_Runner {
 						$uuid
 					)
 				);
-				return;
+				return array( 'status' => 'failed', 'post_id' => 0 );
 			}
+			update_post_meta( $post_id, '_day_one_import_complete', '0' );
 		} else {
 			$postarr['post_status'] = 'private';
-			$post_id                 = wp_insert_post( wp_slash( $postarr ), true );
+			$postarr['meta_input']  = array(
+				'_day_one_uuid'              => $uuid,
+				'_day_one_source'            => 'day-one-export',
+				'_day_one_import_version'    => self::IMPORT_SCHEMA_VERSION,
+				'_day_one_import_complete'   => '0',
+				'_day_one_import_started_at' => current_time( 'mysql', true ),
+			);
+			$post_id = wp_insert_post( wp_slash( $postarr ), true );
 			if ( is_wp_error( $post_id ) || ! $post_id ) {
 				$results->increment( 'entries_failed' );
 				$results->add_warning(
@@ -304,27 +248,107 @@ class Day_One_Importer_Runner {
 						$uuid
 					)
 				);
-				return;
+				return array( 'status' => 'failed', 'post_id' => 0 );
 			}
 
-			update_post_meta( $post_id, '_day_one_uuid', $uuid );
-			update_post_meta( $post_id, '_day_one_source', 'day-one-export' );
-			update_post_meta( $post_id, '_day_one_import_version', self::IMPORT_SCHEMA_VERSION );
-			update_post_meta( $post_id, '_day_one_import_complete', '0' );
-			update_post_meta( $post_id, '_day_one_import_started_at', current_time( 'mysql', true ) );
 			$results->increment( 'posts_created' );
 		}
 
-		$this->update_entry_meta( $post_id, $entry );
-		$this->assign_tags( $post_id, $entry, $uuid, $results );
+		$this->update_entry_meta( (int) $post_id, $entry );
+		$this->assign_tags( (int) $post_id, $entry, $uuid, $results );
 
-		$media          = new Day_One_Importer_Media( $extract_dir, $results );
-		$attachment_ids = $media->import_entry_photos( $entry, $post_id );
+		return array(
+			'status'       => 'ready',
+			'post_id'      => (int) $post_id,
+			'base_content' => $content,
+		);
+	}
+
+	/**
+	 * Import media for one entry in bounded, resumable batches.
+	 *
+	 * @param array<string,mixed>      $entry Entry.
+	 * @param string                   $extract_dir Extraction root.
+	 * @param int                      $post_id Post ID.
+	 * @param array<string,mixed>      $job Job state, updated by reference.
+	 * @param float                    $deadline Deadline timestamp.
+	 * @param Day_One_Importer_Results $results Results.
+	 * @param callable|null            $checkpoint Optional checkpoint callback.
+	 * @return bool True when all media for the entry is complete.
+	 */
+	public function import_entry_media_batch( $entry, $extract_dir, $post_id, &$job, $deadline, Day_One_Importer_Results $results, $checkpoint = null ) {
+		$photos = isset( $entry['photos'] ) && is_array( $entry['photos'] ) ? $entry['photos'] : array();
+		$photos = Day_One_Importer_Media::sort_photos( $photos );
+		$total  = count( $photos );
+		$job['current_media_total'] = $total;
+
+		if ( 0 === $total ) {
+			$job['current_entry_media_complete'] = true;
+			return true;
+		}
+
+		if ( empty( $job['current_entry_media_counted'] ) ) {
+			$results->increment( 'media_found', $total );
+			$job['current_entry_media_counted'] = true;
+			if ( is_callable( $checkpoint ) ) {
+				call_user_func_array( $checkpoint, array( &$job, $results ) );
+			}
+		}
+
+		$index = isset( $job['current_media_index'] ) ? max( 0, (int) $job['current_media_index'] ) : 0;
+		$ids   = isset( $job['current_attachment_ids'] ) && is_array( $job['current_attachment_ids'] ) ? array_values( array_map( 'intval', $job['current_attachment_ids'] ) ) : array();
+		$limit = class_exists( 'Day_One_Importer_Job_State' ) ? Day_One_Importer_Job_State::batch_media_limit() : $total;
+		$done  = 0;
+		$photo_dirs = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? $job['photo_dirs'] : null;
+		$media      = new Day_One_Importer_Media( $extract_dir, $results, $photo_dirs );
+
+		while ( $index < $total && $done < $limit ) {
+			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
+				break;
+			}
+
+			day_one_importer_prepare_long_running_import();
+			$attachment_id = $media->import_or_reuse_photo( $photos[ $index ], $entry, $post_id );
+			if ( $attachment_id && ! in_array( (int) $attachment_id, $ids, true ) ) {
+				$ids[] = (int) $attachment_id;
+			}
+
+			++$index;
+			++$done;
+			$job['current_media_index']    = $index;
+			$job['current_attachment_ids'] = $ids;
+			if ( is_callable( $checkpoint ) ) {
+				call_user_func_array( $checkpoint, array( &$job, $results ) );
+			}
+		}
+
+		$job['current_media_index']    = $index;
+		$job['current_attachment_ids'] = $ids;
+		if ( $index >= $total ) {
+			$job['current_entry_media_complete'] = true;
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Finalize post content and import completion metadata for one entry.
+	 *
+	 * @param array<string,mixed>      $entry Entry.
+	 * @param int                      $post_id Post ID.
+	 * @param int[]                    $attachment_ids Attachment IDs.
+	 * @param Day_One_Importer_Results $results Results.
+	 * @return bool True when finalization completed and post was marked complete.
+	 */
+	public function finalize_imported_entry( $entry, $post_id, $attachment_ids, Day_One_Importer_Results $results ) {
+		$uuid = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
 		if ( ! empty( $attachment_ids ) ) {
+			$content            = Day_One_Importer_Content::convert_text_to_content( isset( $entry['text'] ) ? $entry['text'] : '' );
 			$content_with_media = Day_One_Importer_Content::append_image_section( $content, $attachment_ids );
 			$updated            = wp_update_post(
 				array(
-					'ID'           => $post_id,
+					'ID'           => (int) $post_id,
 					'post_content' => wp_slash( $content_with_media ),
 				),
 				true
@@ -337,12 +361,16 @@ class Day_One_Importer_Runner {
 						$uuid
 					)
 				);
+				update_post_meta( $post_id, '_day_one_import_complete', '0' );
+				return false;
 			}
 		}
 
 		update_post_meta( $post_id, '_day_one_import_version', self::IMPORT_SCHEMA_VERSION );
 		update_post_meta( $post_id, '_day_one_import_complete', '1' );
 		update_post_meta( $post_id, '_day_one_import_completed_at', current_time( 'mysql', true ) );
+
+		return true;
 	}
 
 	/**

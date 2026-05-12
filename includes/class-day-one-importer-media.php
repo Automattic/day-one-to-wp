@@ -44,14 +44,23 @@ class Day_One_Importer_Media {
 	private $results;
 
 	/**
+	 * Cached photo directories for async jobs, or null to discover synchronously.
+	 *
+	 * @var string[]|null
+	 */
+	private $photo_dirs = null;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param string                   $root Extraction root.
 	 * @param Day_One_Importer_Results $results Results.
+	 * @param string[]|null            $photo_dirs Cached photo directories, or null to discover.
 	 */
-	public function __construct( $root, Day_One_Importer_Results $results ) {
-		$this->root    = $root;
-		$this->results = $results;
+	public function __construct( $root, Day_One_Importer_Results $results, $photo_dirs = null ) {
+		$this->root       = $root;
+		$this->results    = $results;
+		$this->photo_dirs = is_array( $photo_dirs ) ? array_values( array_filter( array_map( 'strval', $photo_dirs ) ) ) : null;
 	}
 
 	/**
@@ -68,7 +77,7 @@ class Day_One_Importer_Media {
 		}
 
 		$this->results->increment( 'media_found', count( $photos ) );
-		$photos = $this->sort_photos( $photos );
+		$photos = self::sort_photos( $photos );
 
 		$attachment_ids = array();
 		foreach ( $photos as $photo ) {
@@ -87,7 +96,7 @@ class Day_One_Importer_Media {
 	 * @param array<int,array<string,mixed>> $photos Photos.
 	 * @return array<int,array<string,mixed>>
 	 */
-	private function sort_photos( $photos ) {
+	public static function sort_photos( $photos ) {
 		foreach ( $photos as $index => &$photo ) {
 			$photo['_original_index'] = $index;
 		}
@@ -117,7 +126,7 @@ class Day_One_Importer_Media {
 	 * @param int                 $post_id Post ID.
 	 * @return int Attachment ID, or 0.
 	 */
-	private function import_or_reuse_photo( $photo, $entry, $post_id ) {
+	public function import_or_reuse_photo( $photo, $entry, $post_id ) {
 		$uuid       = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
 		$identifier = isset( $photo['identifier'] ) ? (string) $photo['identifier'] : '';
 		$md5        = isset( $photo['md5'] ) ? (string) $photo['md5'] : '';
@@ -129,7 +138,7 @@ class Day_One_Importer_Media {
 			return $existing;
 		}
 
-		$source = self::resolve_photo_path( $this->root, $photo );
+		$source = self::resolve_photo_path( $this->root, $photo, $this->photo_dirs );
 		if ( ! $source ) {
 			$this->results->increment( 'media_missing' );
 			$this->results->add_warning(
@@ -141,6 +150,13 @@ class Day_One_Importer_Media {
 				)
 			);
 			return 0;
+		}
+
+		$partial = $this->find_partial_attachment_by_source( $post_id, $uuid, $photo, $source );
+		if ( $partial ) {
+			$this->apply_photo_marker_metadata( $partial, $uuid, $identifier, $md5, $photo );
+			$this->results->increment( 'media_reused' );
+			return $partial;
 		}
 
 		$valid = $this->validate_media_file( $source );
@@ -157,7 +173,7 @@ class Day_One_Importer_Media {
 			return 0;
 		}
 
-		$attachment_id = $this->sideload_media( $source, $photo, $post_id );
+		$attachment_id = $this->sideload_media( $source, $photo, $entry, $post_id );
 		if ( ! $attachment_id ) {
 			$this->results->increment( 'media_failed' );
 			$this->results->add_warning(
@@ -171,23 +187,7 @@ class Day_One_Importer_Media {
 			return 0;
 		}
 
-		update_post_meta( $attachment_id, '_day_one_media_identifier', $identifier );
-		update_post_meta( $attachment_id, '_day_one_media_md5', $md5 );
-		update_post_meta( $attachment_id, '_day_one_uuid', $uuid );
-		update_post_meta( $attachment_id, '_day_one_source', 'day-one-export' );
-		if ( ! empty( $photo['date'] ) ) {
-			update_post_meta( $attachment_id, '_day_one_media_date', day_one_importer_sanitize_text( $photo['date'] ) );
-		}
-		if ( ! empty( $photo['filename'] ) ) {
-			update_post_meta( $attachment_id, '_day_one_original_filename', day_one_importer_sanitize_text( $photo['filename'] ) );
-		}
-		if ( ! empty( $photo['width'] ) ) {
-			update_post_meta( $attachment_id, '_day_one_width', absint( $photo['width'] ) );
-		}
-		if ( ! empty( $photo['height'] ) ) {
-			update_post_meta( $attachment_id, '_day_one_height', absint( $photo['height'] ) );
-		}
-
+		$this->apply_photo_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $photo );
 		$this->results->increment( 'media_imported' );
 		return $attachment_id;
 	}
@@ -197,15 +197,20 @@ class Day_One_Importer_Media {
 	 *
 	 * @param string              $root Extraction root.
 	 * @param array<string,mixed> $photo Photo metadata.
+	 * @param string[]|null       $photo_dirs Cached photo directories, or null to discover.
 	 * @return string Empty if unresolved.
 	 */
-	public static function resolve_photo_path( $root, $photo ) {
+	public static function resolve_photo_path( $root, $photo, $photo_dirs = null ) {
 		$root_real = realpath( $root );
 		if ( false === $root_real ) {
 			return '';
 		}
 
-		$photo_dirs = self::find_photo_dirs( $root_real );
+		if ( null !== $photo_dirs ) {
+			$photo_dirs = self::sanitize_photo_dirs( $root_real, $photo_dirs );
+		} else {
+			$photo_dirs = self::find_photo_dirs( $root_real );
+		}
 		if ( empty( $photo_dirs ) ) {
 			return '';
 		}
@@ -240,6 +245,29 @@ class Day_One_Importer_Media {
 		}
 
 		return '';
+	}
+
+	/**
+	 * Sanitize cached photo directories against the extraction root.
+	 *
+	 * @param string   $root_real Real extraction root.
+	 * @param string[] $photo_dirs Cached directories.
+	 * @return string[]
+	 */
+	private static function sanitize_photo_dirs( $root_real, $photo_dirs ) {
+		$dirs        = array();
+		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+		foreach ( (array) $photo_dirs as $dir ) {
+			$real = realpath( (string) $dir );
+			if ( false === $real || ! is_dir( $real ) ) {
+				continue;
+			}
+			if ( $real === $root_real || 0 === strpos( $real, $root_prefix ) ) {
+				$dirs[] = $real;
+			}
+		}
+
+		return array_values( array_unique( $dirs ) );
 	}
 
 	/**
@@ -333,7 +361,7 @@ class Day_One_Importer_Media {
 	 * @param string $md5 Media MD5.
 	 * @return int Attachment ID or 0.
 	 */
-	private function find_existing_attachment( $post_id, $uuid, $identifier, $md5 ) {
+	public function find_existing_attachment( $post_id, $uuid, $identifier, $md5 ) {
 		$or = array( 'relation' => 'OR' );
 		if ( $identifier ) {
 			$or[] = array(
@@ -375,14 +403,107 @@ class Day_One_Importer_Media {
 	}
 
 	/**
+	 * Find and repair a partial attachment created before Day One marker metadata was written.
+	 *
+	 * @param int                 $post_id Post ID.
+	 * @param string              $uuid Entry UUID.
+	 * @param array<string,mixed> $photo Photo metadata.
+	 * @param string              $source Resolved source file.
+	 * @return int Attachment ID or 0.
+	 */
+	private function find_partial_attachment_by_source( $post_id, $uuid, $photo, $source ) {
+		if ( ! $post_id || '' === (string) $source ) {
+			return 0;
+		}
+
+		$expected = self::build_upload_filename( $source, $photo );
+		$expected = sanitize_file_name( basename( $expected ) );
+		if ( '' === $expected ) {
+			return 0;
+		}
+
+		$expected_base = pathinfo( $expected, PATHINFO_FILENAME );
+		$expected_ext  = strtolower( pathinfo( $expected, PATHINFO_EXTENSION ) );
+		$attachments   = get_posts(
+			array(
+				'post_type'      => 'attachment',
+				'post_status'    => 'any',
+				'post_parent'    => (int) $post_id,
+				'posts_per_page' => -1,
+				'no_found_rows'  => true,
+			)
+		);
+
+		foreach ( $attachments as $attachment ) {
+			$attachment_id = isset( $attachment->ID ) ? (int) $attachment->ID : 0;
+			if ( ! $attachment_id || 'day-one-export' === (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
+				continue;
+			}
+
+			$file = get_attached_file( $attachment_id );
+			if ( ! $file ) {
+				continue;
+			}
+
+			$basename = sanitize_file_name( basename( $file ) );
+			$base     = pathinfo( $basename, PATHINFO_FILENAME );
+			$ext      = strtolower( pathinfo( $basename, PATHINFO_EXTENSION ) );
+			if ( $expected_ext !== $ext ) {
+				continue;
+			}
+
+			if ( $base === $expected_base || 0 === strpos( $base, $expected_base . '-' ) ) {
+				return $attachment_id;
+			}
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Apply Day One marker metadata as early as possible after attachment creation.
+	 *
+	 * @param int                 $attachment_id Attachment ID.
+	 * @param string              $uuid Entry UUID.
+	 * @param string              $identifier Media identifier.
+	 * @param string              $md5 Media MD5.
+	 * @param array<string,mixed> $photo Photo metadata.
+	 * @return void
+	 */
+	private function apply_photo_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $photo ) {
+		$attachment_id = (int) $attachment_id;
+		if ( ! $attachment_id ) {
+			return;
+		}
+
+		update_post_meta( $attachment_id, '_day_one_media_identifier', $identifier );
+		update_post_meta( $attachment_id, '_day_one_media_md5', $md5 );
+		update_post_meta( $attachment_id, '_day_one_uuid', $uuid );
+		update_post_meta( $attachment_id, '_day_one_source', 'day-one-export' );
+		if ( ! empty( $photo['date'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_media_date', day_one_importer_sanitize_text( $photo['date'] ) );
+		}
+		if ( ! empty( $photo['filename'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_original_filename', day_one_importer_sanitize_text( $photo['filename'] ) );
+		}
+		if ( ! empty( $photo['width'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_width', absint( $photo['width'] ) );
+		}
+		if ( ! empty( $photo['height'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_height', absint( $photo['height'] ) );
+		}
+	}
+
+	/**
 	 * Sideload a media file into the Media Library.
 	 *
 	 * @param string              $source Source path.
 	 * @param array<string,mixed> $photo Photo metadata.
+	 * @param array<string,mixed> $entry Entry metadata.
 	 * @param int                 $post_id Post ID.
 	 * @return int Attachment ID or 0.
 	 */
-	private function sideload_media( $source, $photo, $post_id ) {
+	private function sideload_media( $source, $photo, $entry, $post_id ) {
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 		require_once ABSPATH . 'wp-admin/includes/media.php';
 		require_once ABSPATH . 'wp-admin/includes/image.php';
@@ -408,6 +529,10 @@ class Day_One_Importer_Media {
 		try {
 			$attachment_id = media_handle_sideload( $file_array, $post_id );
 			if ( ! is_wp_error( $attachment_id ) ) {
+				$uuid       = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
+				$identifier = isset( $photo['identifier'] ) ? (string) $photo['identifier'] : '';
+				$md5        = isset( $photo['md5'] ) ? (string) $photo['md5'] : '';
+				$this->apply_photo_marker_metadata( (int) $attachment_id, $uuid, $identifier, $md5, $photo );
 				$private_file = get_attached_file( $attachment_id );
 			}
 		} finally {

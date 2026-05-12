@@ -199,6 +199,62 @@ class Day_One_Importer_Results {
 	}
 
 	/**
+	 * Serialize results for persisted import jobs.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function to_array() {
+		return array(
+			'counts'              => $this->counts,
+			'warnings'            => $this->warnings,
+			'errors'              => $this->errors,
+			'warnings_suppressed' => $this->warnings_suppressed,
+			'errors_suppressed'   => $this->errors_suppressed,
+		);
+	}
+
+	/**
+	 * Rehydrate results from persisted job state.
+	 *
+	 * @param mixed $data Serialized results.
+	 * @return Day_One_Importer_Results
+	 */
+	public static function from_array( $data ) {
+		$results = new self();
+		if ( ! is_array( $data ) ) {
+			return $results;
+		}
+
+		if ( isset( $data['counts'] ) && is_array( $data['counts'] ) ) {
+			foreach ( $data['counts'] as $key => $value ) {
+				if ( is_scalar( $key ) ) {
+					$results->counts[ (string) $key ] = max( 0, (int) $value );
+				}
+			}
+		}
+
+		foreach ( array( 'warnings', 'errors' ) as $detail_key ) {
+			if ( ! isset( $data[ $detail_key ] ) || ! is_array( $data[ $detail_key ] ) ) {
+				continue;
+			}
+
+			$details = array();
+			foreach ( $data[ $detail_key ] as $message ) {
+				if ( count( $details ) >= self::MAX_DETAILS ) {
+					break;
+				}
+				$details[] = day_one_importer_sanitize_text( $message );
+			}
+			$results->{$detail_key} = $details;
+		}
+
+		$results->warnings_suppressed = isset( $data['warnings_suppressed'] ) ? max( 0, (int) $data['warnings_suppressed'] ) : 0;
+		$results->errors_suppressed   = isset( $data['errors_suppressed'] ) ? max( 0, (int) $data['errors_suppressed'] ) : 0;
+
+		return $results;
+	}
+
+	/**
 	 * Convert WP_Error or mixed values to safe messages.
 	 *
 	 * @param mixed  $error Error value.
