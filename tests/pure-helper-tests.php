@@ -176,6 +176,8 @@ assert_true( Day_One_Importer_Job_State::is_terminal_status( 'completed' ), 'Com
 assert_true( Day_One_Importer_Job_State::is_terminal_status( 'canceled' ), 'Canceled job status is terminal.' );
 assert_true( ! Day_One_Importer_Job_State::is_terminal_status( 'running' ), 'Running job status is not terminal.' );
 assert_true( Day_One_Importer_Job_State::is_retryable_status( 'failed' ), 'Failed job status can be retried.' );
+assert_true( Day_One_Importer_Job_State::is_retryable_status( 'queued' ), 'Queued job status can be continued.' );
+assert_true( ! Day_One_Importer_Job_State::is_retryable_status( 'running' ), 'Running job status cannot be retried while active.' );
 $deadline = Day_One_Importer_Job_State::deadline_from_budget( 5, 100.0 );
 assert_true( 105.0 === $deadline, 'Deadline helper adds the requested budget.' );
 
