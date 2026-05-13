@@ -1,6 +1,6 @@
 # Manual verification plan
 
-Use this checklist on a local or staging WordPress site before relying on the importer for a real Day One archive.
+Use this checklist on a local or staging WordPress site before relying on the importer for a real Day One archive. For security-sensitive changes, also review `docs/security-hardening.md`.
 
 ## Environment setup
 

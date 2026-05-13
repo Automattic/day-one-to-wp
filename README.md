@@ -91,6 +91,10 @@ Local Day One exports, extracted photos, and prompt/reference images must not be
 
 For tests and examples, the repository includes `tests/fixtures/day-one-fictional.zip`, a wholly fictional Day One-style export that is safe to publish and is used by default in automated smoke tests.
 
+## Security
+
+Please report suspected vulnerabilities privately. See `SECURITY.md` for the reporting process and `docs/security-hardening.md` for the project hardening checklist adapted from the WordPress Security Hardening Guide.
+
 ## License
 
 Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
@@ -127,7 +131,7 @@ The ZIP is generated in the repository root. Included files are controlled by th
 
 ## Verification
 
-GitHub Actions runs the required CI checks on pull requests and pushes to `main`.
+GitHub Actions runs the required CI checks on pull requests and pushes to `main`. Security-sensitive changes should also be checked against `docs/security-hardening.md`.
 
 Run the same required checks locally from the repository root:
 

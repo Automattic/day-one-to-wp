@@ -8,8 +8,10 @@
 		"assets",
 		"includes",
 		"day-one-importer.php",
+		"docs",
 		"README.md",
 		"readme.txt",
+		"SECURITY.md",
 		"LICENSE"
 	],
 	"scripts": {
