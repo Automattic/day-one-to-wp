@@ -179,13 +179,15 @@
 		var submitted = false;
 		var config = window.DayOneImporterJobs || {};
 		var labels = config.labels || {};
-		var jobId = config.jobId || ( document.getElementById( 'day-one-importer-job-panel' ) || {} ).dataset && ( document.getElementById( 'day-one-importer-job-panel' ) || {} ).dataset.jobId;
+		var panel = document.getElementById( 'day-one-importer-job-panel' );
+		var panelJobId = panel && panel.dataset ? panel.dataset.jobId : '';
+		var jobId = panelJobId || config.jobId || '';
 		var stopped = false;
 
 		if ( jobId && window.history && window.history.replaceState && window.URL ) {
 			try {
 				var currentUrl = new window.URL( window.location.href );
-				if ( ! currentUrl.searchParams.get( 'day_one_importer_job' ) ) {
+				if ( currentUrl.searchParams.get( 'day_one_importer_job' ) !== jobId ) {
 					currentUrl.searchParams.set( 'day_one_importer_job', jobId );
 					currentUrl.searchParams.set( 'queued', '1' );
 					window.history.replaceState( null, '', currentUrl.toString() );

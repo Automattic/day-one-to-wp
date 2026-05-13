@@ -15,13 +15,14 @@ Use this checklist on a local or staging WordPress site before relying on the im
 1. Go to **Tools → Import → Day One**.
 2. Confirm the page explains that a Day One JSON export ZIP is queued and then advanced by short resumable requests.
 3. Upload `tests/fixtures/day-one-fictional.zip`.
-4. Confirm the initial POST redirects back quickly with a `day_one_importer_job` query arg rather than waiting for all entries/media to import.
+4. Confirm the initial POST displays the current import panel quickly, updates the browser URL with a `day_one_importer_job` query arg, and does not wait for all entries/media to import before rendering the page.
 5. With forced batch sizes of `1`, confirm multiple AJAX `day_one_importer_job_process` requests occur before completion and no single request performs the entire import.
 6. In browser developer tools or server logs, confirm each processing request returns promptly rather than remaining open until all entries/media are finished.
 7. Temporarily stop browser polling after a job is queued and trigger WP-Cron; confirm cron can advance or finish the job as a fallback.
 8. Confirm the status panel shows phase, progress, counters, warnings/errors, final state, and Retry/Continue and Cancel controls.
-9. Confirm the displayed `N% complete` is consistent with the "Imported X of Y entries. Current media: A of B." detail line during the `importing` phase — for a large export the percentage should track entries imported rather than jumping to roughly 65% once preflight, extract, and indexing finish.
-10. Confirm status output does **not** include private journal text, raw JSON, local filesystem paths, or media previews.
+9. Cancel the current job, upload the ZIP again from the same page, and confirm the current import panel and browser URL switch to the newly uploaded job rather than continuing to poll the canceled job.
+10. Confirm the displayed `N% complete` is consistent with the "Imported X of Y entries. Current media: A of B." detail line during the `importing` phase — for a large export the percentage should track entries imported rather than jumping to roughly 65% once preflight, extract, and indexing finish.
+11. Confirm status output does **not** include private journal text, raw JSON, local filesystem paths, or media previews.
 
 ## Resume/retry/interruption checks
 
