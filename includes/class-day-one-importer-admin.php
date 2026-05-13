@@ -237,13 +237,13 @@ class Day_One_Importer_Admin {
 		} elseif ( Day_One_Importer_Job_State::STATUS_FAILED === $status['status'] ) {
 			$notice_class = 'notice notice-error inline';
 		} elseif ( Day_One_Importer_Job_State::STATUS_CANCELED === $status['status'] ) {
-			$notice_class = 'notice notice-warning inline';
+			$notice_class = 'notice notice-error inline';
 		}
 
 		echo '<div id="day-one-importer-job-panel" class="' . esc_attr( $notice_class ) . '" data-job-id="' . esc_attr( $job['id'] ) . '" role="status" aria-live="polite">';
 		echo '<p><strong>' . esc_html__( 'Current import job', 'day-one-importer' ) . '</strong></p>';
 		echo '<p class="day-one-importer-job-message">' . esc_html( $status['message'] ) . '</p>';
-		echo '<p class="day-one-importer-job-phase">' . esc_html( $status['phase_label'] ) . '</p>';
+		echo '<p class="day-one-importer-job-phase"' . ( '' === (string) $status['phase_label'] ? ' hidden' : '' ) . '>' . esc_html( $status['phase_label'] ) . '</p>';
 		echo '<p class="day-one-importer-job-progress">' . esc_html( $this->format_progress_label( $status ) ) . '</p>';
 		/* translators: %d: percentage complete. */
 		echo '<p class="day-one-importer-job-progress-bar"><progress max="100" value="' . esc_attr( (int) $status['progress_percent'] ) . '"></progress> <span class="day-one-importer-job-progress-percent">' . esc_html( sprintf( __( '%d%% complete', 'day-one-importer' ), (int) $status['progress_percent'] ) ) . '</span></p>';

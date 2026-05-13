@@ -140,13 +140,18 @@
 		} else if ( data.status === 'failed' ) {
 			panel.classList.add( 'notice-error' );
 		} else if ( data.status === 'canceled' ) {
-			panel.classList.add( 'notice-warning' );
+			panel.classList.add( 'notice-error' );
 		} else {
 			panel.classList.add( 'notice-info' );
 		}
 
 		text( '#day-one-importer-job-panel .day-one-importer-job-message', data.message );
-		text( '#day-one-importer-job-panel .day-one-importer-job-phase', data.phase_label );
+		var phaseNode = panel.querySelector( '.day-one-importer-job-phase' );
+		if ( phaseNode ) {
+			var phaseLabel = data.phase_label || '';
+			phaseNode.textContent = phaseLabel;
+			phaseNode.hidden = '' === phaseLabel;
+		}
 		text( '#day-one-importer-job-panel .day-one-importer-job-progress', progressLabel( data ) );
 
 		var percent = Math.max( 0, Math.min( 100, parseInt( data.progress_percent, 10 ) || 0 ) );
