@@ -207,7 +207,7 @@ class Day_One_Importer_Job_State {
 			'job_id'           => isset( $job['id'] ) && is_scalar( $job['id'] ) ? day_one_importer_sanitize_text( $job['id'] ) : '',
 			'status'           => $status,
 			'phase'            => $phase,
-			'phase_label'      => self::phase_label( $phase ),
+			'phase_label'      => self::STATUS_CANCELED === $status ? '' : self::phase_label( $phase ),
 			'busy'             => (bool) $busy,
 			'is_terminal'      => self::is_terminal_status( $status ),
 			'can_retry'        => self::is_retryable_status( $status ),
