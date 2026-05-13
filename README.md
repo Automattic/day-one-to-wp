@@ -6,7 +6,7 @@ Day One Importer is a WordPress admin importer for Day One JSON exports. It crea
 
 You can launch a temporary WordPress site with Day One Importer installed and activated:
 
-[![Test in WordPress Playground](https://playground.wordpress.net/badge.svg)](https://playground.wordpress.net/?blueprint-url=https://raw.githubusercontent.com/Automattic/day-one-to-wp/main/blueprint.json)
+[Test in WordPress Playground](https://playground.wordpress.net/?blueprint-url=https://raw.githubusercontent.com/Automattic/day-one-to-wp/main/blueprint.json)
 
 Playground runs in your browser and is useful for checking the importer screens with fictional or disposable exports. Avoid uploading private Day One exports unless you are comfortable testing them in that browser session. Playground storage is temporary and browser-backed; large ZIP uploads, media processing, and generated attachment URLs may behave differently from a normal WordPress host.
 
