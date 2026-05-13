@@ -73,7 +73,7 @@ class Day_One_Importer_Admin {
 		);
 
 		$store = new Day_One_Importer_Job_Store();
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only job selection for localized polling config.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Read-only job selection for localized polling config; sanitize_job_id() is the custom sanitizer.
 		$requested_job_id = isset( $_GET['day_one_importer_job'] ) ? Day_One_Importer_Job_Store::sanitize_job_id( wp_unslash( $_GET['day_one_importer_job'] ) ) : '';
 		$job              = $store->get_user_job( get_current_user_id(), $requested_job_id );
 
@@ -110,6 +110,7 @@ class Day_One_Importer_Admin {
 
 		$submission_results = null;
 		$request_method     = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified inside handle_submission() via check_admin_referer().
 		if ( 'POST' === $request_method && isset( $_POST['day_one_importer_submit'] ) ) {
 			$submission_results = $this->handle_submission();
 		}
@@ -208,7 +209,7 @@ class Day_One_Importer_Admin {
 	 */
 	private function render_job_panel() {
 		$store = new Day_One_Importer_Job_Store();
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only job selection for display.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Read-only job selection for display; sanitize_job_id() is the custom sanitizer.
 		$requested_job_id = isset( $_GET['day_one_importer_job'] ) ? Day_One_Importer_Job_Store::sanitize_job_id( wp_unslash( $_GET['day_one_importer_job'] ) ) : '';
 		$job              = $store->get_user_job( get_current_user_id(), $requested_job_id );
 		if ( ! $job ) {
@@ -230,8 +231,11 @@ class Day_One_Importer_Admin {
 		echo '<p class="day-one-importer-job-message">' . esc_html( $status['message'] ) . '</p>';
 		echo '<p class="day-one-importer-job-phase">' . esc_html( $status['phase_label'] ) . '</p>';
 		echo '<p class="day-one-importer-job-progress">' . esc_html( $this->format_progress_label( $status ) ) . '</p>';
+		/* translators: %d: percentage complete. */
 		echo '<p class="day-one-importer-job-progress-bar"><progress max="100" value="' . esc_attr( (int) $status['progress_percent'] ) . '"></progress> <span class="day-one-importer-job-progress-percent">' . esc_html( sprintf( __( '%d%% complete', 'day-one-importer' ), (int) $status['progress_percent'] ) ) . '</span></p>';
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_counts_html() returns pre-escaped markup.
 		echo '<div class="day-one-importer-job-counts">' . $this->render_counts_html( $status['counts'] ) . '</div>';
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_details_html() returns pre-escaped markup.
 		echo '<div class="day-one-importer-job-details">' . $this->render_details_html( $status ) . '</div>';
 		echo '<p class="day-one-importer-job-actions">';
 		echo '<button type="button" class="button day-one-importer-job-retry"' . ( $status['can_retry'] ? '' : ' disabled' ) . '>' . esc_html__( 'Retry / Continue', 'day-one-importer' ) . '</button> ';
