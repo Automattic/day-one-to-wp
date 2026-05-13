@@ -100,7 +100,7 @@ class Day_One_Importer_Job_State {
 	 */
 	public static function is_retryable_status( $status ) {
 		$status = self::normalize_status( $status );
-		return in_array( $status, array( self::STATUS_QUEUED, self::STATUS_RUNNING, self::STATUS_FAILED ), true );
+		return in_array( $status, array( self::STATUS_QUEUED, self::STATUS_FAILED ), true );
 	}
 
 	/**
