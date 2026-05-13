@@ -208,6 +208,78 @@ $completed_status_payload = Day_One_Importer_Job_State::status_response(
 );
 assert_true( 100 === $completed_status_payload['progress_percent'], 'Completed status reports 100 percent progress.' );
 
+// AC1: screenshot scenario - 124 of 3011 entries should land in single digits.
+$screenshot_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'running',
+		'phase'               => 'importing',
+		'entries_total'       => 3011,
+		'entry_index'         => 124,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+assert_true( $screenshot_payload['progress_percent'] >= 1 && $screenshot_payload['progress_percent'] <= 10, 'Screenshot scenario (124 of 3011) reports a single-digit progress percentage.' );
+
+// AC2: end of importing should land in [95, 98].
+$end_importing_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'running',
+		'phase'         => 'importing',
+		'entries_total' => 3011,
+		'entry_index'   => 3011,
+	)
+);
+assert_true( $end_importing_payload['progress_percent'] >= 95 && $end_importing_payload['progress_percent'] <= 98, 'End of importing reports a percentage in [95, 98].' );
+
+// AC5: uploaded phase is canonical zero.
+$uploaded_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'running',
+		'phase'  => 'uploaded',
+	)
+);
+assert_true( 0 === $uploaded_payload['progress_percent'], 'Uploaded phase reports zero progress.' );
+
+// AC11: resumed job at 2500 of 3011 reports >= 80 on first paint.
+$resumed_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'running',
+		'phase'               => 'importing',
+		'entries_total'       => 3011,
+		'entry_index'         => 2500,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+assert_true( $resumed_payload['progress_percent'] >= 80, 'Resumed job at 2500 of 3011 reports at least 80 percent.' );
+
+// AC13a: failed mid-importing preserves the computed value.
+$failed_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'failed',
+		'phase'               => 'importing',
+		'entries_total'       => 3011,
+		'entry_index'         => 1000,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+assert_true( $failed_payload['progress_percent'] >= 20 && $failed_payload['progress_percent'] <= 50, 'Failed mid-importing reports the computed value, not 100.' );
+
+// AC13b: canceled mid-importing preserves the computed value.
+$canceled_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'canceled',
+		'phase'               => 'importing',
+		'entries_total'       => 3011,
+		'entry_index'         => 1000,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+assert_true( $canceled_payload['progress_percent'] >= 20 && $canceled_payload['progress_percent'] <= 50, 'Canceled mid-importing reports the computed value, not 100.' );
+
 $store = new Day_One_Importer_Job_Store();
 $token = $store->acquire_lock( 'lock-test', 'owner-a', 30 );
 assert_true( 'owner-a' === $token, 'Job lock can be acquired with an owner token.' );
