@@ -383,7 +383,7 @@ class Day_One_Importer_Parser {
 					if ( 0 === $entry_depth ) {
 						++$processed;
 						if ( ! $this->process_streamed_entry( $entry_buffer, $file, $entry_i, $manifest, $job, $results, $seen ) ) {
-							fclose( $handle );
+							fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the streaming fopen() read; WP_Filesystem has no streaming equivalent.
 							return array(
 								'file_done' => false,
 								'processed'  => $processed,
@@ -422,7 +422,7 @@ class Day_One_Importer_Parser {
 		}
 
 		$reached_eof = feof( $handle );
-		fclose( $handle );
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the streaming fopen() read; WP_Filesystem has no streaming equivalent.
 
 		if ( ! $paused && ! $file_done && $reached_eof ) {
 			$file_done = true;
@@ -642,7 +642,7 @@ class Day_One_Importer_Parser {
 			$created = @fopen( $marker, 'x' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 			if ( $created ) {
 				fwrite( $created, 'pending' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
-				fclose( $created );
+				fclose( $created ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the fopen('x') atomic-create marker; WP_Filesystem has no equivalent.
 			} elseif ( file_exists( $marker ) ) {
 				return $this->append_manifest_entry( $manifest, $entry );
 			} else {

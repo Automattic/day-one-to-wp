@@ -590,7 +590,7 @@ class Day_One_Importer_Job_Store {
 					$name,
 					self::serialize_option_value( $expected )
 				)
-			); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- {$wpdb->options} table name interpolation is intentional; atomic CAS delete on wp_options; caching would defeat the distributed lock guarantee.
 
 			if ( 1 === (int) $deleted ) {
 				self::flush_option_cache( $name );
@@ -630,7 +630,7 @@ class Day_One_Importer_Job_Store {
 					$name,
 					self::serialize_option_value( $expected )
 				)
-			); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- {$wpdb->options} table name interpolation is intentional; atomic CAS update on wp_options; caching would defeat the distributed lock guarantee.
 
 			if ( 1 === (int) $updated ) {
 				self::flush_option_cache( $name );
@@ -690,7 +690,7 @@ class Day_One_Importer_Job_Store {
 			}
 
 			$like = $wpdb->esc_like( $prefix ) . '%';
-			return $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			return $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- {$wpdb->options} table name interpolation is intentional; prefix-scan over wp_options for lock keys; no get_option() equivalent and caching would lag.
 		}
 
 		$names = array();
