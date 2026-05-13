@@ -9,11 +9,11 @@ Stable tag: 0.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Import Day One JSON export ZIPs as private WordPress posts with tags, dates, and supported photos.
+Import Day One JSON export ZIPs as private WordPress posts with journal categories, tags, dates, and supported photos.
 
 == Description ==
 
-Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, tags, text, and supported photos.
+Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, and supported photos.
 
 The importer is designed for local or private archive migration workflows:
 
@@ -75,7 +75,7 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 = 0.1.0 =
 * Initial release.
 * Import Day One JSON export ZIP entries as private WordPress posts.
-* Preserve dates, tags, conservative text formatting, and supported photos.
+* Preserve dates, journal categories, tags, conservative text formatting, and supported photos.
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==

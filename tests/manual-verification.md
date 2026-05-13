@@ -55,7 +55,7 @@ Confirm clear, escaped, privacy-safe failures for:
 2. Confirm failed jobs retain enough state/files to retry until canceled or stale, and that the progress bar keeps the percentage computed from the cursors at failure time rather than snapping to 100%.
 3. Cancel a job and confirm temporary files are removed, status becomes canceled, and the bar keeps the percentage computed from the cursors at cancel time rather than snapping to 100%.
 4. Force a stale job/lock past retention and run cleanup; confirm stale files/options/locks are removed without deleting an unexpired lock.
-5. Confirm imported posts are private and imported Day One media is served only through the authenticated media endpoint to users who can read the parent post.
+5. Confirm imported posts are private, assigned to their Day One journal category, and imported Day One media is served only through the authenticated media endpoint to users who can read the parent post.
 
 ## Final acceptance
 

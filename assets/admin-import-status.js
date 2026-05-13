@@ -73,6 +73,7 @@
 			'posts_resumed',
 			'entries_failed',
 			'tags_assigned',
+			'categories_assigned',
 			'media_found',
 			'media_imported',
 			'media_reused',
