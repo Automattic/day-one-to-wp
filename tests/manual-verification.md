@@ -20,11 +20,12 @@ Use this checklist on a local or staging WordPress site before relying on the im
 6. In browser developer tools or server logs, confirm each processing request returns promptly rather than remaining open until all entries/media are finished.
 7. Temporarily stop browser polling after a job is queued and trigger WP-Cron; confirm cron can advance or finish the job as a fallback.
 8. Confirm the status panel shows phase, progress, counters, warnings/errors, final state, and Retry/Continue and Cancel controls.
-9. Confirm status output does **not** include private journal text, raw JSON, local filesystem paths, or media previews.
+9. Confirm the displayed `N% complete` is consistent with the "Imported X of Y entries. Current media: A of B." detail line during the `importing` phase — for a large export the percentage should track entries imported rather than jumping to roughly 65% once preflight, extract, and indexing finish.
+10. Confirm status output does **not** include private journal text, raw JSON, local filesystem paths, or media previews.
 
 ## Resume/retry/interruption checks
 
-1. Refresh the browser mid-import and confirm the same job continues.
+1. Refresh the browser mid-import and confirm the same job continues. Confirm the progress percentage on first paint reflects the entries already imported rather than resetting to a low value.
 2. Disable the network or stop polling mid-import, then restore it and click **Retry / Continue**; confirm only unfinished work resumes and counters continue from the last safe checkpoint.
 3. Trigger overlapping AJAX/cron processing and confirm one request reports busy/safe status while the other owns the lock and no older status overwrites newer progress.
 4. Simulate interruption after post creation by stopping a job with an incomplete post, then continue; confirm one post exists for the Day One UUID.
@@ -49,9 +50,9 @@ Confirm clear, escaped, privacy-safe failures for:
 
 ## Cleanup and final state checks
 
-1. Confirm completed jobs remove the protected temporary ZIP/extraction directory while retaining final counts/status for refresh display.
-2. Confirm failed jobs retain enough state/files to retry until canceled or stale.
-3. Cancel a job and confirm temporary files are removed and status becomes canceled.
+1. Confirm completed jobs remove the protected temporary ZIP/extraction directory while retaining final counts/status for refresh display, and that the bar reads `100% complete`.
+2. Confirm failed jobs retain enough state/files to retry until canceled or stale, and that the progress bar keeps the percentage computed from the cursors at failure time rather than snapping to 100%.
+3. Cancel a job and confirm temporary files are removed, status becomes canceled, and the bar keeps the percentage computed from the cursors at cancel time rather than snapping to 100%.
 4. Force a stale job/lock past retention and run cleanup; confirm stale files/options/locks are removed without deleting an unexpired lock.
 5. Confirm imported posts are private and imported Day One media is served only through the authenticated media endpoint to users who can read the parent post.
 

@@ -197,7 +197,7 @@ $status_payload = Day_One_Importer_Job_State::status_response(
 );
 assert_true( 'job-123' === $status_payload['job_id'], 'Status payload includes the opaque job ID.' );
 assert_true( 3 === $status_payload['progress']['entry_index'], 'Status payload includes safe progress cursors.' );
-assert_true( 74 === $status_payload['progress_percent'], 'Status payload includes a bounded overall progress percentage.' );
+assert_true( $status_payload['progress_percent'] >= 20 && $status_payload['progress_percent'] <= 55, 'Status payload reports a calibrated overall progress percentage.' );
 assert_true( false === strpos( json_encode( $status_payload ), '/tmp/private' ), 'Status payload omits filesystem paths.' );
 
 $completed_status_payload = Day_One_Importer_Job_State::status_response(
@@ -207,6 +207,418 @@ $completed_status_payload = Day_One_Importer_Job_State::status_response(
 	)
 );
 assert_true( 100 === $completed_status_payload['progress_percent'], 'Completed status reports 100 percent progress.' );
+
+// AC1: screenshot scenario - 124 of 3011 entries should land in single digits.
+$screenshot_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'running',
+		'phase'               => 'importing',
+		'entries_total'       => 3011,
+		'entry_index'         => 124,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+assert_true( $screenshot_payload['progress_percent'] >= 1 && $screenshot_payload['progress_percent'] <= 10, 'Screenshot scenario (124 of 3011) reports a single-digit progress percentage.' );
+
+// AC2: end of importing should land in [95, 98].
+$end_importing_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'running',
+		'phase'         => 'importing',
+		'entries_total' => 3011,
+		'entry_index'   => 3011,
+	)
+);
+assert_true( $end_importing_payload['progress_percent'] >= 95 && $end_importing_payload['progress_percent'] <= 98, 'End of importing reports a percentage in [95, 98].' );
+
+// AC5: uploaded phase is canonical zero.
+$uploaded_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'running',
+		'phase'  => 'uploaded',
+	)
+);
+assert_true( 0 === $uploaded_payload['progress_percent'], 'Uploaded phase reports zero progress.' );
+
+// AC11: resumed job at 2500 of 3011 reports >= 80 on first paint.
+$resumed_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'running',
+		'phase'               => 'importing',
+		'entries_total'       => 3011,
+		'entry_index'         => 2500,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+assert_true( $resumed_payload['progress_percent'] >= 80, 'Resumed job at 2500 of 3011 reports at least 80 percent.' );
+
+// AC13a: failed mid-importing preserves the computed value.
+$failed_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'failed',
+		'phase'               => 'importing',
+		'entries_total'       => 3011,
+		'entry_index'         => 1000,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+assert_true( $failed_payload['progress_percent'] >= 20 && $failed_payload['progress_percent'] <= 50, 'Failed mid-importing reports the computed value, not 100.' );
+
+// AC13b: canceled mid-importing preserves the computed value.
+$canceled_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'canceled',
+		'phase'               => 'importing',
+		'entries_total'       => 3011,
+		'entry_index'         => 1000,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+assert_true( $canceled_payload['progress_percent'] >= 20 && $canceled_payload['progress_percent'] <= 50, 'Canceled mid-importing reports the computed value, not 100.' );
+
+// AC6: pre-importing phases stay > 0 and <= 10 at every cursor position.
+$pre_importing_phase_cases = array(
+	array(
+		'phase'   => 'preflight_open',
+		'cursors' => array(
+			array(),
+		),
+	),
+	array(
+		'phase'   => 'preflighting',
+		'cursors' => array(
+			array(
+				'zip_index' => 0,
+				'zip_total' => 10,
+			),
+			array(
+				'zip_index' => 10,
+				'zip_total' => 10,
+			),
+		),
+	),
+	array(
+		'phase'   => 'extracting',
+		'cursors' => array(
+			array(
+				'extract_index' => 0,
+				'extract_total' => 50,
+			),
+			array(
+				'extract_index' => 50,
+				'extract_total' => 50,
+			),
+		),
+	),
+	array(
+		'phase'   => 'validating_tree',
+		'cursors' => array(
+			array(),
+		),
+	),
+	array(
+		'phase'   => 'indexing_discover',
+		'cursors' => array(
+			array(),
+		),
+	),
+	array(
+		'phase'   => 'indexing_entries',
+		'cursors' => array(
+			array(
+				'json_file_index'  => 0,
+				'json_files_found' => 3,
+			),
+			array(
+				'json_file_index'  => 3,
+				'json_files_found' => 3,
+			),
+		),
+	),
+);
+foreach ( $pre_importing_phase_cases as $pre_case ) {
+	foreach ( $pre_case['cursors'] as $cursor_set ) {
+		$payload = Day_One_Importer_Job_State::status_response(
+			array_merge(
+				array(
+					'status' => 'running',
+					'phase'  => $pre_case['phase'],
+				),
+				$cursor_set
+			)
+		);
+		assert_true( $payload['progress_percent'] > 0 && $payload['progress_percent'] <= 10, 'Pre-importing phase ' . $pre_case['phase'] . ' reports a value in (0, 10].' );
+	}
+}
+
+// AC7: cleanup is strictly above end-of-importing value and below 100.
+$cleanup_payload                = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'running',
+		'phase'  => 'cleanup',
+	)
+);
+$end_of_importing_value         = $end_importing_payload['progress_percent'];
+assert_true( $cleanup_payload['progress_percent'] > $end_of_importing_value, 'Cleanup phase reports a value strictly greater than end of importing.' );
+assert_true( $cleanup_payload['progress_percent'] < 100 && $cleanup_payload['progress_percent'] <= 99, 'Cleanup phase reports a value strictly less than 100.' );
+
+// AC8: monotonicity within importing for fixed entries_total.
+$monotonic_total = 20;
+$prev_monotonic  = -1;
+for ( $monotonic_i = 0; $monotonic_i <= $monotonic_total; $monotonic_i++ ) {
+	$step_payload = Day_One_Importer_Job_State::status_response(
+		array(
+			'status'              => 'running',
+			'phase'               => 'importing',
+			'entries_total'       => $monotonic_total,
+			'entry_index'         => $monotonic_i,
+			'current_media_index' => 0,
+			'current_media_total' => 0,
+		)
+	);
+	assert_true( $step_payload['progress_percent'] >= $prev_monotonic, 'Progress percentage is non-decreasing within importing at index ' . $monotonic_i . '.' );
+	$prev_monotonic = $step_payload['progress_percent'];
+}
+
+// AC9 / AC10: cross-phase monotonicity walking the happy path.
+$happy_path_walk = array(
+	array(
+		'label'   => 'uploaded',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'uploaded',
+		),
+	),
+	array(
+		'label'   => 'preflight_open',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'preflight_open',
+		),
+	),
+	array(
+		'label'   => 'preflighting (cursor=total)',
+		'payload' => array(
+			'status'    => 'running',
+			'phase'     => 'preflighting',
+			'zip_index' => 8,
+			'zip_total' => 8,
+		),
+	),
+	array(
+		'label'   => 'extracting (cursor=total)',
+		'payload' => array(
+			'status'        => 'running',
+			'phase'         => 'extracting',
+			'extract_index' => 50,
+			'extract_total' => 50,
+		),
+	),
+	array(
+		'label'   => 'validating_tree',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'validating_tree',
+		),
+	),
+	array(
+		'label'   => 'indexing_discover',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'indexing_discover',
+		),
+	),
+	array(
+		'label'   => 'indexing_entries (cursor=total)',
+		'payload' => array(
+			'status'           => 'running',
+			'phase'            => 'indexing_entries',
+			'json_file_index'  => 3,
+			'json_files_found' => 3,
+		),
+	),
+	array(
+		'label'   => 'importing (entry_index=0)',
+		'payload' => array(
+			'status'              => 'running',
+			'phase'               => 'importing',
+			'entries_total'       => 3011,
+			'entry_index'         => 0,
+			'current_media_index' => 0,
+			'current_media_total' => 0,
+		),
+	),
+	array(
+		'label'   => 'importing (entry_index=3011)',
+		'payload' => array(
+			'status'              => 'running',
+			'phase'               => 'importing',
+			'entries_total'       => 3011,
+			'entry_index'         => 3011,
+			'current_media_index' => 0,
+			'current_media_total' => 0,
+		),
+	),
+	array(
+		'label'   => 'cleanup',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'cleanup',
+		),
+	),
+	array(
+		'label'   => 'done',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'done',
+		),
+	),
+);
+$prev_happy_value = -1;
+$happy_values     = array();
+foreach ( $happy_path_walk as $walk_step ) {
+	$walk_payload                          = Day_One_Importer_Job_State::status_response( $walk_step['payload'] );
+	$happy_values[ $walk_step['label'] ]   = $walk_payload['progress_percent'];
+	assert_true( $walk_payload['progress_percent'] >= $prev_happy_value, 'Progress percentage is non-decreasing across happy-path transition into ' . $walk_step['label'] . '.' );
+	$prev_happy_value = $walk_payload['progress_percent'];
+}
+
+// AC10: explicit boundary between end-of-indexing_entries and start-of-importing.
+assert_true( $happy_values['indexing_entries (cursor=total)'] <= $happy_values['importing (entry_index=0)'], 'End of indexing_entries is <= start of importing.' );
+
+// AC12: zero-media job is not penalized relative to media-present with index=0.
+$zero_media_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'running',
+		'phase'               => 'importing',
+		'entries_total'       => 10,
+		'entry_index'         => 3,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+$media_present_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'running',
+		'phase'               => 'importing',
+		'entries_total'       => 10,
+		'entry_index'         => 3,
+		'current_media_index' => 0,
+		'current_media_total' => 5,
+	)
+);
+assert_true( $zero_media_payload['progress_percent'] >= $media_present_payload['progress_percent'], 'Zero-media import is not penalized vs media-present with index 0.' );
+
+// AC14: defensive inputs do not warn and stay within [0, 100].
+$defensive_warning_seen = false;
+set_error_handler(
+	static function ( $errno, $errstr ) use ( &$defensive_warning_seen ) {
+		$defensive_warning_seen = true;
+		return true;
+	}
+);
+
+$zero_total_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'running',
+		'phase'         => 'importing',
+		'entries_total' => 0,
+		'entry_index'   => 0,
+	)
+);
+$impossible_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'running',
+		'phase'         => 'importing',
+		'entries_total' => 0,
+		'entry_index'   => 5,
+	)
+);
+$missing_keys_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'running',
+		'phase'  => 'importing',
+	)
+);
+$overshoot_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'running',
+		'phase'         => 'importing',
+		'entries_total' => 3011,
+		'entry_index'   => 5000,
+	)
+);
+
+restore_error_handler();
+
+assert_true( ! $defensive_warning_seen, 'Defensive progress percentage inputs do not raise PHP warnings.' );
+assert_true( is_int( $zero_total_payload['progress_percent'] ) && $zero_total_payload['progress_percent'] >= 0 && $zero_total_payload['progress_percent'] <= 10 && 100 !== $zero_total_payload['progress_percent'], 'Importing with totals not yet known reports a small non-100 value.' );
+assert_true( is_int( $impossible_payload['progress_percent'] ) && $impossible_payload['progress_percent'] >= 0 && $impossible_payload['progress_percent'] <= 100, 'Impossible state (index without total) stays bounded.' );
+assert_true( is_int( $missing_keys_payload['progress_percent'] ) && $missing_keys_payload['progress_percent'] >= 0 && $missing_keys_payload['progress_percent'] <= 100, 'Missing cursor keys still produce a bounded progress percentage.' );
+assert_true( is_int( $overshoot_payload['progress_percent'] ) && $overshoot_payload['progress_percent'] >= 0 && $overshoot_payload['progress_percent'] <= 100, 'Cursor overshoot is clamped within bounds.' );
+
+// AC15: narrowed status/phase integer matrix.
+$matrix_running_phases = array(
+	'uploaded',
+	'preflight_open',
+	'preflighting',
+	'extracting',
+	'validating_tree',
+	'indexing_discover',
+	'indexing_entries',
+	'importing',
+	'cleanup',
+	'done',
+);
+foreach ( $matrix_running_phases as $matrix_phase ) {
+	$matrix_payload = Day_One_Importer_Job_State::status_response(
+		array(
+			'status' => 'running',
+			'phase'  => $matrix_phase,
+		)
+	);
+	assert_true( is_int( $matrix_payload['progress_percent'] ) && $matrix_payload['progress_percent'] >= 0 && $matrix_payload['progress_percent'] <= 100, 'status_response returns an int percent in [0, 100] for (running, ' . $matrix_phase . ').' );
+}
+
+$matrix_completed_done = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'completed',
+		'phase'  => 'done',
+	)
+);
+assert_true( 100 === $matrix_completed_done['progress_percent'], 'status_response returns 100 for (completed, done).' );
+
+$matrix_failed_importing = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'failed',
+		'phase'         => 'importing',
+		'entries_total' => 3011,
+		'entry_index'   => 1000,
+	)
+);
+assert_true( is_int( $matrix_failed_importing['progress_percent'] ) && 100 !== $matrix_failed_importing['progress_percent'] && $matrix_failed_importing['progress_percent'] >= 20 && $matrix_failed_importing['progress_percent'] <= 50, 'status_response returns the computed value for (failed, importing).' );
+
+$matrix_canceled_importing = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'canceled',
+		'phase'         => 'importing',
+		'entries_total' => 3011,
+		'entry_index'   => 1000,
+	)
+);
+assert_true( is_int( $matrix_canceled_importing['progress_percent'] ) && 100 !== $matrix_canceled_importing['progress_percent'] && $matrix_canceled_importing['progress_percent'] >= 20 && $matrix_canceled_importing['progress_percent'] <= 50, 'status_response returns the computed value for (canceled, importing).' );
+
+$matrix_queued_uploaded = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'queued',
+		'phase'  => 'uploaded',
+	)
+);
+assert_true( 0 === $matrix_queued_uploaded['progress_percent'], 'status_response returns 0 for (queued, uploaded).' );
 
 $store = new Day_One_Importer_Job_Store();
 $token = $store->acquire_lock( 'lock-test', 'owner-a', 30 );

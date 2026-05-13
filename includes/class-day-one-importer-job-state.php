@@ -303,36 +303,61 @@ class Day_One_Importer_Job_State {
 			return 100;
 		}
 
+		if ( 'done' === $phase ) {
+			return 100;
+		}
+
 		$progress = self::progress_response( $job );
-		$percent  = 0;
+
+		// Calibration constants: pre-importing ceiling (C), importing-end (E), cleanup (K).
+		$pre_importing_ceiling = 6;
+		$importing_end         = 96;
+		$cleanup_value         = 99;
+		$importing_span        = $importing_end - $pre_importing_ceiling;
+
+		$percent = 0;
 
 		switch ( $phase ) {
+			case 'uploaded':
+				$percent = 0;
+				break;
 			case 'preflight_open':
-				$percent = 2;
+				$percent = 1;
 				break;
 			case 'preflighting':
-				$percent = 5 + self::fraction_percent( $progress['zip_index'], $progress['zip_total'], 15 );
+				$percent = 1 + self::fraction_percent( $progress['zip_index'], $progress['zip_total'], 1 );
 				break;
 			case 'extracting':
-				$percent = 20 + self::fraction_percent( $progress['extract_index'], $progress['extract_total'], 25 );
+				$percent = 2 + self::fraction_percent( $progress['extract_index'], $progress['extract_total'], 1 );
 				break;
 			case 'validating_tree':
-				$percent = 48;
+				$percent = 3;
 				break;
 			case 'indexing_discover':
-				$percent = 52;
+				$percent = 4;
 				break;
 			case 'indexing_entries':
-				$percent = 55 + self::fraction_percent( $progress['json_file_index'], $progress['json_files_found'], 10 );
+				$percent = 4 + self::fraction_percent( $progress['json_file_index'], $progress['json_files_found'], 2 );
 				break;
 			case 'importing':
-				$percent = 65 + self::fraction_percent( $progress['entry_index'], $progress['entries_total'], 30 );
+				$entries_total = (int) $progress['entries_total'];
+				if ( $entries_total <= 0 ) {
+					$percent = $pre_importing_ceiling;
+				} else {
+					$percent = $pre_importing_ceiling + self::fraction_percent( $progress['entry_index'], $entries_total, $importing_span );
+
+					// Optional media smoothing within the current entry's slot.
+					$current_media_total = (int) $progress['current_media_total'];
+					if ( $current_media_total > 0 ) {
+						$slot_width = (int) floor( $importing_span / $entries_total );
+						if ( $slot_width > 0 ) {
+							$percent += self::fraction_percent( $progress['current_media_index'], $current_media_total, $slot_width );
+						}
+					}
+				}
 				break;
 			case 'cleanup':
-				$percent = 98;
-				break;
-			case 'done':
-				$percent = 100;
+				$percent = $cleanup_value;
 				break;
 		}
 
