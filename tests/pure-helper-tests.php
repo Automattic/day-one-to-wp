@@ -490,6 +490,77 @@ foreach ( $happy_path_walk as $walk_step ) {
 // AC10: explicit boundary between end-of-indexing_entries and start-of-importing.
 assert_true( $happy_values['indexing_entries (cursor=total)'] <= $happy_values['importing (entry_index=0)'], 'End of indexing_entries is <= start of importing.' );
 
+// AC12: zero-media job is not penalized relative to media-present with index=0.
+$zero_media_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'running',
+		'phase'               => 'importing',
+		'entries_total'       => 10,
+		'entry_index'         => 3,
+		'current_media_index' => 0,
+		'current_media_total' => 0,
+	)
+);
+$media_present_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'              => 'running',
+		'phase'               => 'importing',
+		'entries_total'       => 10,
+		'entry_index'         => 3,
+		'current_media_index' => 0,
+		'current_media_total' => 5,
+	)
+);
+assert_true( $zero_media_payload['progress_percent'] >= $media_present_payload['progress_percent'], 'Zero-media import is not penalized vs media-present with index 0.' );
+
+// AC14: defensive inputs do not warn and stay within [0, 100].
+$defensive_warning_seen = false;
+set_error_handler(
+	static function ( $errno, $errstr ) use ( &$defensive_warning_seen ) {
+		$defensive_warning_seen = true;
+		return true;
+	}
+);
+
+$zero_total_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'running',
+		'phase'         => 'importing',
+		'entries_total' => 0,
+		'entry_index'   => 0,
+	)
+);
+$impossible_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'running',
+		'phase'         => 'importing',
+		'entries_total' => 0,
+		'entry_index'   => 5,
+	)
+);
+$missing_keys_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'running',
+		'phase'  => 'importing',
+	)
+);
+$overshoot_payload = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'running',
+		'phase'         => 'importing',
+		'entries_total' => 3011,
+		'entry_index'   => 5000,
+	)
+);
+
+restore_error_handler();
+
+assert_true( ! $defensive_warning_seen, 'Defensive progress percentage inputs do not raise PHP warnings.' );
+assert_true( is_int( $zero_total_payload['progress_percent'] ) && $zero_total_payload['progress_percent'] >= 0 && $zero_total_payload['progress_percent'] <= 10 && 100 !== $zero_total_payload['progress_percent'], 'Importing with totals not yet known reports a small non-100 value.' );
+assert_true( is_int( $impossible_payload['progress_percent'] ) && $impossible_payload['progress_percent'] >= 0 && $impossible_payload['progress_percent'] <= 100, 'Impossible state (index without total) stays bounded.' );
+assert_true( is_int( $missing_keys_payload['progress_percent'] ) && $missing_keys_payload['progress_percent'] >= 0 && $missing_keys_payload['progress_percent'] <= 100, 'Missing cursor keys still produce a bounded progress percentage.' );
+assert_true( is_int( $overshoot_payload['progress_percent'] ) && $overshoot_payload['progress_percent'] >= 0 && $overshoot_payload['progress_percent'] <= 100, 'Cursor overshoot is clamped within bounds.' );
+
 $store = new Day_One_Importer_Job_Store();
 $token = $store->acquire_lock( 'lock-test', 'owner-a', 30 );
 assert_true( 'owner-a' === $token, 'Job lock can be acquired with an owner token.' );
