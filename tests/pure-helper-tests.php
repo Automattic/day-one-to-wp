@@ -280,6 +280,92 @@ $canceled_payload = Day_One_Importer_Job_State::status_response(
 );
 assert_true( $canceled_payload['progress_percent'] >= 20 && $canceled_payload['progress_percent'] <= 50, 'Canceled mid-importing reports the computed value, not 100.' );
 
+// AC6: pre-importing phases stay > 0 and <= 10 at every cursor position.
+$pre_importing_phase_cases = array(
+	array(
+		'phase'   => 'preflight_open',
+		'cursors' => array(
+			array(),
+		),
+	),
+	array(
+		'phase'   => 'preflighting',
+		'cursors' => array(
+			array(
+				'zip_index' => 0,
+				'zip_total' => 10,
+			),
+			array(
+				'zip_index' => 10,
+				'zip_total' => 10,
+			),
+		),
+	),
+	array(
+		'phase'   => 'extracting',
+		'cursors' => array(
+			array(
+				'extract_index' => 0,
+				'extract_total' => 50,
+			),
+			array(
+				'extract_index' => 50,
+				'extract_total' => 50,
+			),
+		),
+	),
+	array(
+		'phase'   => 'validating_tree',
+		'cursors' => array(
+			array(),
+		),
+	),
+	array(
+		'phase'   => 'indexing_discover',
+		'cursors' => array(
+			array(),
+		),
+	),
+	array(
+		'phase'   => 'indexing_entries',
+		'cursors' => array(
+			array(
+				'json_file_index'  => 0,
+				'json_files_found' => 3,
+			),
+			array(
+				'json_file_index'  => 3,
+				'json_files_found' => 3,
+			),
+		),
+	),
+);
+foreach ( $pre_importing_phase_cases as $pre_case ) {
+	foreach ( $pre_case['cursors'] as $cursor_set ) {
+		$payload = Day_One_Importer_Job_State::status_response(
+			array_merge(
+				array(
+					'status' => 'running',
+					'phase'  => $pre_case['phase'],
+				),
+				$cursor_set
+			)
+		);
+		assert_true( $payload['progress_percent'] > 0 && $payload['progress_percent'] <= 10, 'Pre-importing phase ' . $pre_case['phase'] . ' reports a value in (0, 10].' );
+	}
+}
+
+// AC7: cleanup is strictly above end-of-importing value and below 100.
+$cleanup_payload                = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'running',
+		'phase'  => 'cleanup',
+	)
+);
+$end_of_importing_value         = $end_importing_payload['progress_percent'];
+assert_true( $cleanup_payload['progress_percent'] > $end_of_importing_value, 'Cleanup phase reports a value strictly greater than end of importing.' );
+assert_true( $cleanup_payload['progress_percent'] < 100 && $cleanup_payload['progress_percent'] <= 99, 'Cleanup phase reports a value strictly less than 100.' );
+
 $store = new Day_One_Importer_Job_Store();
 $token = $store->acquire_lock( 'lock-test', 'owner-a', 30 );
 assert_true( 'owner-a' === $token, 'Job lock can be acquired with an owner token.' );
