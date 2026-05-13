@@ -647,6 +647,19 @@ assert_true( is_array( $retried_while_locked ) && Day_One_Importer_Job_State::ST
 assert_true( $store->release_lock( $retry_job['id'], 'active-worker' ), 'Active worker lock released for retry race test.' );
 $store->delete_job( $retry_job['id'] );
 
+$cancel_job = $store->create_job( 7, sys_get_temp_dir() . '/day-one-cancel-run', sys_get_temp_dir() . '/day-one-cancel-run/day-one-export.zip', new Day_One_Importer_Results() );
+assert_true( is_array( $cancel_job ), 'Cancel preservation test job created.' );
+$cancel_job['status']        = Day_One_Importer_Job_State::STATUS_RUNNING;
+$cancel_job['phase']         = 'importing';
+$cancel_job['entries_total'] = 10;
+$cancel_job['entry_index']   = 4;
+$store->save_job( $cancel_job );
+$canceled_job = $store->cancel_job( $cancel_job['id'], 7 );
+assert_true( is_array( $canceled_job ) && 'importing' === $canceled_job['phase'], 'Cancel preserves the current phase instead of forcing Done.' );
+$canceled_status = Day_One_Importer_Job_State::status_response( $canceled_job );
+assert_true( 100 !== $canceled_status['progress_percent'], 'Cancel preserves computed progress instead of reporting 100 percent.' );
+$store->delete_job( $cancel_job['id'] );
+
 $content = Day_One_Importer_Content::convert_text_to_content( "# Heading\n\nParagraph with [gallery] and <script>alert(1)</script>.\n- item" );
 assert_true( false !== strpos( $content, '<!-- wp:heading {"level":1} -->' ), 'Markdown heading is serialized as a Heading block.' );
 assert_true( false !== strpos( $content, '<h1>Heading</h1>' ), 'Markdown heading markup is converted.' );

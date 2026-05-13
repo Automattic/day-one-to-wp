@@ -86,13 +86,14 @@ class Day_One_Importer_Admin {
 				'jobId'       => $job ? $job['id'] : '',
 				'countLabels' => self::count_labels(),
 				'labels'      => array(
-					'uploading'   => __( 'Queuing import…', 'day-one-importer' ),
-					'processing'  => __( 'Processing import…', 'day-one-importer' ),
-					'interrupted' => __( 'Connection interrupted. You can safely continue this job.', 'day-one-importer' ),
-					'continue'    => __( 'Retry / Continue', 'day-one-importer' ),
-					'cancel'      => __( 'Cancel import', 'day-one-importer' ),
-					'errors'      => __( 'Errors', 'day-one-importer' ),
-					'warnings'    => __( 'Warnings', 'day-one-importer' ),
+					'uploading'        => __( 'Queuing import…', 'day-one-importer' ),
+					'processing'       => __( 'Processing import…', 'day-one-importer' ),
+					'interrupted'      => __( 'Connection interrupted. You can safely continue this job.', 'day-one-importer' ),
+					'continue'         => __( 'Retry / Continue', 'day-one-importer' ),
+					'cancel'           => __( 'Cancel import', 'day-one-importer' ),
+					'errors'           => __( 'Errors', 'day-one-importer' ),
+					'warnings'         => __( 'Warnings', 'day-one-importer' ),
+					'progress_pending' => __( 'Progress will update as the job runs.', 'day-one-importer' ),
 				),
 			)
 		);
@@ -109,10 +110,15 @@ class Day_One_Importer_Admin {
 		}
 
 		$submission_results = null;
-		$request_method     = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
+		$queued_job          = null;
+		$request_method      = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified inside handle_submission() via check_admin_referer().
 		if ( 'POST' === $request_method && isset( $_POST['day_one_importer_submit'] ) ) {
 			$submission_results = $this->handle_submission();
+			if ( is_array( $submission_results ) ) {
+				$queued_job          = $submission_results;
+				$submission_results = null;
+			}
 		}
 
 		$store = new Day_One_Importer_Job_Store();
@@ -125,7 +131,7 @@ class Day_One_Importer_Admin {
 			self::render_results( $submission_results );
 		}
 
-		$this->render_job_panel();
+		$this->render_job_panel( $queued_job );
 		$this->render_intro();
 		$this->render_form();
 		echo '</div>';
@@ -134,7 +140,7 @@ class Day_One_Importer_Admin {
 	/**
 	 * Handle form submission.
 	 *
-	 * @return Day_One_Importer_Results|null Results on setup failure; exits on success.
+	 * @return Day_One_Importer_Results|array<string,mixed>|null Results on setup failure; queued job on success.
 	 */
 	private function handle_submission() {
 		check_admin_referer( self::NONCE_ACTION );
@@ -173,17 +179,7 @@ class Day_One_Importer_Admin {
 			return $results;
 		}
 
-		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'import'               => 'day-one',
-					'day_one_importer_job' => $job['id'],
-					'queued'               => 1,
-				),
-				admin_url( 'admin.php' )
-			)
-		);
-		exit;
+		return $job;
 	}
 
 	/**
@@ -205,13 +201,14 @@ class Day_One_Importer_Admin {
 	/**
 	 * Render the active/recent job panel.
 	 *
+	 * @param array<string,mixed>|null $job Recently queued job, if available.
 	 * @return void
 	 */
-	private function render_job_panel() {
+	private function render_job_panel( $job = null ) {
 		$store = new Day_One_Importer_Job_Store();
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Read-only job selection for display; sanitize_job_id() is the custom sanitizer.
 		$requested_job_id = isset( $_GET['day_one_importer_job'] ) ? Day_One_Importer_Job_Store::sanitize_job_id( wp_unslash( $_GET['day_one_importer_job'] ) ) : '';
-		$job              = $store->get_user_job( get_current_user_id(), $requested_job_id );
+		$job              = is_array( $job ) ? $job : $store->get_user_job( get_current_user_id(), $requested_job_id );
 		if ( ! $job ) {
 			return;
 		}

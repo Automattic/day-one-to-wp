@@ -105,6 +105,8 @@
 	}
 
 	function progressLabel( data ) {
+		var config = window.DayOneImporterJobs || {};
+		var labels = config.labels || {};
 		var progress = data.progress || {};
 		if ( data.phase === 'preflighting' && progress.zip_total ) {
 			return 'Checked ' + progress.zip_index + ' of ' + progress.zip_total + ' ZIP members.';
@@ -118,7 +120,7 @@
 		if ( data.phase === 'importing' && progress.entries_total ) {
 			return 'Imported ' + progress.entry_index + ' of ' + progress.entries_total + ' entries. Current media: ' + progress.current_media_index + ' of ' + progress.current_media_total + '.';
 		}
-		return data.phase_label || data.message || '';
+		return labels.progress_pending || 'Progress will update as the job runs.';
 	}
 
 	function updatePanel( data ) {
@@ -179,6 +181,17 @@
 		var labels = config.labels || {};
 		var jobId = config.jobId || ( document.getElementById( 'day-one-importer-job-panel' ) || {} ).dataset && ( document.getElementById( 'day-one-importer-job-panel' ) || {} ).dataset.jobId;
 		var stopped = false;
+
+		if ( jobId && window.history && window.history.replaceState && window.URL ) {
+			try {
+				var currentUrl = new window.URL( window.location.href );
+				if ( ! currentUrl.searchParams.get( 'day_one_importer_job' ) ) {
+					currentUrl.searchParams.set( 'day_one_importer_job', jobId );
+					currentUrl.searchParams.set( 'queued', '1' );
+					window.history.replaceState( null, '', currentUrl.toString() );
+				}
+			} catch ( error ) {}
+		}
 
 		if ( form ) {
 			form.addEventListener( 'submit', function ( event ) {

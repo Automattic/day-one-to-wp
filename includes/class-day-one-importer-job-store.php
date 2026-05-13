@@ -361,7 +361,6 @@ class Day_One_Importer_Job_Store {
 			}
 			$job['files_cleaned'] = true;
 			$job['status']        = Day_One_Importer_Job_State::STATUS_CANCELED;
-			$job['phase']         = 'done';
 			$this->save_job( $job );
 		} finally {
 			$this->release_lock( $job['id'], $lock );
