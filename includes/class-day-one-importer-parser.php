@@ -920,6 +920,7 @@ class Day_One_Importer_Parser {
 			'timeZone'             => isset( $raw_entry['timeZone'] ) && is_scalar( $raw_entry['timeZone'] ) ? day_one_importer_sanitize_text( $raw_entry['timeZone'] ) : '',
 			'text'                 => isset( $raw_entry['text'] ) && is_scalar( $raw_entry['text'] ) ? (string) $raw_entry['text'] : '',
 			'tags'                 => isset( $raw_entry['tags'] ) && is_array( $raw_entry['tags'] ) ? $raw_entry['tags'] : array(),
+			'journal'              => Day_One_Importer_Content::derive_journal_name( $raw_entry, $source_file ),
 			'photos'               => $photos,
 			'starred'              => ! empty( $raw_entry['starred'] ),
 			'isPinned'             => ! empty( $raw_entry['isPinned'] ),

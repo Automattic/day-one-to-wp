@@ -418,19 +418,20 @@ class Day_One_Importer_Admin {
 	 */
 	public static function count_labels() {
 		return array(
-			'json_files_found' => __( 'Journal JSON files found', 'day-one-importer' ),
-			'entries_found'    => __( 'Entries found', 'day-one-importer' ),
-			'posts_created'    => __( 'Posts created', 'day-one-importer' ),
-			'posts_skipped'    => __( 'Existing complete posts skipped', 'day-one-importer' ),
-			'posts_resumed'    => __( 'Incomplete posts resumed', 'day-one-importer' ),
-			'entries_failed'   => __( 'Entries failed', 'day-one-importer' ),
-			'tags_assigned'    => __( 'Entries with tags assigned', 'day-one-importer' ),
-			'media_found'      => __( 'Media items found', 'day-one-importer' ),
-			'media_imported'   => __( 'Media items imported', 'day-one-importer' ),
-			'media_reused'     => __( 'Media items reused', 'day-one-importer' ),
-			'media_missing'    => __( 'Media items missing', 'day-one-importer' ),
-			'media_unsupported'=> __( 'Media items unsupported', 'day-one-importer' ),
-			'media_failed'     => __( 'Media items failed', 'day-one-importer' ),
+			'json_files_found'    => __( 'Journal JSON files found', 'day-one-importer' ),
+			'entries_found'       => __( 'Entries found', 'day-one-importer' ),
+			'posts_created'       => __( 'Posts created', 'day-one-importer' ),
+			'posts_skipped'       => __( 'Existing complete posts skipped', 'day-one-importer' ),
+			'posts_resumed'       => __( 'Incomplete posts resumed', 'day-one-importer' ),
+			'entries_failed'      => __( 'Entries failed', 'day-one-importer' ),
+			'tags_assigned'       => __( 'Entries with tags assigned', 'day-one-importer' ),
+			'categories_assigned' => __( 'Entries with journal categories assigned', 'day-one-importer' ),
+			'media_found'         => __( 'Media items found', 'day-one-importer' ),
+			'media_imported'      => __( 'Media items imported', 'day-one-importer' ),
+			'media_reused'        => __( 'Media items reused', 'day-one-importer' ),
+			'media_missing'       => __( 'Media items missing', 'day-one-importer' ),
+			'media_unsupported'   => __( 'Media items unsupported', 'day-one-importer' ),
+			'media_failed'        => __( 'Media items failed', 'day-one-importer' ),
 		);
 	}
 

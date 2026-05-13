@@ -160,6 +160,52 @@ class Day_One_Importer_Content {
 	}
 
 	/**
+	 * Normalize a Day One journal name for category assignment.
+	 *
+	 * @param mixed $journal Raw journal name.
+	 * @return string
+	 */
+	public static function normalize_journal_name( $journal ) {
+		if ( ! is_scalar( $journal ) ) {
+			return '';
+		}
+
+		$journal = day_one_importer_sanitize_text( $journal );
+		return '' === $journal ? '' : $journal;
+	}
+
+	/**
+	 * Derive a journal name from a Day One entry or source JSON filename.
+	 *
+	 * @param array<string,mixed> $raw_entry Raw entry.
+	 * @param string              $source_file Source JSON file.
+	 * @return string
+	 */
+	public static function derive_journal_name( $raw_entry, $source_file ) {
+		if ( isset( $raw_entry['journalName'] ) ) {
+			$journal = self::normalize_journal_name( $raw_entry['journalName'] );
+			if ( '' !== $journal ) {
+				return $journal;
+			}
+		}
+
+		if ( isset( $raw_entry['journal'] ) ) {
+			if ( is_array( $raw_entry['journal'] ) && isset( $raw_entry['journal']['name'] ) ) {
+				$journal = self::normalize_journal_name( $raw_entry['journal']['name'] );
+			} else {
+				$journal = self::normalize_journal_name( $raw_entry['journal'] );
+			}
+			if ( '' !== $journal ) {
+				return $journal;
+			}
+		}
+
+		$basename = basename( (string) $source_file );
+		$name     = preg_replace( '/\.json$/i', '', $basename );
+		return self::normalize_journal_name( $name );
+	}
+
+	/**
 	 * Append an ordered imported image section.
 	 *
 	 * @param string $content Base content.

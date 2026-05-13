@@ -248,7 +248,8 @@ $imported_posts = get_posts(
 );
 
 day_one_importer_wp_env_assert( count( $imported_posts ) === $created, 'Created post count matches query count.' );
-$found_fixture_tag = false;
+$found_fixture_tag      = false;
+$found_fixture_category = false;
 foreach ( $imported_posts as $post_id ) {
 	$post_id = (int) $post_id;
 	day_one_importer_wp_env_assert( 'private' === get_post_status( $post_id ), 'Imported post is private.' );
@@ -316,9 +317,13 @@ foreach ( $imported_posts as $post_id ) {
 	if ( $using_default_zip && has_term( 'fictional', 'post_tag', $post_id ) ) {
 		$found_fixture_tag = true;
 	}
+	if ( $using_default_zip && has_term( 'Fictional Journal', 'category', $post_id ) ) {
+		$found_fixture_category = true;
+	}
 }
 if ( $using_default_zip ) {
 	day_one_importer_wp_env_assert( $found_fixture_tag, 'Expected fictional fixture tag exists on imported posts.' );
+	day_one_importer_wp_env_assert( $found_fixture_category, 'Expected fictional journal category exists on imported posts.' );
 }
 
 $second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );

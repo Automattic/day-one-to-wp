@@ -1,6 +1,6 @@
 # Day One Importer
 
-Day One Importer is a WordPress admin importer for Day One JSON exports. It creates one **private** WordPress post per Day One entry and attempts to preserve dates, tags, text, and supported photos.
+Day One Importer is a WordPress admin importer for Day One JSON exports. It creates one **private** WordPress post per Day One entry and attempts to preserve dates, journal categories, tags, text, and supported photos.
 
 ## Try in WordPress Playground
 
@@ -51,6 +51,7 @@ The results/status screen is designed to be privacy-safe: it reports counts, UUI
 - Posts are created with `private` status by default.
 - Day One `creationDate` is used for the WordPress post date when valid.
 - Day One tags are assigned as WordPress post tags.
+- Each Day One journal is assigned as a WordPress post category, using the journal JSON filename when the export does not provide an explicit journal name.
 - Day One text is imported conservatively as safe HTML. Raw HTML is escaped and shortcode-like text such as `[gallery]` is neutralized so it remains visible text rather than executing.
 - Supported photos are imported into the Media Library, attached to the imported post, and appended to the post content in Day One entry order when possible.
 

@@ -726,6 +726,10 @@ assert_true( strlen( $long_title ) <= 63, 'Long titles are shortened for admin r
 
 $tags = Day_One_Importer_Content::normalize_tags( array( 'Travel', 'travel', '<b>Food</b>', '' ) );
 assert_true( count( $tags ) === 2 && in_array( 'travel', array_map( 'strtolower', $tags ), true ), 'Tags are sanitized and deduplicated.' );
+$journal_from_field = Day_One_Importer_Content::derive_journal_name( array( 'journal' => array( 'name' => '<b>Travel</b>' ) ), '/tmp/Other.json' );
+assert_true( 'Travel' === $journal_from_field, 'Journal names can be derived from entry metadata.' );
+$journal_from_file = Day_One_Importer_Content::derive_journal_name( array(), '/tmp/Fictional Journal.json' );
+assert_true( 'Fictional Journal' === $journal_from_file, 'Journal names fall back to source JSON filenames.' );
 
 $date = Day_One_Importer_Content::parse_day_one_date( '2024-10-29T12:34:30Z' );
 assert_true( $date['valid'] && '2024-10-29 12:34:30' === $date['gmt'], 'ISO UTC dates parse to GMT.' );
@@ -846,6 +850,7 @@ assert_true( ! empty( $batch_index['done'] ) && 3 === $batch_job['entries_total'
 assert_true( $checkpoint_count >= 3, 'Batch parser checkpoints after safe manifest units.' );
 $manifest_entry = $parser->read_manifest_entry( $batch_job['manifest_path'], 0 );
 assert_true( is_array( $manifest_entry ) && 'FICTIONAL-SAMPLE-ENTRY-0001' === $manifest_entry['uuid'], 'Batch parser can read a manifest entry by cursor.' );
+assert_true( is_array( $manifest_entry ) && 'Fictional Journal' === $manifest_entry['journal'], 'Batch parser stores the source journal name for category assignment.' );
 Day_One_Importer_Cleanup::remove( dirname( $batch_job['manifest_path'] ) );
 
 $GLOBALS['day_one_importer_test_filters']['day_one_importer_batch_discovery_limit']    = static function () {

@@ -26,19 +26,20 @@ class Day_One_Importer_Results {
 	 * @var array<string,int>
 	 */
 	private $counts = array(
-		'json_files_found' => 0,
-		'entries_found'    => 0,
-		'posts_created'    => 0,
-		'posts_skipped'    => 0,
-		'posts_resumed'    => 0,
-		'entries_failed'   => 0,
-		'tags_assigned'    => 0,
-		'media_found'      => 0,
-		'media_imported'   => 0,
-		'media_reused'     => 0,
-		'media_missing'    => 0,
-		'media_failed'     => 0,
-		'media_unsupported'=> 0,
+		'json_files_found'    => 0,
+		'entries_found'       => 0,
+		'posts_created'       => 0,
+		'posts_skipped'       => 0,
+		'posts_resumed'       => 0,
+		'entries_failed'      => 0,
+		'tags_assigned'       => 0,
+		'categories_assigned' => 0,
+		'media_found'         => 0,
+		'media_imported'      => 0,
+		'media_reused'        => 0,
+		'media_missing'       => 0,
+		'media_failed'        => 0,
+		'media_unsupported'   => 0,
 	);
 
 	/**

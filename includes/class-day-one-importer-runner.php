@@ -18,7 +18,7 @@ class Day_One_Importer_Runner {
 	 *
 	 * @var string
 	 */
-	const IMPORT_SCHEMA_VERSION = '4';
+	const IMPORT_SCHEMA_VERSION = '5';
 
 	/**
 	 * Run import for an uploaded ZIP file.
@@ -256,6 +256,7 @@ class Day_One_Importer_Runner {
 
 		$this->update_entry_meta( (int) $post_id, $entry );
 		$this->assign_tags( (int) $post_id, $entry, $uuid, $results );
+		$this->assign_journal_category( (int) $post_id, $entry, $uuid, $results );
 
 		return array(
 			'status'       => 'ready',
@@ -423,6 +424,9 @@ class Day_One_Importer_Runner {
 		if ( ! empty( $entry['source_file'] ) ) {
 			update_post_meta( $post_id, '_day_one_source_file', day_one_importer_sanitize_text( $entry['source_file'] ) );
 		}
+		if ( ! empty( $entry['journal'] ) ) {
+			update_post_meta( $post_id, '_day_one_journal', Day_One_Importer_Content::normalize_journal_name( $entry['journal'] ) );
+		}
 		if ( ! empty( $entry['creationDeviceType'] ) ) {
 			update_post_meta( $post_id, '_day_one_creation_device_type', day_one_importer_sanitize_text( $entry['creationDeviceType'] ) );
 		}
@@ -459,5 +463,56 @@ class Day_One_Importer_Runner {
 		}
 
 		$results->increment( 'tags_assigned' );
+	}
+
+	/**
+	 * Assign the source Day One journal as a WordPress category.
+	 *
+	 * @param int                       $post_id Post ID.
+	 * @param array<string,mixed>       $entry Entry.
+	 * @param string                    $uuid UUID.
+	 * @param Day_One_Importer_Results  $results Results.
+	 * @return void
+	 */
+	private function assign_journal_category( $post_id, $entry, $uuid, Day_One_Importer_Results $results ) {
+		$journal = Day_One_Importer_Content::normalize_journal_name( isset( $entry['journal'] ) ? $entry['journal'] : '' );
+		if ( '' === $journal ) {
+			return;
+		}
+
+		$term = term_exists( $journal, 'category' );
+		if ( 0 === $term || null === $term ) {
+			$term = wp_insert_term( $journal, 'category' );
+		}
+
+		if ( is_wp_error( $term ) ) {
+			$results->add_warning(
+				sprintf(
+					/* translators: %s: Day One entry UUID. */
+					__( 'Journal category could not be created for UUID %s.', 'day-one-importer' ),
+					$uuid
+				)
+			);
+			return;
+		}
+
+		$term_id = is_array( $term ) && isset( $term['term_id'] ) ? (int) $term['term_id'] : (int) $term;
+		if ( $term_id <= 0 ) {
+			return;
+		}
+
+		$set = wp_set_post_terms( $post_id, array( $term_id ), 'category', false );
+		if ( is_wp_error( $set ) ) {
+			$results->add_warning(
+				sprintf(
+					/* translators: %s: Day One entry UUID. */
+					__( 'Journal category could not be assigned for UUID %s.', 'day-one-importer' ),
+					$uuid
+				)
+			);
+			return;
+		}
+
+		$results->increment( 'categories_assigned' );
 	}
 }
