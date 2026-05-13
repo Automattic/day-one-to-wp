@@ -561,6 +561,65 @@ assert_true( is_int( $impossible_payload['progress_percent'] ) && $impossible_pa
 assert_true( is_int( $missing_keys_payload['progress_percent'] ) && $missing_keys_payload['progress_percent'] >= 0 && $missing_keys_payload['progress_percent'] <= 100, 'Missing cursor keys still produce a bounded progress percentage.' );
 assert_true( is_int( $overshoot_payload['progress_percent'] ) && $overshoot_payload['progress_percent'] >= 0 && $overshoot_payload['progress_percent'] <= 100, 'Cursor overshoot is clamped within bounds.' );
 
+// AC15: narrowed status/phase integer matrix.
+$matrix_running_phases = array(
+	'uploaded',
+	'preflight_open',
+	'preflighting',
+	'extracting',
+	'validating_tree',
+	'indexing_discover',
+	'indexing_entries',
+	'importing',
+	'cleanup',
+	'done',
+);
+foreach ( $matrix_running_phases as $matrix_phase ) {
+	$matrix_payload = Day_One_Importer_Job_State::status_response(
+		array(
+			'status' => 'running',
+			'phase'  => $matrix_phase,
+		)
+	);
+	assert_true( is_int( $matrix_payload['progress_percent'] ) && $matrix_payload['progress_percent'] >= 0 && $matrix_payload['progress_percent'] <= 100, 'status_response returns an int percent in [0, 100] for (running, ' . $matrix_phase . ').' );
+}
+
+$matrix_completed_done = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'completed',
+		'phase'  => 'done',
+	)
+);
+assert_true( 100 === $matrix_completed_done['progress_percent'], 'status_response returns 100 for (completed, done).' );
+
+$matrix_failed_importing = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'failed',
+		'phase'         => 'importing',
+		'entries_total' => 3011,
+		'entry_index'   => 1000,
+	)
+);
+assert_true( is_int( $matrix_failed_importing['progress_percent'] ) && 100 !== $matrix_failed_importing['progress_percent'] && $matrix_failed_importing['progress_percent'] >= 20 && $matrix_failed_importing['progress_percent'] <= 50, 'status_response returns the computed value for (failed, importing).' );
+
+$matrix_canceled_importing = Day_One_Importer_Job_State::status_response(
+	array(
+		'status'        => 'canceled',
+		'phase'         => 'importing',
+		'entries_total' => 3011,
+		'entry_index'   => 1000,
+	)
+);
+assert_true( is_int( $matrix_canceled_importing['progress_percent'] ) && 100 !== $matrix_canceled_importing['progress_percent'] && $matrix_canceled_importing['progress_percent'] >= 20 && $matrix_canceled_importing['progress_percent'] <= 50, 'status_response returns the computed value for (canceled, importing).' );
+
+$matrix_queued_uploaded = Day_One_Importer_Job_State::status_response(
+	array(
+		'status' => 'queued',
+		'phase'  => 'uploaded',
+	)
+);
+assert_true( 0 === $matrix_queued_uploaded['progress_percent'], 'status_response returns 0 for (queued, uploaded).' );
+
 $store = new Day_One_Importer_Job_Store();
 $token = $store->acquire_lock( 'lock-test', 'owner-a', 30 );
 assert_true( 'owner-a' === $token, 'Job lock can be acquired with an owner token.' );
