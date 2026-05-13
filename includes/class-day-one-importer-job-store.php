@@ -584,13 +584,15 @@ class Day_One_Importer_Job_Store {
 				return false;
 			}
 
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic compare-and-delete for the wp_options-backed lock; caching would defeat the distributed lock guarantee.
 			$deleted = $wpdb->query(
 				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- {$wpdb->options} table name interpolation is intentional.
 					"DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
 					$name,
 					self::serialize_option_value( $expected )
 				)
-			); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- {$wpdb->options} table name interpolation is intentional; atomic CAS delete on wp_options; caching would defeat the distributed lock guarantee.
+			);
 
 			if ( 1 === (int) $deleted ) {
 				self::flush_option_cache( $name );
@@ -623,14 +625,16 @@ class Day_One_Importer_Job_Store {
 				return false;
 			}
 
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic compare-and-update for the wp_options-backed lock; caching would defeat the distributed lock guarantee.
 			$updated = $wpdb->query(
 				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- {$wpdb->options} table name interpolation is intentional.
 					"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
 					self::serialize_option_value( $new_value ),
 					$name,
 					self::serialize_option_value( $expected )
 				)
-			); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- {$wpdb->options} table name interpolation is intentional; atomic CAS update on wp_options; caching would defeat the distributed lock guarantee.
+			);
 
 			if ( 1 === (int) $updated ) {
 				self::flush_option_cache( $name );
