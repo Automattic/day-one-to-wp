@@ -366,6 +366,130 @@ $end_of_importing_value         = $end_importing_payload['progress_percent'];
 assert_true( $cleanup_payload['progress_percent'] > $end_of_importing_value, 'Cleanup phase reports a value strictly greater than end of importing.' );
 assert_true( $cleanup_payload['progress_percent'] < 100 && $cleanup_payload['progress_percent'] <= 99, 'Cleanup phase reports a value strictly less than 100.' );
 
+// AC8: monotonicity within importing for fixed entries_total.
+$monotonic_total = 20;
+$prev_monotonic  = -1;
+for ( $monotonic_i = 0; $monotonic_i <= $monotonic_total; $monotonic_i++ ) {
+	$step_payload = Day_One_Importer_Job_State::status_response(
+		array(
+			'status'              => 'running',
+			'phase'               => 'importing',
+			'entries_total'       => $monotonic_total,
+			'entry_index'         => $monotonic_i,
+			'current_media_index' => 0,
+			'current_media_total' => 0,
+		)
+	);
+	assert_true( $step_payload['progress_percent'] >= $prev_monotonic, 'Progress percentage is non-decreasing within importing at index ' . $monotonic_i . '.' );
+	$prev_monotonic = $step_payload['progress_percent'];
+}
+
+// AC9 / AC10: cross-phase monotonicity walking the happy path.
+$happy_path_walk = array(
+	array(
+		'label'   => 'uploaded',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'uploaded',
+		),
+	),
+	array(
+		'label'   => 'preflight_open',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'preflight_open',
+		),
+	),
+	array(
+		'label'   => 'preflighting (cursor=total)',
+		'payload' => array(
+			'status'    => 'running',
+			'phase'     => 'preflighting',
+			'zip_index' => 8,
+			'zip_total' => 8,
+		),
+	),
+	array(
+		'label'   => 'extracting (cursor=total)',
+		'payload' => array(
+			'status'        => 'running',
+			'phase'         => 'extracting',
+			'extract_index' => 50,
+			'extract_total' => 50,
+		),
+	),
+	array(
+		'label'   => 'validating_tree',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'validating_tree',
+		),
+	),
+	array(
+		'label'   => 'indexing_discover',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'indexing_discover',
+		),
+	),
+	array(
+		'label'   => 'indexing_entries (cursor=total)',
+		'payload' => array(
+			'status'           => 'running',
+			'phase'            => 'indexing_entries',
+			'json_file_index'  => 3,
+			'json_files_found' => 3,
+		),
+	),
+	array(
+		'label'   => 'importing (entry_index=0)',
+		'payload' => array(
+			'status'              => 'running',
+			'phase'               => 'importing',
+			'entries_total'       => 3011,
+			'entry_index'         => 0,
+			'current_media_index' => 0,
+			'current_media_total' => 0,
+		),
+	),
+	array(
+		'label'   => 'importing (entry_index=3011)',
+		'payload' => array(
+			'status'              => 'running',
+			'phase'               => 'importing',
+			'entries_total'       => 3011,
+			'entry_index'         => 3011,
+			'current_media_index' => 0,
+			'current_media_total' => 0,
+		),
+	),
+	array(
+		'label'   => 'cleanup',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'cleanup',
+		),
+	),
+	array(
+		'label'   => 'done',
+		'payload' => array(
+			'status' => 'running',
+			'phase'  => 'done',
+		),
+	),
+);
+$prev_happy_value = -1;
+$happy_values     = array();
+foreach ( $happy_path_walk as $walk_step ) {
+	$walk_payload                          = Day_One_Importer_Job_State::status_response( $walk_step['payload'] );
+	$happy_values[ $walk_step['label'] ]   = $walk_payload['progress_percent'];
+	assert_true( $walk_payload['progress_percent'] >= $prev_happy_value, 'Progress percentage is non-decreasing across happy-path transition into ' . $walk_step['label'] . '.' );
+	$prev_happy_value = $walk_payload['progress_percent'];
+}
+
+// AC10: explicit boundary between end-of-indexing_entries and start-of-importing.
+assert_true( $happy_values['indexing_entries (cursor=total)'] <= $happy_values['importing (entry_index=0)'], 'End of indexing_entries is <= start of importing.' );
+
 $store = new Day_One_Importer_Job_Store();
 $token = $store->acquire_lock( 'lock-test', 'owner-a', 30 );
 assert_true( 'owner-a' === $token, 'Job lock can be acquired with an owner token.' );
