@@ -19,6 +19,8 @@ class Day_One_Importer_Job_Store {
 	const LOCK_PREFIX = 'day_one_importer_job_lock_';
 	/** Per-user active job pointer prefix. */
 	const USER_ACTIVE_PREFIX = 'day_one_importer_user_active_';
+	/** Option storing plugin-created job and lock option names for cleanup. */
+	const OPTION_INDEX = 'day_one_importer_option_index';
 	/** Cron hook used to advance jobs. */
 	const CRON_HOOK = 'day_one_importer_process_job';
 
@@ -528,13 +530,18 @@ class Day_One_Importer_Job_Store {
 	 */
 	private static function option_add( $name, $value ) {
 		if ( function_exists( 'add_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			return (bool) add_option( $name, $value, '', 'no' );
+			$added = (bool) add_option( $name, $value, '', 'no' );
+			if ( $added ) {
+				self::track_option_name( $name );
+			}
+			return $added;
 		}
 
 		if ( array_key_exists( $name, self::$test_options ) ) {
 			return false;
 		}
 		self::$test_options[ $name ] = $value;
+		self::track_option_name( $name );
 		return true;
 	}
 
@@ -562,11 +569,18 @@ class Day_One_Importer_Job_Store {
 	 */
 	private static function option_delete( $name ) {
 		if ( function_exists( 'delete_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			return (bool) delete_option( $name );
+			$deleted = (bool) delete_option( $name );
+			if ( $deleted ) {
+				self::untrack_option_name( $name );
+			}
+			return $deleted;
 		}
 
 		$exists = array_key_exists( $name, self::$test_options );
 		unset( self::$test_options[ $name ] );
+		if ( $exists ) {
+			self::untrack_option_name( $name );
+		}
 		return $exists;
 	}
 
@@ -579,35 +593,19 @@ class Day_One_Importer_Job_Store {
 	 */
 	private static function option_delete_if_value( $name, $expected ) {
 		if ( function_exists( 'get_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			global $wpdb;
-			if ( ! $wpdb ) {
+			$current = self::option_get( $name );
+			if ( $current !== $expected ) {
 				return false;
 			}
 
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic compare-and-delete for the wp_options-backed lock; caching would defeat the distributed lock guarantee.
-			$deleted = $wpdb->query(
-				$wpdb->prepare(
-					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- {$wpdb->options} table name interpolation is intentional.
-					"DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
-					$name,
-					self::serialize_option_value( $expected )
-				)
-			);
-
-			if ( 1 === (int) $deleted ) {
-				self::flush_option_cache( $name );
-				return true;
-			}
-
-			return false;
+			return self::option_delete( $name );
 		}
 
 		if ( ! array_key_exists( $name, self::$test_options ) || self::$test_options[ $name ] !== $expected ) {
 			return false;
 		}
-		unset( self::$test_options[ $name ] );
 
-		return true;
+		return self::option_delete( $name );
 	}
 
 	/**
@@ -620,28 +618,12 @@ class Day_One_Importer_Job_Store {
 	 */
 	private static function option_update_if_value( $name, $expected, $new_value ) {
 		if ( function_exists( 'get_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			global $wpdb;
-			if ( ! $wpdb ) {
+			$current = self::option_get( $name );
+			if ( $current !== $expected ) {
 				return false;
 			}
 
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic compare-and-update for the wp_options-backed lock; caching would defeat the distributed lock guarantee.
-			$updated = $wpdb->query(
-				$wpdb->prepare(
-					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- {$wpdb->options} table name interpolation is intentional.
-					"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
-					self::serialize_option_value( $new_value ),
-					$name,
-					self::serialize_option_value( $expected )
-				)
-			);
-
-			if ( 1 === (int) $updated ) {
-				self::flush_option_cache( $name );
-				return true;
-			}
-
-			return false;
+			return self::option_update( $name, $new_value );
 		}
 
 		if ( ! array_key_exists( $name, self::$test_options ) || self::$test_options[ $name ] !== $expected ) {
@@ -653,31 +635,65 @@ class Day_One_Importer_Job_Store {
 	}
 
 	/**
-	 * Flush WordPress option caches after direct SQL mutations.
+	 * Track a plugin-created option so cleanup can discover it without SQL scans.
 	 *
 	 * @param string $name Option name.
 	 * @return void
 	 */
-	private static function flush_option_cache( $name ) {
-		if ( function_exists( 'wp_cache_delete' ) ) {
-			wp_cache_delete( $name, 'options' );
-			wp_cache_delete( 'alloptions', 'options' );
-			wp_cache_delete( 'notoptions', 'options' );
+	private static function track_option_name( $name ) {
+		if ( 0 !== strpos( $name, self::JOB_PREFIX ) && 0 !== strpos( $name, self::LOCK_PREFIX ) ) {
+			return;
 		}
+
+		$names = self::get_tracked_option_names();
+		if ( in_array( $name, $names, true ) ) {
+			return;
+		}
+
+		$names[] = $name;
+		self::update_tracked_option_names( $names );
 	}
 
 	/**
-	 * Serialize an option value the same way WordPress stores it.
+	 * Remove an option from the cleanup discovery index.
 	 *
-	 * @param mixed $value Value.
-	 * @return string
+	 * @param string $name Option name.
+	 * @return void
 	 */
-	private static function serialize_option_value( $value ) {
-		if ( function_exists( 'maybe_serialize' ) ) {
-			return maybe_serialize( $value );
+	private static function untrack_option_name( $name ) {
+		$names = array_values( array_diff( self::get_tracked_option_names(), array( $name ) ) );
+		self::update_tracked_option_names( $names );
+	}
+
+	/**
+	 * Get tracked plugin option names.
+	 *
+	 * @return string[]
+	 */
+	private static function get_tracked_option_names() {
+		if ( function_exists( 'get_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+			$names = get_option( self::OPTION_INDEX, array() );
+		} else {
+			$names = array_key_exists( self::OPTION_INDEX, self::$test_options ) ? self::$test_options[ self::OPTION_INDEX ] : array();
 		}
 
-		return is_array( $value ) || is_object( $value ) ? serialize( $value ) : (string) $value;
+		return is_array( $names ) ? array_values( array_filter( $names, 'is_string' ) ) : array();
+	}
+
+	/**
+	 * Persist tracked plugin option names.
+	 *
+	 * @param string[] $names Option names.
+	 * @return void
+	 */
+	private static function update_tracked_option_names( $names ) {
+		$names = array_values( array_unique( array_filter( $names, 'is_string' ) ) );
+		if ( function_exists( 'update_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+			update_option( self::OPTION_INDEX, $names, false );
+			return;
+		}
+
+		self::$test_options[ self::OPTION_INDEX ] = $names;
 	}
 
 	/**
@@ -687,23 +703,18 @@ class Day_One_Importer_Job_Store {
 	 * @return string[]
 	 */
 	private static function list_option_names( $prefix ) {
-		if ( function_exists( 'get_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			global $wpdb;
-			if ( ! $wpdb ) {
-				return array();
-			}
-
-			$like = $wpdb->esc_like( $prefix ) . '%';
-			return $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- {$wpdb->options} table name interpolation is intentional; prefix-scan over wp_options for lock keys; no get_option() equivalent and caching would lag.
+		$names = self::get_tracked_option_names();
+		if ( defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+			$names = array_unique( array_merge( $names, array_keys( self::$test_options ) ) );
 		}
 
-		$names = array();
-		foreach ( array_keys( self::$test_options ) as $name ) {
-			if ( 0 === strpos( $name, $prefix ) ) {
-				$names[] = $name;
+		$matches = array();
+		foreach ( $names as $name ) {
+			if ( is_string( $name ) && 0 === strpos( $name, $prefix ) && null !== self::option_get( $name ) ) {
+				$matches[] = $name;
 			}
 		}
 
-		return $names;
+		return $matches;
 	}
 }
