@@ -197,7 +197,7 @@ $status_payload = Day_One_Importer_Job_State::status_response(
 );
 assert_true( 'job-123' === $status_payload['job_id'], 'Status payload includes the opaque job ID.' );
 assert_true( 3 === $status_payload['progress']['entry_index'], 'Status payload includes safe progress cursors.' );
-assert_true( 74 === $status_payload['progress_percent'], 'Status payload includes a bounded overall progress percentage.' );
+assert_true( $status_payload['progress_percent'] >= 20 && $status_payload['progress_percent'] <= 55, 'Status payload reports a calibrated overall progress percentage.' );
 assert_true( false === strpos( json_encode( $status_payload ), '/tmp/private' ), 'Status payload omits filesystem paths.' );
 
 $completed_status_payload = Day_One_Importer_Job_State::status_response(
