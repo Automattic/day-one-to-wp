@@ -130,6 +130,10 @@
 			return;
 		}
 
+		if ( data.job_id && panel.dataset ) {
+			panel.dataset.jobId = data.job_id;
+		}
+
 		panel.classList.remove( 'notice-info', 'notice-success', 'notice-warning', 'notice-error' );
 		if ( data.status === 'completed' ) {
 			panel.classList.add( data.warnings && data.warnings.length ? 'notice-warning' : 'notice-success' );
@@ -169,6 +173,23 @@
 		if ( cancel ) {
 			cancel.disabled = !! data.is_terminal;
 		}
+	}
+
+	function resetPanelForUpload( message ) {
+		var config = window.DayOneImporterJobs || {};
+		var labels = config.labels || {};
+		updatePanel( {
+			status: 'queued',
+			phase: 'uploaded',
+			phase_label: labels.uploading || 'Queuing import…',
+			message: message || labels.uploading || 'Queuing import…',
+			progress_percent: 0,
+			counts: {},
+			warnings: [],
+			errors: [],
+			can_retry: false,
+			is_terminal: true,
+		} );
 	}
 
 	ready( function () {
@@ -218,6 +239,8 @@
 				if ( statusMessage ) {
 					statusMessage.textContent = statusRegion && statusRegion.dataset.startedMessage ? statusRegion.dataset.startedMessage : ( labels.uploading || 'Queuing import…' );
 				}
+
+				resetPanelForUpload( statusMessage ? statusMessage.textContent : ( labels.uploading || 'Queuing import…' ) );
 
 				if ( spinner ) {
 					spinner.classList.add( 'is-active' );

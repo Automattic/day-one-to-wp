@@ -20,7 +20,7 @@ Use this checklist on a local or staging WordPress site before relying on the im
 6. In browser developer tools or server logs, confirm each processing request returns promptly rather than remaining open until all entries/media are finished.
 7. Temporarily stop browser polling after a job is queued and trigger WP-Cron; confirm cron can advance or finish the job as a fallback.
 8. Confirm the status panel shows phase, progress, counters, warnings/errors, final state, and Retry/Continue and Cancel controls. Confirm Retry/Continue is disabled while the job is actively running and re-enabled only when a queued or failed job can be continued.
-9. Cancel the current job, upload the ZIP again from the same page, and confirm the current import panel and browser URL switch to the newly uploaded job rather than continuing to poll the canceled job.
+9. Cancel the current job, upload the ZIP again from the same page, and confirm the current import panel immediately resets to a queuing state, then the panel and browser URL switch to the newly uploaded job rather than continuing to poll the canceled job.
 10. Confirm the displayed `N% complete` is consistent with the "Imported X of Y entries. Current media: A of B." detail line during the `importing` phase — for a large export the percentage should track entries imported rather than jumping to roughly 65% once preflight, extract, and indexing finish.
 11. Confirm status output does **not** include private journal text, raw JSON, local filesystem paths, or media previews.
 
