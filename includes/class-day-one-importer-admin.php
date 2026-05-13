@@ -179,6 +179,23 @@ class Day_One_Importer_Admin {
 			return $results;
 		}
 
+		// Reload the importer screen at the new job's URL so the cached job pointer,
+		// enqueued config, and rendered panel are not derived from a previous (canceled)
+		// job that was still active when this request started.
+		if ( ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+			wp_safe_redirect(
+				add_query_arg(
+					array(
+						'import'               => 'day-one',
+						'day_one_importer_job' => $job['id'],
+						'queued'               => 1,
+					),
+					admin_url( 'admin.php' )
+				)
+			);
+			exit;
+		}
+
 		return $job;
 	}
 
