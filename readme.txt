@@ -1,5 +1,5 @@
 === Day One Importer ===
-Contributors: cbravobernal
+Contributors: automattic, cbravobernal
 Tags: import, importer, day-one, journal, privacy
 Requires at least: 6.4
 Tested up to: 6.9
@@ -13,7 +13,7 @@ Import Day One JSON export ZIPs as private WordPress posts with journal categori
 
 == Description ==
 
-Day One Importer adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, and supported photos.
+Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, and supported photos.
 
 The importer is designed for local or private archive migration workflows:
 
