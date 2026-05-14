@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.0
+Stable tag: 0.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 
 == Changelog ==
 
+= 0.2.1 =
+* Move the upload submission dispatcher to `admin_init` so the post-upload `wp_safe_redirect()` runs before `admin-header.php` emits headers. Previously the redirect failed silently from inside the importer screen callback, leaving the page showing the prior canceled job instead of the freshly queued one. Also remove the redundant `#day-one-importer-status` notice under the form and suppress the upload panel's phase and "Progress will update as the job runs." sub-labels during the ZIP upload.
+
 = 0.2.0 =
 * Fix the blank importer screen after a successful upload by redirecting to `import.php` instead of `admin.php`, which is the dispatcher that `register_importer()` uses.
 * Upload the export ZIP in the background and show real-time upload percentage in the job panel; the form, intro copy, and panel remain on screen for the entire upload instead of blanking during navigation.
@@ -83,6 +86,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.1 =
+Fixes the post-upload screen still showing the previously canceled job instead of the new one by dispatching the upload on `admin_init` so the redirect actually runs.
 
 = 0.2.0 =
 Fixes the post-upload blank screen and adds a live upload progress percentage to the import job panel.

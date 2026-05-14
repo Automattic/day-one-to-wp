@@ -27,7 +27,62 @@ class Day_One_Importer_Admin {
 	 */
 	public function init() {
 		add_action( 'admin_init', array( $this, 'register_importer' ) );
+		// Priority 20 so register_importer (default 10) runs first; submission dispatcher runs before admin-header.php emits headers, letting wp_safe_redirect actually fire.
+		add_action( 'admin_init', array( $this, 'maybe_dispatch_submission' ), 20 );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+	}
+
+	/**
+	 * Pending submission results carried from admin_init into render_importer.
+	 *
+	 * @var Day_One_Importer_Results|null
+	 */
+	private $pending_results = null;
+
+	/**
+	 * Pending queued job carried from admin_init into render_importer.
+	 *
+	 * @var array<string,mixed>|null
+	 */
+	private $pending_queued_job = null;
+
+	/**
+	 * Whether the submission was already handled this request.
+	 *
+	 * @var bool
+	 */
+	private $submission_handled = false;
+
+	/**
+	 * Detect importer POST early so wp_safe_redirect can fire before admin-header.php emits headers.
+	 *
+	 * @return void
+	 */
+	public function maybe_dispatch_submission() {
+		if ( $this->submission_handled ) {
+			return;
+		}
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
+		if ( 'POST' !== $request_method ) {
+			return;
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Read-only screen routing check; nonce verified inside handle_submission().
+		$importer = isset( $_GET['import'] ) ? sanitize_key( wp_unslash( $_GET['import'] ) ) : '';
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Read-only screen routing check; nonce verified inside handle_submission().
+		if ( 'day-one' !== $importer || ! isset( $_POST['day_one_importer_submit'] ) ) {
+			return;
+		}
+		if ( ! $this->current_user_can_import() ) {
+			return;
+		}
+
+		$this->submission_handled = true;
+		$outcome                  = $this->handle_submission();
+		if ( is_array( $outcome ) ) {
+			$this->pending_queued_job = $outcome;
+		} elseif ( $outcome instanceof Day_One_Importer_Results ) {
+			$this->pending_results = $outcome;
+		}
 	}
 
 	/**
@@ -113,17 +168,8 @@ class Day_One_Importer_Admin {
 			wp_die( esc_html__( 'You do not have permission to import Day One exports.', 'day-one-importer' ) );
 		}
 
-		$submission_results = null;
-		$queued_job          = null;
-		$request_method      = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified inside handle_submission() via check_admin_referer().
-		if ( 'POST' === $request_method && isset( $_POST['day_one_importer_submit'] ) ) {
-			$submission_results = $this->handle_submission();
-			if ( is_array( $submission_results ) ) {
-				$queued_job          = $submission_results;
-				$submission_results = null;
-			}
-		}
+		$submission_results = $this->pending_results;
+		$queued_job         = $this->pending_queued_job;
 
 		$store = new Day_One_Importer_Job_Store();
 		$store->cleanup_stale_jobs();
@@ -388,12 +434,6 @@ class Day_One_Importer_Admin {
 				</tr>
 			</table>
 			<p class="description"><?php esc_html_e( 'After submitting, the ZIP is queued quickly and the browser advances the import in short requests. You can refresh and continue the same job safely.', 'day-one-importer' ); ?></p>
-			<div id="day-one-importer-status" class="notice notice-info inline screen-reader-text" role="status" aria-live="polite" aria-atomic="true" data-running-label="<?php echo esc_attr__( 'Queuing…', 'day-one-importer' ); ?>" data-started-message="<?php echo esc_attr__( 'Upload submitted. The import job is being queued.', 'day-one-importer' ); ?>">
-				<p>
-					<span class="spinner" aria-hidden="true"></span>
-					<span class="day-one-importer-status-message"></span>
-				</p>
-			</div>
 			<?php submit_button( __( 'Import Day One export', 'day-one-importer' ), 'primary', 'day_one_importer_submit_button' ); ?>
 		</form>
 		<?php

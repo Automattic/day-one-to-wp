@@ -186,7 +186,7 @@
 		updatePanel( {
 			status: 'queued',
 			phase: 'uploaded',
-			phase_label: labels.uploading || 'Queuing import…',
+			phase_label: '',
 			message: message || labels.uploading || 'Queuing import…',
 			progress_percent: 0,
 			counts: {},
@@ -195,14 +195,13 @@
 			can_retry: false,
 			is_terminal: true,
 		} );
+		// Suppress the generic "Progress will update as the job runs." sub-label so the panel only shows the upload percentage line.
+		text( '#day-one-importer-job-panel .day-one-importer-job-progress', '' );
 	}
 
 	ready( function () {
 		var form = document.getElementById( 'day-one-importer-form' );
 		var submitButton = document.getElementById( 'day_one_importer_submit_button' );
-		var statusRegion = document.getElementById( 'day-one-importer-status' );
-		var statusMessage = statusRegion ? statusRegion.querySelector( '.day-one-importer-status-message' ) : null;
-		var spinner = statusRegion ? statusRegion.querySelector( '.spinner' ) : null;
 		var submitted = false;
 		var config = window.DayOneImporterJobs || {};
 		var labels = config.labels || {};
