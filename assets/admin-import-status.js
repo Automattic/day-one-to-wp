@@ -258,30 +258,17 @@
 				submitted = true;
 				stopped = true;
 
-				if ( statusRegion ) {
-					statusRegion.classList.remove( 'screen-reader-text' );
-					statusRegion.removeAttribute( 'hidden' );
-					statusRegion.setAttribute( 'aria-busy', 'true' );
-				}
-
 				var uploadingLabel = labels.uploading_zip || 'Uploading ZIP…';
-				if ( statusMessage ) {
-					statusMessage.textContent = uploadingLabel + ' 0%';
-				}
 
 				revealPanel();
 				resetPanelForUpload( uploadingLabel + ' 0%' );
 				setPanelPercent( 0 );
 
-				if ( spinner ) {
-					spinner.classList.add( 'is-active' );
-				}
-
 				if ( submitButton ) {
-					var runningLabel = statusRegion && statusRegion.dataset.runningLabel ? statusRegion.dataset.runningLabel : uploadingLabel;
-					if ( runningLabel && 'value' in submitButton ) {
+					var runningLabel = uploadingLabel;
+					if ( 'value' in submitButton ) {
 						submitButton.value = runningLabel;
-					} else if ( runningLabel ) {
+					} else {
 						submitButton.textContent = runningLabel;
 					}
 					submitButton.disabled = true;
@@ -299,17 +286,11 @@
 					var pct = Math.round( ( ev.loaded / ev.total ) * 100 );
 					setPanelPercent( pct );
 					text( '#day-one-importer-job-panel .day-one-importer-job-message', uploadingLabel + ' ' + pct + '%' );
-					if ( statusMessage ) {
-						statusMessage.textContent = uploadingLabel + ' ' + pct + '%';
-					}
 				} );
 				xhr.upload.addEventListener( 'load', function () {
 					setPanelPercent( 100 );
 					var queuingLabel = labels.queuing || labels.uploading || 'Queuing import…';
 					text( '#day-one-importer-job-panel .day-one-importer-job-message', queuingLabel );
-					if ( statusMessage ) {
-						statusMessage.textContent = queuingLabel;
-					}
 				} );
 				xhr.addEventListener( 'load', function () {
 					if ( xhr.status >= 200 && xhr.status < 400 ) {

@@ -66,7 +66,7 @@ class Day_One_Importer_Admin {
 		if ( 'POST' !== $request_method ) {
 			return;
 		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Read-only screen routing check; nonce verified inside handle_submission().
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only screen routing check; nonce verified inside handle_submission().
 		$importer = isset( $_GET['import'] ) ? sanitize_key( wp_unslash( $_GET['import'] ) ) : '';
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Read-only screen routing check; nonce verified inside handle_submission().
 		if ( 'day-one' !== $importer || ! isset( $_POST['day_one_importer_submit'] ) ) {
@@ -145,6 +145,7 @@ class Day_One_Importer_Admin {
 					'uploading_zip'    => __( 'Uploading ZIP…', 'day-one-importer' ),
 					'queuing'          => __( 'Queuing import…', 'day-one-importer' ),
 					'upload_failed'    => __( 'Upload failed. Please retry.', 'day-one-importer' ),
+					/* translators: %d: progress percentage (0-100). The literal %% renders as a single percent sign. */
 					'percent_format'   => __( '%d%% complete', 'day-one-importer' ),
 					'processing'       => __( 'Processing import…', 'day-one-importer' ),
 					'interrupted'      => __( 'Connection interrupted. You can safely continue this job.', 'day-one-importer' ),

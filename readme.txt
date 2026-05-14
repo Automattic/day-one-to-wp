@@ -1,11 +1,11 @@
 === Day One Importer ===
-Contributors: automattic, cbravobernal
+Contributors: cbravobernal
 Tags: import, importer, day-one, journal, privacy
 Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.2
+Stable tag: 0.2.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,7 +13,7 @@ Import Day One JSON export ZIPs as private WordPress posts with journal categori
 
 == Description ==
 
-Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, and supported photos.
+Day One Importer adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, and supported photos.
 
 The importer is designed for local or private archive migration workflows:
 
@@ -66,6 +66,13 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 
 == Changelog ==
 
+= 0.2.4 =
+* Add a missing `translators:` comment to the `%d%% complete` localized progress format used by the resumable job panel's JavaScript so Plugin Check no longer flags the call as `WordPress.WP.I18n.MissingTranslatorsComment`.
+* Correct the `phpcs:ignore` sniff name on the upload dispatcher's `$_GET['import']` screen-routing read so Plugin Check no longer flags `WordPress.Security.NonceVerification.Recommended`; the read is a routing check only and the actual upload nonce is still verified inside `handle_submission()`.
+
+= 0.2.3 =
+* Fix the Import Day One Export upload submission. The submit handler still referenced the removed inline `#day-one-importer-status` notice (its `statusRegion`, `statusMessage`, and `spinner` lookups), which threw a `ReferenceError` under strict mode right after `event.preventDefault()` and prevented the XHR upload from running, so the form looked unresponsive and the upload percentage never appeared. The stale references are now removed.
+
 = 0.2.2 =
 * Fix the Cancel import button so the job panel reflects the canceled status immediately. The poll loop's in-flight `day_one_importer_job_process` response was returning after the cancel completed and overwriting the panel back to the running state; the polling callbacks now bail when the `stopped` flag has been set by Cancel.
 
@@ -89,6 +96,12 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.4 =
+Adds a missing `translators:` comment for the `%d%% complete` progress format so Plugin Check passes cleanly.
+
+= 0.2.3 =
+Fixes the unresponsive Import Day One Export button and the missing upload percentage caused by stale DOM references in the submit handler.
 
 = 0.2.2 =
 Cancel import now updates the job panel status immediately instead of flickering back to the running state.
