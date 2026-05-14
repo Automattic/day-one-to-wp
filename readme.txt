@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,7 +66,11 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 
 == Changelog ==
 
-= Unreleased =
+= 0.2.0 =
+* Fix the blank importer screen after a successful upload by redirecting to `import.php` instead of `admin.php`, which is the dispatcher that `register_importer()` uses.
+* Upload the export ZIP in the background and show real-time upload percentage in the job panel; the form, intro copy, and panel remain on screen for the entire upload instead of blanking during navigation.
+* Always render the import job panel scaffold (hidden when no job exists yet) so the live upload progress and queuing state have a stable place to render before the first job is created.
+* Collapse the job panel notice color to three states: canceled or failed runs are red, queued or running runs are blue, completed runs are green regardless of warnings.
 * Recalibrate the import progress percentage so the bar tracks entries imported during the importing phase instead of jumping to roughly 65% once preflight, extract, and indexing finish. Resumed jobs paint at their already-imported ratio on first render, and failed or canceled mid-import jobs keep the computed value rather than snapping to 100%.
 * Add an estimated import progress bar to the resumable job panel so paused, canceled, retried, or re-opened uploads visibly report their current status.
 * Plugin Check compliance cleanup with no user-facing behavior change: private media writability checks now call `wp_is_writable()` directly (the prior `is_writable()` fallback is moved to the test bootstrap as a polyfill), the long-running-import `set_time_limit()` call is kept with a narrowly scoped, justified `phpcs:ignore`, and the media class direct-access guard is rewritten in the nested form already used elsewhere in the plugin.
@@ -79,6 +83,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.0 =
+Fixes the post-upload blank screen and adds a live upload progress percentage to the import job panel.
 
 = 0.1.0 =
 Initial release.

@@ -136,7 +136,7 @@
 
 		panel.classList.remove( 'notice-info', 'notice-success', 'notice-warning', 'notice-error' );
 		if ( data.status === 'completed' ) {
-			panel.classList.add( data.warnings && data.warnings.length ? 'notice-warning' : 'notice-success' );
+			panel.classList.add( 'notice-success' );
 		} else if ( data.status === 'failed' ) {
 			panel.classList.add( 'notice-error' );
 		} else if ( data.status === 'canceled' ) {
@@ -222,6 +222,28 @@
 			} catch ( error ) {}
 		}
 
+		function setPanelPercent( pct ) {
+			var panelNode = document.getElementById( 'day-one-importer-job-panel' );
+			if ( ! panelNode ) {
+				return;
+			}
+			var clamped = Math.max( 0, Math.min( 100, parseInt( pct, 10 ) || 0 ) );
+			var bar = panelNode.querySelector( '.day-one-importer-job-progress-bar progress' );
+			if ( bar ) {
+				bar.value = clamped;
+			}
+			var fmt = labels.percent_format || '%d%% complete';
+			text( '#day-one-importer-job-panel .day-one-importer-job-progress-percent', fmt.replace( '%d', clamped ).replace( '%%', '%' ) );
+		}
+
+		function revealPanel() {
+			var panelNode = document.getElementById( 'day-one-importer-job-panel' );
+			if ( panelNode ) {
+				panelNode.hidden = false;
+				panelNode.removeAttribute( 'hidden' );
+			}
+		}
+
 		if ( form ) {
 			form.addEventListener( 'submit', function ( event ) {
 				if ( form.checkValidity && ! form.checkValidity() ) {
@@ -233,7 +255,9 @@
 					return;
 				}
 
+				event.preventDefault();
 				submitted = true;
+				stopped = true;
 
 				if ( statusRegion ) {
 					statusRegion.classList.remove( 'screen-reader-text' );
@@ -241,18 +265,21 @@
 					statusRegion.setAttribute( 'aria-busy', 'true' );
 				}
 
+				var uploadingLabel = labels.uploading_zip || 'Uploading ZIP…';
 				if ( statusMessage ) {
-					statusMessage.textContent = statusRegion && statusRegion.dataset.startedMessage ? statusRegion.dataset.startedMessage : ( labels.uploading || 'Queuing import…' );
+					statusMessage.textContent = uploadingLabel + ' 0%';
 				}
 
-				resetPanelForUpload( statusMessage ? statusMessage.textContent : ( labels.uploading || 'Queuing import…' ) );
+				revealPanel();
+				resetPanelForUpload( uploadingLabel + ' 0%' );
+				setPanelPercent( 0 );
 
 				if ( spinner ) {
 					spinner.classList.add( 'is-active' );
 				}
 
 				if ( submitButton ) {
-					var runningLabel = statusRegion && statusRegion.dataset.runningLabel ? statusRegion.dataset.runningLabel : ( labels.uploading || '' );
+					var runningLabel = statusRegion && statusRegion.dataset.runningLabel ? statusRegion.dataset.runningLabel : uploadingLabel;
 					if ( runningLabel && 'value' in submitButton ) {
 						submitButton.value = runningLabel;
 					} else if ( runningLabel ) {
@@ -263,6 +290,40 @@
 				}
 
 				form.setAttribute( 'aria-busy', 'true' );
+
+				var xhr = new window.XMLHttpRequest();
+				xhr.open( 'POST', form.getAttribute( 'action' ) || window.location.href, true );
+				xhr.upload.addEventListener( 'progress', function ( ev ) {
+					if ( ! ev.lengthComputable ) {
+						return;
+					}
+					var pct = Math.round( ( ev.loaded / ev.total ) * 100 );
+					setPanelPercent( pct );
+					text( '#day-one-importer-job-panel .day-one-importer-job-message', uploadingLabel + ' ' + pct + '%' );
+					if ( statusMessage ) {
+						statusMessage.textContent = uploadingLabel + ' ' + pct + '%';
+					}
+				} );
+				xhr.upload.addEventListener( 'load', function () {
+					setPanelPercent( 100 );
+					var queuingLabel = labels.queuing || labels.uploading || 'Queuing import…';
+					text( '#day-one-importer-job-panel .day-one-importer-job-message', queuingLabel );
+					if ( statusMessage ) {
+						statusMessage.textContent = queuingLabel;
+					}
+				} );
+				xhr.addEventListener( 'load', function () {
+					if ( xhr.status >= 200 && xhr.status < 400 ) {
+						window.location.href = xhr.responseURL || window.location.href;
+						return;
+					}
+					var failed = labels.upload_failed || 'Upload failed.';
+					text( '#day-one-importer-job-panel .day-one-importer-job-message', failed + ' (' + xhr.status + ')' );
+				} );
+				xhr.addEventListener( 'error', function () {
+					text( '#day-one-importer-job-panel .day-one-importer-job-message', labels.upload_failed || 'Upload failed.' );
+				} );
+				xhr.send( new window.FormData( form ) );
 			} );
 		}
 

@@ -87,6 +87,10 @@ class Day_One_Importer_Admin {
 				'countLabels' => self::count_labels(),
 				'labels'      => array(
 					'uploading'        => __( 'Queuing import…', 'day-one-importer' ),
+					'uploading_zip'    => __( 'Uploading ZIP…', 'day-one-importer' ),
+					'queuing'          => __( 'Queuing import…', 'day-one-importer' ),
+					'upload_failed'    => __( 'Upload failed. Please retry.', 'day-one-importer' ),
+					'percent_format'   => __( '%d%% complete', 'day-one-importer' ),
 					'processing'       => __( 'Processing import…', 'day-one-importer' ),
 					'interrupted'      => __( 'Connection interrupted. You can safely continue this job.', 'day-one-importer' ),
 					'continue'         => __( 'Retry / Continue', 'day-one-importer' ),
@@ -190,7 +194,7 @@ class Day_One_Importer_Admin {
 						'day_one_importer_job' => $job['id'],
 						'queued'               => 1,
 					),
-					admin_url( 'admin.php' )
+					admin_url( 'import.php' )
 				)
 			);
 			exit;
@@ -227,13 +231,28 @@ class Day_One_Importer_Admin {
 		$requested_job_id = isset( $_GET['day_one_importer_job'] ) ? Day_One_Importer_Job_Store::sanitize_job_id( wp_unslash( $_GET['day_one_importer_job'] ) ) : '';
 		$job              = is_array( $job ) ? $job : $store->get_user_job( get_current_user_id(), $requested_job_id );
 		if ( ! $job ) {
+			// Hidden scaffold so the upload XHR has a panel to populate before the first job exists.
+			echo '<div id="day-one-importer-job-panel" class="notice notice-info inline" data-job-id="" role="status" aria-live="polite" hidden>';
+			echo '<p><strong>' . esc_html__( 'Current import job', 'day-one-importer' ) . '</strong></p>';
+			echo '<p class="day-one-importer-job-message"></p>';
+			echo '<p class="day-one-importer-job-phase" hidden></p>';
+			echo '<p class="day-one-importer-job-progress"></p>';
+			/* translators: %d: percentage complete. */
+			echo '<p class="day-one-importer-job-progress-bar"><progress max="100" value="0"></progress> <span class="day-one-importer-job-progress-percent">' . esc_html( sprintf( __( '%d%% complete', 'day-one-importer' ), 0 ) ) . '</span></p>';
+			echo '<div class="day-one-importer-job-counts"></div>';
+			echo '<div class="day-one-importer-job-details"></div>';
+			echo '<p class="day-one-importer-job-actions">';
+			echo '<button type="button" class="button day-one-importer-job-retry" disabled>' . esc_html__( 'Retry / Continue', 'day-one-importer' ) . '</button> ';
+			echo '<button type="button" class="button day-one-importer-job-cancel" disabled>' . esc_html__( 'Cancel import', 'day-one-importer' ) . '</button>';
+			echo '</p>';
+			echo '</div>';
 			return;
 		}
 
 		$status       = Day_One_Importer_Job_State::status_response( $job );
 		$notice_class = 'notice notice-info inline';
 		if ( Day_One_Importer_Job_State::STATUS_COMPLETED === $status['status'] ) {
-			$notice_class = empty( $status['warnings'] ) ? 'notice notice-success inline' : 'notice notice-warning inline';
+			$notice_class = 'notice notice-success inline';
 		} elseif ( Day_One_Importer_Job_State::STATUS_FAILED === $status['status'] ) {
 			$notice_class = 'notice notice-error inline';
 		} elseif ( Day_One_Importer_Job_State::STATUS_CANCELED === $status['status'] ) {
