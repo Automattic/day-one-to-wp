@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.1
+Stable tag: 0.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 
 == Changelog ==
 
+= 0.2.2 =
+* Fix the Cancel import button so the job panel reflects the canceled status immediately. The poll loop's in-flight `day_one_importer_job_process` response was returning after the cancel completed and overwriting the panel back to the running state; the polling callbacks now bail when the `stopped` flag has been set by Cancel.
+
 = 0.2.1 =
 * Move the upload submission dispatcher to `admin_init` so the post-upload `wp_safe_redirect()` runs before `admin-header.php` emits headers. Previously the redirect failed silently from inside the importer screen callback, leaving the page showing the prior canceled job instead of the freshly queued one. Also remove the redundant `#day-one-importer-status` notice under the form and suppress the upload panel's phase and "Progress will update as the job runs." sub-labels during the ZIP upload.
 
@@ -86,6 +89,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.2 =
+Cancel import now updates the job panel status immediately instead of flickering back to the running state.
 
 = 0.2.1 =
 Fixes the post-upload screen still showing the previously canceled job instead of the new one by dispatching the upload on `admin_init` so the redirect actually runs.

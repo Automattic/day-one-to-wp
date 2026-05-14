@@ -334,6 +334,9 @@
 		}
 
 		function handleData( data ) {
+			if ( stopped ) {
+				return;
+			}
 			updatePanel( data );
 			if ( ! data || data.is_terminal || data.status === 'failed' ) {
 				stopped = true;
@@ -347,6 +350,9 @@
 				return;
 			}
 			postJobAction( 'day_one_importer_job_process', jobId ).then( handleData ).catch( function () {
+				if ( stopped ) {
+					return;
+				}
 				text( '#day-one-importer-job-panel .day-one-importer-job-message', labels.interrupted || 'Connection interrupted. You can safely continue this job.' );
 				stopped = true;
 			} );
@@ -354,6 +360,9 @@
 
 		if ( jobId ) {
 			postJobAction( 'day_one_importer_job_status', jobId ).then( function ( data ) {
+				if ( stopped ) {
+					return;
+				}
 				updatePanel( data );
 				if ( data && ! data.is_terminal && data.status !== 'failed' ) {
 					schedule( 100 );
