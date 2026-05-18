@@ -113,6 +113,7 @@ class Day_One_Importer_Admin {
 	/**
 	 * Enqueue importer screen assets.
 	 *
+	 * @param string $hook_suffix Current admin page hook suffix.
 	 * @return void
 	 */
 	public function enqueue_assets( $hook_suffix = '' ) {
@@ -191,6 +192,7 @@ class Day_One_Importer_Admin {
 	/**
 	 * Handle form submission.
 	 *
+	 * @param bool $verify_nonce Whether to verify the form nonce.
 	 * @return Day_One_Importer_Results|array<string,mixed>|null Results on setup failure; queued job on success.
 	 */
 	private function handle_submission( $verify_nonce = true ) {
@@ -247,8 +249,6 @@ class Day_One_Importer_Admin {
 			)
 		);
 		exit;
-
-		return $job;
 	}
 
 	/**
@@ -442,7 +442,8 @@ class Day_One_Importer_Admin {
 			$type = sanitize_mime_type( wp_unslash( $_FILES['day_one_export']['type'] ) );
 		}
 		if ( isset( $_FILES['day_one_export']['tmp_name'] ) && is_scalar( $_FILES['day_one_export']['tmp_name'] ) ) {
-			$tmp_name = sanitize_text_field( wp_normalize_path( wp_unslash( $_FILES['day_one_export']['tmp_name'] ) ) );
+			$tmp_name = sanitize_text_field( wp_unslash( $_FILES['day_one_export']['tmp_name'] ) );
+			$tmp_name = wp_normalize_path( $tmp_name );
 		}
 		if ( isset( $_FILES['day_one_export']['error'] ) && is_scalar( $_FILES['day_one_export']['error'] ) ) {
 			$error = absint( wp_unslash( $_FILES['day_one_export']['error'] ) );

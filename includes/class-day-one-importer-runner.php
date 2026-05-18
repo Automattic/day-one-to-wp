@@ -405,18 +405,26 @@ class Day_One_Importer_Runner {
 	 * @return int Post ID or 0.
 	 */
 	private function find_existing_post_id( $uuid, Day_One_Importer_Results $results ) {
-		$statuses = get_post_stati( array(), 'names' );
-		$ids      = get_posts(
+		$statuses   = get_post_stati( array(), 'names' );
+		$candidates = get_posts(
 			array(
 				'post_type'      => 'post',
 				'post_status'    => array_values( $statuses ),
 				'fields'         => 'ids',
-				'posts_per_page' => 2,
+				'posts_per_page' => -1,
 				'no_found_rows'  => true,
-				'meta_key'       => '_day_one_uuid', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
-				'meta_value'     => $uuid, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 			)
 		);
+		$ids        = array();
+		foreach ( $candidates as $candidate_id ) {
+			if ( (string) get_post_meta( (int) $candidate_id, '_day_one_uuid', true ) !== $uuid ) {
+				continue;
+			}
+			$ids[] = (int) $candidate_id;
+			if ( 1 < count( $ids ) ) {
+				break;
+			}
+		}
 
 		if ( count( $ids ) > 1 ) {
 			$results->add_warning(
@@ -461,10 +469,10 @@ class Day_One_Importer_Runner {
 	/**
 	 * Assign tags.
 	 *
-	 * @param int                       $post_id Post ID.
-	 * @param array<string,mixed>       $entry Entry.
-	 * @param string                    $uuid UUID.
-	 * @param Day_One_Importer_Results  $results Results.
+	 * @param int                      $post_id Post ID.
+	 * @param array<string,mixed>      $entry Entry.
+	 * @param string                   $uuid UUID.
+	 * @param Day_One_Importer_Results $results Results.
 	 * @return void
 	 */
 	private function assign_tags( $post_id, $entry, $uuid, Day_One_Importer_Results $results ) {
@@ -491,10 +499,10 @@ class Day_One_Importer_Runner {
 	/**
 	 * Assign the source Day One journal as a WordPress category.
 	 *
-	 * @param int                       $post_id Post ID.
-	 * @param array<string,mixed>       $entry Entry.
-	 * @param string                    $uuid UUID.
-	 * @param Day_One_Importer_Results  $results Results.
+	 * @param int                      $post_id Post ID.
+	 * @param array<string,mixed>      $entry Entry.
+	 * @param string                   $uuid UUID.
+	 * @param Day_One_Importer_Results $results Results.
 	 * @return void
 	 */
 	private function assign_journal_category( $post_id, $entry, $uuid, Day_One_Importer_Results $results ) {

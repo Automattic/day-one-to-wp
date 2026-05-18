@@ -13,14 +13,14 @@ mkdir( $day_one_importer_test_webroot, 0777, true );
 define( 'ABSPATH', $day_one_importer_test_webroot );
 
 if ( ! function_exists( '__' ) ) {
-	function __( $text, $domain = null ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function __( $text, $domain = null ) {
 		return $text;
 	}
 }
 
 $GLOBALS['day_one_importer_test_filters'] = array();
 if ( ! function_exists( 'apply_filters' ) ) {
-	function apply_filters( $tag, $value ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function apply_filters( $tag, $value ) {
 		$filters = isset( $GLOBALS['day_one_importer_test_filters'] ) && is_array( $GLOBALS['day_one_importer_test_filters'] ) ? $GLOBALS['day_one_importer_test_filters'] : array();
 		return isset( $filters[ $tag ] ) && is_callable( $filters[ $tag ] ) ? call_user_func( $filters[ $tag ], $value ) : $value;
 	}
@@ -28,13 +28,13 @@ if ( ! function_exists( 'apply_filters' ) ) {
 
 $GLOBALS['day_one_importer_test_options'] = array();
 if ( ! function_exists( 'get_option' ) ) {
-	function get_option( $option, $default = false ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function get_option( $option, $default = false ) {
 		return array_key_exists( $option, $GLOBALS['day_one_importer_test_options'] ) ? $GLOBALS['day_one_importer_test_options'][ $option ] : $default;
 	}
 }
 
 if ( ! function_exists( 'add_option' ) ) {
-	function add_option( $option, $value = '', $deprecated = '', $autoload = null ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function add_option( $option, $value = '', $deprecated = '', $autoload = null ) {
 		unset( $deprecated, $autoload );
 		if ( array_key_exists( $option, $GLOBALS['day_one_importer_test_options'] ) ) {
 			return false;
@@ -46,7 +46,7 @@ if ( ! function_exists( 'add_option' ) ) {
 }
 
 if ( ! function_exists( 'update_option' ) ) {
-	function update_option( $option, $value, $autoload = null ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function update_option( $option, $value, $autoload = null ) {
 		unset( $autoload );
 		$GLOBALS['day_one_importer_test_options'][ $option ] = $value;
 		return true;
@@ -54,7 +54,7 @@ if ( ! function_exists( 'update_option' ) ) {
 }
 
 if ( ! function_exists( 'delete_option' ) ) {
-	function delete_option( $option ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function delete_option( $option ) {
 		$exists = array_key_exists( $option, $GLOBALS['day_one_importer_test_options'] );
 		unset( $GLOBALS['day_one_importer_test_options'][ $option ] );
 
@@ -63,20 +63,20 @@ if ( ! function_exists( 'delete_option' ) ) {
 }
 
 if ( ! function_exists( 'sanitize_file_name' ) ) {
-	function sanitize_file_name( $filename ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function sanitize_file_name( $filename ) {
 		$filename = basename( (string) $filename );
 		return preg_replace( '/[^A-Za-z0-9._-]/', '-', $filename );
 	}
 }
 
 if ( ! function_exists( 'wp_strip_all_tags' ) ) {
-	function wp_strip_all_tags( $text ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_strip_all_tags( $text ) {
 		return (string) preg_replace( '/<[^>]*>/', '', (string) $text );
 	}
 }
 
 if ( ! function_exists( 'sanitize_text_field' ) ) {
-	function sanitize_text_field( $str ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function sanitize_text_field( $str ) {
 		$str = wp_strip_all_tags( (string) $str );
 		$str = preg_replace( '/[\x00-\x1F\x7F]/u', '', $str );
 
@@ -85,31 +85,31 @@ if ( ! function_exists( 'sanitize_text_field' ) ) {
 }
 
 if ( ! function_exists( 'absint' ) ) {
-	function absint( $value ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function absint( $value ) {
 		return abs( (int) $value );
 	}
 }
 
 if ( ! function_exists( 'untrailingslashit' ) ) {
-	function untrailingslashit( $value ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function untrailingslashit( $value ) {
 		return rtrim( (string) $value, '/\\' );
 	}
 }
 
 if ( ! function_exists( 'trailingslashit' ) ) {
-	function trailingslashit( $value ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function trailingslashit( $value ) {
 		return untrailingslashit( $value ) . DIRECTORY_SEPARATOR;
 	}
 }
 
 if ( ! function_exists( 'wp_mkdir_p' ) ) {
-	function wp_mkdir_p( $path ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_mkdir_p( $path ) {
 		return is_dir( $path ) || mkdir( $path, 0777, true );
 	}
 }
 
 if ( ! function_exists( 'wp_is_writable' ) ) {
-	function wp_is_writable( $path ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_is_writable( $path ) {
 		return is_writable( $path );
 	}
 }
@@ -120,11 +120,42 @@ if ( ! class_exists( 'Day_One_Importer_Test_Filesystem' ) ) {
 			unset( $recursive );
 			return chmod( $path, $mode );
 		}
+
+		public function get_contents( $path ) {
+			return file_get_contents( $path );
+		}
+
+		public function put_contents( $path, $contents, $mode = false ) {
+			$written = file_put_contents( $path, $contents );
+			if ( false !== $written && false !== $mode ) {
+				chmod( $path, $mode );
+			}
+
+			return false !== $written;
+		}
+
+		public function copy( $source, $destination, $overwrite = false, $mode = false ) {
+			if ( ! $overwrite && file_exists( $destination ) ) {
+				return false;
+			}
+
+			$copied = copy( $source, $destination );
+			if ( $copied && false !== $mode ) {
+				chmod( $destination, $mode );
+			}
+
+			return $copied;
+		}
+
+		public function rmdir( $path, $recursive = false ) {
+			unset( $recursive );
+			return rmdir( $path );
+		}
 	}
 }
 
 if ( ! function_exists( 'WP_Filesystem' ) ) {
-	function WP_Filesystem() { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function WP_Filesystem() {
 		global $wp_filesystem;
 
 		$wp_filesystem = new Day_One_Importer_Test_Filesystem();
@@ -133,7 +164,7 @@ if ( ! function_exists( 'WP_Filesystem' ) ) {
 }
 
 if ( ! function_exists( 'wp_delete_file' ) ) {
-	function wp_delete_file( $file ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_delete_file( $file ) {
 		if ( is_string( $file ) && file_exists( $file ) ) {
 			unlink( $file );
 		}
@@ -141,7 +172,7 @@ if ( ! function_exists( 'wp_delete_file' ) ) {
 }
 
 if ( ! function_exists( 'wp_upload_dir' ) ) {
-	function wp_upload_dir( $time = null, $create_dir = true, $refresh_cache = false ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_upload_dir( $time = null, $create_dir = true, $refresh_cache = false ) {
 		unset( $time, $create_dir, $refresh_cache );
 		if ( isset( $GLOBALS['day_one_importer_test_wp_upload_dir_calls'] ) ) {
 			++$GLOBALS['day_one_importer_test_wp_upload_dir_calls'];
@@ -155,38 +186,38 @@ if ( ! function_exists( 'wp_upload_dir' ) ) {
 }
 
 if ( ! function_exists( 'wp_create_nonce' ) ) {
-	function wp_create_nonce( $action = -1 ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_create_nonce( $action = -1 ) {
 		unset( $action );
 		return 'day-one-nonce';
 	}
 }
 
 if ( ! function_exists( 'admin_url' ) ) {
-	function admin_url( $path = '' ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function admin_url( $path = '' ) {
 		return 'https://example.test/wp-admin/' . ltrim( (string) $path, '/' );
 	}
 }
 
 if ( ! function_exists( 'add_query_arg' ) ) {
-	function add_query_arg( $args, $url ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function add_query_arg( $args, $url ) {
 		return $url . '?' . http_build_query( $args, '', '&' );
 	}
 }
 
 if ( ! function_exists( 'esc_url' ) ) {
-	function esc_url( $url ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function esc_url( $url ) {
 		return htmlspecialchars( (string) $url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
 	}
 }
 
 if ( ! function_exists( 'esc_attr' ) ) {
-	function esc_attr( $text ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function esc_attr( $text ) {
 		return htmlspecialchars( (string) $text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
 	}
 }
 
 if ( ! function_exists( 'wp_get_attachment_image_src' ) ) {
-	function wp_get_attachment_image_src( $id, $size, $icon = false ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_get_attachment_image_src( $id, $size, $icon = false ) {
 		$id = (int) $id;
 		if ( ! in_array( $id, array( 101, 102, 202 ), true ) ) {
 			return false;
@@ -197,13 +228,13 @@ if ( ! function_exists( 'wp_get_attachment_image_src' ) ) {
 }
 
 if ( ! function_exists( 'wp_kses_post' ) ) {
-	function wp_kses_post( $html ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_kses_post( $html ) {
 		return $html;
 	}
 }
 
 if ( ! function_exists( 'wp_get_attachment_image' ) ) {
-	function wp_get_attachment_image( $id, $size, $icon = false, $attr = array() ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_get_attachment_image( $id, $size, $icon = false, $attr = array() ) {
 		$id = (int) $id;
 		if ( ! in_array( $id, array( 101, 102, 202 ), true ) ) {
 			return '';
@@ -219,13 +250,13 @@ if ( ! function_exists( 'wp_get_attachment_image' ) ) {
 }
 
 if ( ! function_exists( 'wp_get_attachment_url' ) ) {
-	function wp_get_attachment_url( $id ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_get_attachment_url( $id ) {
 		return 303 === (int) $id ? 'https://example.test/303-fallback.jpg' : false;
 	}
 }
 
 if ( ! function_exists( 'wp_json_encode' ) ) {
-	function wp_json_encode( $data, $flags = 0 ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+	function wp_json_encode( $data, $flags = 0 ) {
 		return json_encode( $data, $flags );
 	}
 }

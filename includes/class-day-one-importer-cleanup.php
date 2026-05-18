@@ -19,9 +19,12 @@ class Day_One_Importer_Cleanup {
 	 * @return string|false Directory path, or false.
 	 */
 	public static function create_run_directory() {
-		$base = function_exists( 'get_temp_dir' ) ? get_temp_dir() : sys_get_temp_dir() . DIRECTORY_SEPARATOR;
-		$base = trailingslashit( $base ) . 'day-one-importer';
-		$run  = $base . DIRECTORY_SEPARATOR . gmdate( 'Ymd-His' ) . '-' . wp_generate_password( 8, false, false );
+		$base = self::run_base_dir();
+		if ( '' === $base ) {
+			return false;
+		}
+
+		$run = $base . DIRECTORY_SEPARATOR . gmdate( 'Ymd-His' ) . '-' . wp_generate_password( 8, false, false );
 
 		if ( ! function_exists( 'wp_mkdir_p' ) || ! wp_mkdir_p( $run ) ) {
 			return false;
@@ -36,6 +39,37 @@ class Day_One_Importer_Cleanup {
 		self::protect_directory( $run );
 
 		return $run;
+	}
+
+	/**
+	 * Resolve the base directory that holds per-run import folders.
+	 *
+	 * Prefers wp-content/uploads/day-one-importer so per-run state lives with
+	 * the rest of the site's user content and survives system temp wipes.
+	 * Falls back to get_temp_dir() when the uploads dir is unavailable.
+	 *
+	 * @return string Absolute path without trailing separator, or empty string on failure.
+	 */
+	public static function run_base_dir() {
+		$basedir = '';
+		if ( function_exists( 'wp_upload_dir' ) ) {
+			$upload_dir = wp_upload_dir( null, false );
+			if ( is_array( $upload_dir ) && empty( $upload_dir['error'] ) && ! empty( $upload_dir['basedir'] ) ) {
+				$basedir = (string) $upload_dir['basedir'];
+			}
+		}
+
+		if ( '' === $basedir ) {
+			$basedir = function_exists( 'get_temp_dir' ) ? get_temp_dir() : sys_get_temp_dir() . DIRECTORY_SEPARATOR;
+		}
+
+		$base = untrailingslashit( $basedir ) . DIRECTORY_SEPARATOR . 'day-one-importer';
+
+		if ( function_exists( 'apply_filters' ) ) {
+			$base = (string) apply_filters( 'day_one_importer_run_base_dir', $base );
+		}
+
+		return '' === $base ? '' : untrailingslashit( $base );
 	}
 
 	/**
@@ -87,9 +121,90 @@ class Day_One_Importer_Cleanup {
 		foreach ( $files as $name => $contents ) {
 			$path = trailingslashit( $dir ) . $name;
 			if ( ! file_exists( $path ) ) {
-				@file_put_contents( $path, $contents ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+				self::write_file( $path, $contents );
 			}
 		}
+	}
+
+	/**
+	 * Return the WordPress filesystem object when available.
+	 *
+	 * @return WP_Filesystem_Base|null Filesystem object, or null on failure.
+	 */
+	public static function filesystem() {
+		global $wp_filesystem;
+
+		if ( ! $wp_filesystem || ! is_object( $wp_filesystem ) ) {
+			if ( defined( 'ABSPATH' ) && ! function_exists( 'WP_Filesystem' ) ) {
+				require_once ABSPATH . 'wp-admin/includes/file.php';
+			}
+
+			if ( function_exists( 'WP_Filesystem' ) ) {
+				WP_Filesystem();
+			}
+		}
+
+		return $wp_filesystem && is_object( $wp_filesystem ) ? $wp_filesystem : null;
+	}
+
+	/**
+	 * Read a complete file through the WordPress filesystem API.
+	 *
+	 * @param string $path File path.
+	 * @return string|false File contents, or false on failure.
+	 */
+	public static function read_file( $path ) {
+		$filesystem = self::filesystem();
+
+		return $filesystem && method_exists( $filesystem, 'get_contents' ) ? $filesystem->get_contents( $path ) : false;
+	}
+
+	/**
+	 * Write a complete file through the WordPress filesystem API.
+	 *
+	 * @param string $path File path.
+	 * @param string $contents File contents.
+	 * @return bool True when the file was written.
+	 */
+	public static function write_file( $path, $contents ) {
+		$filesystem = self::filesystem();
+
+		return $filesystem && method_exists( $filesystem, 'put_contents' ) ? (bool) $filesystem->put_contents( $path, $contents, 0600 ) : false;
+	}
+
+	/**
+	 * Copy a file through the WordPress filesystem API.
+	 *
+	 * @param string $source Source path.
+	 * @param string $destination Destination path.
+	 * @return bool True when copied.
+	 */
+	public static function copy_file( $source, $destination ) {
+		$filesystem = self::filesystem();
+
+		return $filesystem && method_exists( $filesystem, 'copy' ) ? (bool) $filesystem->copy( $source, $destination, true, 0600 ) : false;
+	}
+
+	/**
+	 * Create a directory through WordPress helpers.
+	 *
+	 * @param string $path Directory path.
+	 * @return bool True when the directory exists or was created.
+	 */
+	public static function make_directory( $path ) {
+		return function_exists( 'wp_mkdir_p' ) ? (bool) wp_mkdir_p( $path ) : false;
+	}
+
+	/**
+	 * Remove an empty directory through the WordPress filesystem API.
+	 *
+	 * @param string $path Directory path.
+	 * @return bool True when removed.
+	 */
+	public static function remove_directory( $path ) {
+		$filesystem = self::filesystem();
+
+		return $filesystem && method_exists( $filesystem, 'rmdir' ) ? (bool) $filesystem->rmdir( $path, false ) : false;
 	}
 
 	/**
@@ -298,11 +413,7 @@ class Day_One_Importer_Cleanup {
 			return false;
 		}
 
-		if ( function_exists( 'wp_mkdir_p' ) ) {
-			wp_mkdir_p( $extract_dir );
-		} elseif ( ! is_dir( $extract_dir ) ) {
-			@mkdir( $extract_dir, 0700, true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_mkdir
-		}
+		self::make_directory( $extract_dir );
 
 		if ( ! is_dir( $extract_dir ) ) {
 			return false;
@@ -554,12 +665,12 @@ class Day_One_Importer_Cleanup {
 
 		foreach ( $iterator as $item ) {
 			if ( $item->isDir() && ! $item->isLink() ) {
-				@rmdir( $item->getPathname() ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
+				self::remove_directory( $item->getPathname() );
 			} else {
 				wp_delete_file( $item->getPathname() );
 			}
 		}
 
-		@rmdir( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
+		self::remove_directory( $path );
 	}
 }

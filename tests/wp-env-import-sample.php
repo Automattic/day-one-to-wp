@@ -192,17 +192,18 @@ function day_one_importer_wp_env_import_from_zip_async( $zip_path ) {
 }
 
 // Start from a clean sample-import state so this smoke test is repeatable.
-$existing = get_posts(
+$existing_candidates = get_posts(
 	array(
 		'post_type'      => array( 'post', 'attachment' ),
 		'post_status'    => 'any',
 		'posts_per_page' => -1,
 		'fields'         => 'ids',
-		'meta_key'       => '_day_one_source', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
-		'meta_value'     => 'day-one-export', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 	)
 );
-foreach ( $existing as $post_id ) {
+foreach ( $existing_candidates as $post_id ) {
+	if ( 'day-one-export' !== (string) get_post_meta( (int) $post_id, '_day_one_source', true ) ) {
+		continue;
+	}
 	if ( 'attachment' === get_post_type( (int) $post_id ) ) {
 		wp_delete_attachment( (int) $post_id, true );
 	} else {
@@ -234,7 +235,7 @@ if ( $using_default_zip ) {
 day_one_importer_wp_env_assert( $media > 0, 'Imported sample media attachments.' );
 day_one_importer_wp_env_assert( '4' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 4 for validation-compatible media blocks.' );
 
-$imported_posts = get_posts(
+$imported_post_candidates = get_posts(
 	array(
 		'post_type'      => 'post',
 		'post_status'    => 'any',
@@ -242,10 +243,14 @@ $imported_posts = get_posts(
 		'fields'         => 'ids',
 		'orderby'        => 'ID',
 		'order'          => 'ASC',
-		'meta_key'       => '_day_one_source', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
-		'meta_value'     => 'day-one-export', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 	)
 );
+$imported_posts          = array();
+foreach ( $imported_post_candidates as $post_id ) {
+	if ( 'day-one-export' === (string) get_post_meta( (int) $post_id, '_day_one_source', true ) ) {
+		$imported_posts[] = (int) $post_id;
+	}
+}
 
 day_one_importer_wp_env_assert( count( $imported_posts ) === $created, 'Created post count matches query count.' );
 $found_fixture_tag      = false;

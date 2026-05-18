@@ -360,44 +360,35 @@ class Day_One_Importer_Media {
 	 * @return int Attachment ID or 0.
 	 */
 	public function find_existing_attachment( $post_id, $uuid, $identifier, $md5 ) {
-		$or = array( 'relation' => 'OR' );
-		if ( $identifier ) {
-			$or[] = array(
-				'key'   => '_day_one_media_identifier',
-				'value' => $identifier,
-			);
-		}
-		if ( $md5 ) {
-			$or[] = array(
-				'key'   => '_day_one_media_md5',
-				'value' => $md5,
-			);
-		}
-
-		if ( count( $or ) <= 1 ) {
+		if ( ! $identifier && ! $md5 ) {
 			return 0;
 		}
 
-		$ids = get_posts(
+		$attachments = get_posts(
 			array(
 				'post_type'      => 'attachment',
 				'post_status'    => 'any',
 				'post_parent'    => $post_id,
 				'fields'         => 'ids',
-				'posts_per_page' => 1,
+				'posts_per_page' => -1,
 				'no_found_rows'  => true,
-				'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-					'relation' => 'AND',
-					array(
-						'key'   => '_day_one_uuid',
-						'value' => $uuid,
-					),
-					$or,
-				),
 			)
 		);
 
-		return ! empty( $ids ) ? (int) $ids[0] : 0;
+		foreach ( $attachments as $attachment_id ) {
+			$attachment_id = (int) $attachment_id;
+			if ( (string) get_post_meta( $attachment_id, '_day_one_uuid', true ) !== $uuid ) {
+				continue;
+			}
+			if ( $identifier && (string) get_post_meta( $attachment_id, '_day_one_media_identifier', true ) === $identifier ) {
+				return $attachment_id;
+			}
+			if ( $md5 && (string) get_post_meta( $attachment_id, '_day_one_media_md5', true ) === $md5 ) {
+				return $attachment_id;
+			}
+		}
+
+		return 0;
 	}
 
 	/**
@@ -508,7 +499,7 @@ class Day_One_Importer_Media {
 
 		$filename = self::build_upload_filename( $source, $photo );
 		$tmp      = wp_tempnam( $filename );
-		if ( ! $tmp || ! copy( $source, $tmp ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_copy
+		if ( ! $tmp || ! Day_One_Importer_Cleanup::copy_file( $source, $tmp ) ) {
 			if ( $tmp ) {
 				wp_delete_file( $tmp );
 			}
@@ -738,7 +729,7 @@ class Day_One_Importer_Media {
 		header( 'Content-Type: ' . $mime );
 		header( 'Content-Length: ' . absint( filesize( $file ) ) );
 		header( 'X-Content-Type-Options: nosniff' );
-		readfile( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
+		readfile( $file );
 		exit;
 	}
 

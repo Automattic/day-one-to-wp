@@ -265,6 +265,7 @@ class Day_One_Importer_Job_Processor {
 	 *
 	 * @param array<string,mixed>      $job Job.
 	 * @param Day_One_Importer_Results $results Results.
+	 * @param float|null               $deadline Deadline timestamp.
 	 * @return bool
 	 */
 	private function validate_tree_phase( &$job, Day_One_Importer_Results $results, $deadline = null ) {

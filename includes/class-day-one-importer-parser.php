@@ -329,7 +329,7 @@ class Day_One_Importer_Parser {
 	 * @return array<string,mixed>
 	 */
 	private function stream_json_file_batch( $file, &$job, Day_One_Importer_Results $results, $deadline, $limit, $manifest, &$seen, $checkpoint ) {
-		$handle = @fopen( $file, 'rb' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		$handle = @fopen( $file, 'rb' );
 		if ( ! $handle ) {
 			return array(
 				'file_done' => true,
@@ -340,7 +340,7 @@ class Day_One_Importer_Parser {
 
 		$offset = isset( $job['json_stream_offset'] ) ? max( 0, (int) $job['json_stream_offset'] ) : 0;
 		if ( $offset > 0 ) {
-			@fseek( $handle, $offset ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			@fseek( $handle, $offset );
 		}
 
 		$mode            = isset( $job['json_stream_mode'] ) ? (string) $job['json_stream_mode'] : 'search_key';
@@ -362,7 +362,7 @@ class Day_One_Importer_Parser {
 				break;
 			}
 
-			$chunk = fread( $handle, 65536 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread
+			$chunk = fread( $handle, 65536 );
 			if ( false === $chunk || '' === $chunk ) {
 				break;
 			}
@@ -413,7 +413,7 @@ class Day_One_Importer_Parser {
 					if ( 0 === $entry_depth ) {
 						++$processed;
 						if ( ! $this->process_streamed_entry( $entry_buffer, $file, $entry_i, $manifest, $job, $results, $seen ) ) {
-							fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the streaming fopen() read; WP_Filesystem has no streaming equivalent.
+							fclose( $handle );
 							return array(
 								'file_done' => false,
 								'processed' => $processed,
@@ -452,7 +452,7 @@ class Day_One_Importer_Parser {
 		}
 
 		$reached_eof = feof( $handle );
-		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the streaming fopen() read; WP_Filesystem has no streaming equivalent.
+		fclose( $handle );
 
 		if ( ! $paused && ! $file_done && $reached_eof ) {
 			$file_done = true;
@@ -664,24 +664,20 @@ class Day_One_Importer_Parser {
 		}
 
 		if ( file_exists( $marker ) ) {
-			$state = trim( (string) @file_get_contents( $marker ) ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+			$state = trim( (string) $this->read_file( $marker ) );
 			if ( 'written' === $state ) {
 				return 'exists';
 			}
 			if ( $this->manifest_contains_uuid( $manifest, $uuid ) ) {
-				@file_put_contents( $marker, 'written', LOCK_EX ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+				$this->write_manifest_marker( $marker, 'written' );
 				return 'exists';
 			}
-		} else {
-			$created = @fopen( $marker, 'x' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
-			if ( $created ) {
-				fwrite( $created, 'pending' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
-				fclose( $created ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the fopen('x') atomic-create marker; WP_Filesystem has no equivalent.
-			} elseif ( file_exists( $marker ) ) {
+		} elseif ( ! $this->create_manifest_marker( $marker ) ) {
+			if ( file_exists( $marker ) ) {
 				return $this->append_manifest_entry( $manifest, $entry );
-			} else {
-				return false;
 			}
+
+			return false;
 		}
 
 		$flags = 0;
@@ -697,12 +693,62 @@ class Day_One_Importer_Parser {
 			return false;
 		}
 
-		if ( false === @file_put_contents( $manifest, $encoded . "\n", FILE_APPEND | LOCK_EX ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		if ( ! $this->append_manifest_line( $manifest, $encoded . "\n" ) ) {
 			return false;
 		}
 
-		@file_put_contents( $marker, 'written', LOCK_EX ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		$this->write_manifest_marker( $marker, 'written' );
 		return 'appended';
+	}
+
+	/**
+	 * Create a pending manifest marker.
+	 *
+	 * @param string $marker Marker path.
+	 * @return bool True when the marker was created.
+	 */
+	private function create_manifest_marker( $marker ) {
+		if ( file_exists( $marker ) ) {
+			return false;
+		}
+
+		return $this->write_manifest_marker( $marker, 'pending' );
+	}
+
+	/**
+	 * Write marker-like state files.
+	 *
+	 * @param string $path File path.
+	 * @param string $contents File contents.
+	 * @return bool True when the file was written.
+	 */
+	private function write_manifest_marker( $path, $contents ) {
+		return class_exists( 'Day_One_Importer_Cleanup' ) && Day_One_Importer_Cleanup::write_file( $path, $contents );
+	}
+
+	/**
+	 * Read a complete file through WordPress' filesystem abstraction.
+	 *
+	 * @param string $path File path.
+	 * @return string File contents, or an empty string on failure.
+	 */
+	private function read_file( $path ) {
+		$contents = class_exists( 'Day_One_Importer_Cleanup' ) ? Day_One_Importer_Cleanup::read_file( $path ) : false;
+
+		return is_string( $contents ) ? $contents : '';
+	}
+
+	/**
+	 * Append one line to the manifest under an exclusive lock.
+	 *
+	 * @param string $manifest Manifest path.
+	 * @param string $line Line to append.
+	 * @return bool True when the line was appended.
+	 */
+	private function append_manifest_line( $manifest, $line ) {
+		$current = $this->read_file( $manifest );
+
+		return $this->write_manifest_marker( $manifest, $current . $line );
 	}
 
 	/**
@@ -713,17 +759,13 @@ class Day_One_Importer_Parser {
 	 */
 	private function prepare_manifest_storage( $manifest ) {
 		$dir = dirname( $manifest );
-		if ( ! is_dir( $dir ) ) {
-			if ( function_exists( 'wp_mkdir_p' ) ) {
-				wp_mkdir_p( $dir );
-			} else {
-				@mkdir( $dir, 0700, true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_mkdir
-			}
+		if ( ! is_dir( $dir ) && class_exists( 'Day_One_Importer_Cleanup' ) ) {
+			Day_One_Importer_Cleanup::make_directory( $dir );
 		}
 		if ( ! is_dir( $dir ) ) {
 			return false;
 		}
-		if ( ! file_exists( $manifest ) && false === @file_put_contents( $manifest, '' ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		if ( ! file_exists( $manifest ) && ! $this->write_manifest_marker( $manifest, '' ) ) {
 			return false;
 		}
 		if ( class_exists( 'Day_One_Importer_Cleanup' ) ) {
@@ -731,12 +773,8 @@ class Day_One_Importer_Parser {
 		}
 
 		$marker_dir = $this->manifest_marker_dir( $manifest );
-		if ( ! is_dir( $marker_dir ) ) {
-			if ( function_exists( 'wp_mkdir_p' ) ) {
-				wp_mkdir_p( $marker_dir );
-			} else {
-				@mkdir( $marker_dir, 0700, true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_mkdir
-			}
+		if ( ! is_dir( $marker_dir ) && class_exists( 'Day_One_Importer_Cleanup' ) ) {
+			Day_One_Importer_Cleanup::make_directory( $marker_dir );
 		}
 		if ( class_exists( 'Day_One_Importer_Cleanup' ) ) {
 			Day_One_Importer_Cleanup::protect_directory( $marker_dir );
@@ -894,8 +932,8 @@ class Day_One_Importer_Parser {
 			}
 		}
 
-		$contents = @file_get_contents( $file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		if ( false === $contents ) {
+		$contents = $this->read_file( $file );
+		if ( '' === $contents ) {
 			return null;
 		}
 

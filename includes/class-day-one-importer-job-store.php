@@ -27,10 +27,10 @@ class Day_One_Importer_Job_Store {
 	/**
 	 * Create a persisted import job from an uploaded ZIP in a protected run dir.
 	 *
-	 * @param int                            $owner_user_id Owner user ID.
-	 * @param string                         $run_dir Protected run directory.
-	 * @param string                         $zip_path Protected ZIP path.
-	 * @param Day_One_Importer_Results|null  $results Initial results.
+	 * @param int                           $owner_user_id Owner user ID.
+	 * @param string                        $run_dir Protected run directory.
+	 * @param string                        $zip_path Protected ZIP path.
+	 * @param Day_One_Importer_Results|null $results Initial results.
 	 * @return array<string,mixed>|false Job state, or false.
 	 */
 	public function create_job( $owner_user_id, $run_dir, $zip_path, $results = null ) {
@@ -642,7 +642,7 @@ class Day_One_Importer_Job_Store {
 	 * @return string[]
 	 */
 	private static function list_option_names( $prefix ) {
-		$names = self::get_tracked_option_names();
+		$names   = self::get_tracked_option_names();
 		$matches = array();
 		foreach ( $names as $name ) {
 			if ( is_string( $name ) && 0 === strpos( $name, $prefix ) && null !== self::option_get( $name ) ) {

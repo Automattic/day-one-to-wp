@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<ruleset name="Day One Importer">
+	<description>PHP_CodeSniffer rules for the Day One Importer WordPress plugin.</description>
+
+	<file>day-one-importer.php</file>
+	<file>includes</file>
+
+	<exclude-pattern>*/node_modules/*</exclude-pattern>
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/sample/*</exclude-pattern>
+	<exclude-pattern>*/pipelines/*</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="ps"/>
+
+	<config name="testVersion" value="7.4-"/>
+	<config name="minimum_supported_wp_version" value="6.4"/>
+
+	<rule ref="WordPress-Core"/>
+	<rule ref="WordPress-Docs"/>
+	<rule ref="WordPress-Extra">
+		<exclude name="WordPress.DB.SlowDBQuery"/>
+		<exclude name="WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound"/>
+		<exclude name="WordPress.PHP.NoSilencedErrors.Discouraged"/>
+		<exclude name="WordPress.WP.AlternativeFunctions"/>
+	</rule>
+</ruleset>

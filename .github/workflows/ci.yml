@@ -47,6 +47,12 @@ jobs:
       - name: Show PHP version
         run: php -v
 
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run PHPCS
+        run: composer lint:php
+
       - name: Lint PHP files
         run: |
           find . \
