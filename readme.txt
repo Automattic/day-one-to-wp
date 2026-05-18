@@ -67,11 +67,11 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 == Changelog ==
 
 = 0.2.5 =
-* Address WordPress.org review feedback: remove the extra contributor, add nonce verification for admin job/media URLs, sanitize uploaded file arrays before processing, escape generated job-panel markup with an allow-list, store private media in a protected uploads subfolder, stop changing PHP time limits, and avoid switching the current user during cron processing.
+* Address WordPress.org review feedback: remove the extra contributor, add nonce verification for admin job/media URLs, sanitize and validate request/upload values before processing, escape generated job-panel markup with an allow-list, store private media in a protected uploads subfolder, stop changing PHP time limits, and avoid switching the current user during cron processing.
 
 = 0.2.4 =
 * Add a missing `translators:` comment to the `%d%% complete` localized progress format used by the resumable job panel's JavaScript so Plugin Check no longer flags the call as `WordPress.WP.I18n.MissingTranslatorsComment`.
-* Correct the `phpcs:ignore` sniff name on the upload dispatcher's `$_GET['import']` screen-routing read so Plugin Check no longer flags `WordPress.Security.NonceVerification.Recommended`; the read is a routing check only and the actual upload nonce is still verified inside `handle_submission()`.
+* Tighten the upload dispatcher screen-routing check while keeping upload nonce verification in the submission handler.
 
 = 0.2.3 =
 * Fix the Import Day One Export upload submission. The submit handler still referenced the removed inline `#day-one-importer-status` notice (its `statusRegion`, `statusMessage`, and `spinner` lookups), which threw a `ReferenceError` under strict mode right after `event.preventDefault()` and prevented the XHR upload from running, so the form looked unresponsive and the upload percentage never appeared. The stale references are now removed.
@@ -90,7 +90,7 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Recalibrate the import progress percentage so the bar tracks entries imported during the importing phase instead of jumping to roughly 65% once preflight, extract, and indexing finish. Resumed jobs paint at their already-imported ratio on first render, and failed or canceled mid-import jobs keep the computed value rather than snapping to 100%.
 * Add an estimated import progress bar to the resumable job panel so paused, canceled, retried, or re-opened uploads visibly report their current status.
 * Plugin Check compliance cleanup with no user-facing behavior change: private media writability checks now call `wp_is_writable()` directly (the prior `is_writable()` fallback is moved to the test bootstrap as a polyfill), long-running imports use the resumable job flow rather than changing the PHP time limit, and the media class direct-access guard is rewritten in the nested form already used elsewhere in the plugin.
-* Additional Plugin Check compliance cleanup with no user-facing behavior change: add a `translators:` hint to the `%d%% complete` progress string in the resumable job panel, and annotate intentionally low-level lint findings with justified `phpcs:ignore` directives for the streaming JSON parser's `fclose()` calls paired with `fopen()`/`fopen('x')` handles and the job store's atomic compare-and-swap and prefix-scan queries on `wp_options` that implement the distributed import lock.
+* Additional Plugin Check compliance cleanup with no user-facing behavior change: add a `translators:` hint to the `%d%% complete` progress string in the resumable job panel and document intentionally low-level file/option operations used by the streaming parser and distributed import lock.
 
 = 0.1.0 =
 * Initial release.
@@ -104,7 +104,7 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 Addresses WordPress.org review feedback for nonces, upload sanitization, escaping, contributor metadata, private media directory selection, PHP time limits, and cron processing.
 
 = 0.2.4 =
-Adds a missing `translators:` comment for the `%d%% complete` progress format so Plugin Check passes cleanly.
+Adds a missing `translators:` comment for the `%d%% complete` progress format.
 
 = 0.2.3 =
 Fixes the unresponsive Import Day One Export button and the missing upload percentage caused by stale DOM references in the submit handler.

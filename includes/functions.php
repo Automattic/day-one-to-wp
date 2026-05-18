@@ -31,6 +31,40 @@ function day_one_importer_sanitize_text( $value ) {
 }
 
 /**
+ * Return a scalar request value after unslashing, or an empty string.
+ *
+ * @param mixed $value Raw request value.
+ * @return string
+ */
+function day_one_importer_unslash_scalar( $value ) {
+	if ( ! is_scalar( $value ) ) {
+		return '';
+	}
+
+	if ( function_exists( 'wp_unslash' ) ) {
+		return (string) wp_unslash( $value );
+	}
+
+	return stripslashes( (string) $value );
+}
+
+/**
+ * Sanitize a MIME type with a fallback for non-WordPress test contexts.
+ *
+ * @param mixed $value Raw MIME type.
+ * @return string
+ */
+function day_one_importer_sanitize_mime_type( $value ) {
+	$value = day_one_importer_unslash_scalar( $value );
+
+	if ( function_exists( 'sanitize_mime_type' ) ) {
+		return sanitize_mime_type( $value );
+	}
+
+	return (string) preg_replace( '/[^A-Za-z0-9.+_-\/]/', '', $value );
+}
+
+/**
  * Check the shared capabilities required to run Day One imports.
  *
  * @return bool

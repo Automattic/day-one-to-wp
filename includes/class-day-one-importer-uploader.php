@@ -38,13 +38,13 @@ class Day_One_Importer_Uploader {
 			return '';
 		}
 
-		$name = isset( $file['name'] ) ? sanitize_file_name( wp_unslash( $file['name'] ) ) : '';
+		$name = isset( $file['name'] ) && is_scalar( $file['name'] ) ? sanitize_file_name( wp_unslash( $file['name'] ) ) : '';
 		if ( 'zip' !== strtolower( pathinfo( $name, PATHINFO_EXTENSION ) ) ) {
 			$results->add_error( __( 'Only Day One ZIP exports are supported.', 'day-one-importer' ) );
 			return '';
 		}
 
-		$tmp_name = isset( $file['tmp_name'] ) ? (string) $file['tmp_name'] : '';
+		$tmp_name = isset( $file['tmp_name'] ) && is_scalar( $file['tmp_name'] ) ? (string) wp_unslash( $file['tmp_name'] ) : '';
 		if ( ! is_uploaded_file( $tmp_name ) ) {
 			$results->add_error( __( 'The uploaded ZIP file could not be verified.', 'day-one-importer' ) );
 			return '';

@@ -69,7 +69,7 @@ class Day_One_Importer_Admin {
 		if ( $this->submission_handled ) {
 			return;
 		}
-		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) && is_scalar( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
 		if ( 'POST' !== $request_method ) {
 			return;
 		}
@@ -78,7 +78,7 @@ class Day_One_Importer_Admin {
 		}
 		check_admin_referer( self::NONCE_ACTION );
 
-		$importer = isset( $_GET['import'] ) ? sanitize_key( wp_unslash( $_GET['import'] ) ) : '';
+		$importer = isset( $_GET['import'] ) && is_scalar( $_GET['import'] ) ? sanitize_key( wp_unslash( $_GET['import'] ) ) : '';
 		if ( 'day-one' !== $importer || ! $this->current_user_can_import() ) {
 			return;
 		}
@@ -420,7 +420,7 @@ class Day_One_Importer_Admin {
 	 * @return array<string,mixed>
 	 */
 	private function uploaded_file_from_request() {
-		$nonce = isset( $_POST['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ) : '';
+		$nonce = isset( $_POST['_wpnonce'] ) && is_scalar( $_POST['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ) : '';
 		if ( ! wp_verify_nonce( $nonce, self::NONCE_ACTION ) ) {
 			return array();
 		}
@@ -435,19 +435,19 @@ class Day_One_Importer_Admin {
 		$error    = UPLOAD_ERR_NO_FILE;
 		$size     = 0;
 
-		if ( isset( $_FILES['day_one_export']['name'] ) ) {
+		if ( isset( $_FILES['day_one_export']['name'] ) && is_scalar( $_FILES['day_one_export']['name'] ) ) {
 			$name = sanitize_file_name( wp_unslash( $_FILES['day_one_export']['name'] ) );
 		}
-		if ( isset( $_FILES['day_one_export']['type'] ) ) {
+		if ( isset( $_FILES['day_one_export']['type'] ) && is_scalar( $_FILES['day_one_export']['type'] ) ) {
 			$type = sanitize_mime_type( wp_unslash( $_FILES['day_one_export']['type'] ) );
 		}
-		if ( isset( $_FILES['day_one_export']['tmp_name'] ) ) {
-			$tmp_name = sanitize_text_field( wp_unslash( wp_normalize_path( $_FILES['day_one_export']['tmp_name'] ) ) );
+		if ( isset( $_FILES['day_one_export']['tmp_name'] ) && is_scalar( $_FILES['day_one_export']['tmp_name'] ) ) {
+			$tmp_name = sanitize_text_field( wp_normalize_path( wp_unslash( $_FILES['day_one_export']['tmp_name'] ) ) );
 		}
-		if ( isset( $_FILES['day_one_export']['error'] ) ) {
+		if ( isset( $_FILES['day_one_export']['error'] ) && is_scalar( $_FILES['day_one_export']['error'] ) ) {
 			$error = absint( wp_unslash( $_FILES['day_one_export']['error'] ) );
 		}
-		if ( isset( $_FILES['day_one_export']['size'] ) ) {
+		if ( isset( $_FILES['day_one_export']['size'] ) && is_scalar( $_FILES['day_one_export']['size'] ) ) {
 			$size = absint( wp_unslash( $_FILES['day_one_export']['size'] ) );
 		}
 
@@ -470,12 +470,12 @@ class Day_One_Importer_Admin {
 			return '';
 		}
 
-		$nonce = sanitize_text_field( wp_unslash( $_GET['day_one_importer_job_nonce'] ) );
+		$nonce = is_scalar( $_GET['day_one_importer_job_nonce'] ) ? sanitize_text_field( wp_unslash( $_GET['day_one_importer_job_nonce'] ) ) : '';
 		if ( ! wp_verify_nonce( $nonce, self::JOB_VIEW_NONCE_ACTION ) ) {
 			return '';
 		}
 
-		$job_id = sanitize_text_field( wp_unslash( $_GET['day_one_importer_job'] ) );
+		$job_id = is_scalar( $_GET['day_one_importer_job'] ) ? sanitize_text_field( wp_unslash( $_GET['day_one_importer_job'] ) ) : '';
 		return Day_One_Importer_Job_Store::sanitize_job_id( $job_id );
 	}
 

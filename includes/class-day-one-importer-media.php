@@ -712,7 +712,7 @@ class Day_One_Importer_Media {
 			self::private_media_status( 403 );
 		}
 
-		$attachment_id = isset( $_GET['attachment_id'] ) ? absint( wp_unslash( $_GET['attachment_id'] ) ) : 0;
+		$attachment_id = isset( $_GET['attachment_id'] ) && is_scalar( $_GET['attachment_id'] ) ? absint( wp_unslash( $_GET['attachment_id'] ) ) : 0;
 		if ( ! $attachment_id || 'day-one-export' !== (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
 			self::private_media_status( 404 );
 		}
@@ -728,15 +728,15 @@ class Day_One_Importer_Media {
 			self::private_media_status( 404 );
 		}
 
-		$mime = get_post_mime_type( $attachment_id );
+		$mime = day_one_importer_sanitize_mime_type( get_post_mime_type( $attachment_id ) );
 		if ( ! $mime || 0 !== strpos( (string) $mime, 'image/' ) ) {
 			$type = wp_check_filetype( $file );
-			$mime = ! empty( $type['type'] ) ? (string) $type['type'] : 'application/octet-stream';
+			$mime = ! empty( $type['type'] ) ? day_one_importer_sanitize_mime_type( $type['type'] ) : 'application/octet-stream';
 		}
 
 		nocache_headers();
 		header( 'Content-Type: ' . $mime );
-		header( 'Content-Length: ' . filesize( $file ) );
+		header( 'Content-Length: ' . absint( filesize( $file ) ) );
 		header( 'X-Content-Type-Options: nosniff' );
 		readfile( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
 		exit;

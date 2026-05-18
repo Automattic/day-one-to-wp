@@ -127,8 +127,8 @@ class Day_One_Importer_Jobs_Controller {
 		}
 
 		$job_id = '';
-		if ( isset( $_REQUEST['job_id'] ) ) {
-			$job_id = sanitize_text_field( wp_unslash( $_REQUEST['job_id'] ) );
+		if ( isset( $_POST['job_id'] ) && is_scalar( $_POST['job_id'] ) ) {
+			$job_id = sanitize_text_field( wp_unslash( $_POST['job_id'] ) );
 		}
 		$job_id = Day_One_Importer_Job_Store::sanitize_job_id( $job_id );
 		$job    = $this->store->get_user_job( get_current_user_id(), $job_id );
