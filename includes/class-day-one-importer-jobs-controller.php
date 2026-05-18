@@ -104,12 +104,8 @@ class Day_One_Importer_Jobs_Controller {
 	 */
 	public function cron_process( $job_id ) {
 		$job = $this->store->get_job( $job_id );
-		if ( ! $job || empty( $job['owner_user_id'] ) ) {
+		if ( ! $job || empty( $job['owner_user_id'] ) || ! day_one_importer_user_can_import( (int) $job['owner_user_id'] ) ) {
 			return;
-		}
-
-		if ( function_exists( 'wp_set_current_user' ) ) {
-			wp_set_current_user( (int) $job['owner_user_id'] );
 		}
 
 		$processor = new Day_One_Importer_Job_Processor( $this->store );
@@ -130,26 +126,16 @@ class Day_One_Importer_Jobs_Controller {
 			wp_send_json_error( array( 'message' => __( 'You do not have permission to import Day One exports.', 'day-one-importer' ) ), 403 );
 		}
 
-		$job_id = $this->requested_job_id();
+		$job_id = '';
+		if ( isset( $_REQUEST['job_id'] ) ) {
+			$job_id = sanitize_text_field( wp_unslash( $_REQUEST['job_id'] ) );
+		}
+		$job_id = Day_One_Importer_Job_Store::sanitize_job_id( $job_id );
 		$job    = $this->store->get_user_job( get_current_user_id(), $job_id );
 		if ( ! $job ) {
 			wp_send_json_error( array( 'message' => __( 'The requested import job could not be found.', 'day-one-importer' ) ), 404 );
 		}
 
 		return $job;
-	}
-
-	/**
-	 * Read requested job ID.
-	 *
-	 * @return string
-	 */
-	private function requested_job_id() {
-		$job_id = '';
-		if ( isset( $_REQUEST['job_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Nonce checked by caller.
-			$job_id = wp_unslash( $_REQUEST['job_id'] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.NonceVerification.Recommended
-		}
-
-		return Day_One_Importer_Job_Store::sanitize_job_id( $job_id );
 	}
 }

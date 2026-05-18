@@ -80,7 +80,7 @@ class Day_One_Importer_Uploader {
 				array(
 					'test_form'                => false,
 					'mimes'                    => array( 'zip' => 'application/zip' ),
-					'unique_filename_callback' => static function ( $dir, $name, $ext ) {
+					'unique_filename_callback' => static function () {
 						return 'day-one-export.zip';
 					},
 				)
@@ -96,7 +96,7 @@ class Day_One_Importer_Uploader {
 
 		$target = (string) $uploaded['file'];
 		if ( ! Day_One_Importer_Cleanup::set_owner_only_permissions( $target ) ) {
-			@unlink( $target ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+			wp_delete_file( $target );
 			$results->add_error( __( 'The uploaded ZIP file could not be secured in the protected import directory.', 'day-one-importer' ) );
 			return '';
 		}

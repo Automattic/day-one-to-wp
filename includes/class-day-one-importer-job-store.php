@@ -5,7 +5,7 @@
  * @package Day_One_Importer
  */
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
@@ -23,13 +23,6 @@ class Day_One_Importer_Job_Store {
 	const OPTION_INDEX = 'day_one_importer_option_index';
 	/** Cron hook used to advance jobs. */
 	const CRON_HOOK = 'day_one_importer_process_job';
-
-	/**
-	 * In-memory option fallback used by pure tests.
-	 *
-	 * @var array<string,mixed>
-	 */
-	private static $test_options = array();
 
 	/**
 	 * Create a persisted import job from an uploaded ZIP in a protected run dir.
@@ -52,45 +45,45 @@ class Day_One_Importer_Job_Store {
 		$job_id  = $this->generate_job_id();
 		$results = $results instanceof Day_One_Importer_Results ? $results : new Day_One_Importer_Results();
 		$job     = array(
-			'id'                          => $job_id,
-			'owner_user_id'               => $owner_user_id,
-			'created_at'                  => $now,
-			'updated_at'                  => $now,
-			'expires_at'                  => $now + $this->retention_seconds(),
-			'status'                      => Day_One_Importer_Job_State::STATUS_QUEUED,
-			'phase'                       => 'uploaded',
-			'run_dir'                     => $run_dir,
-			'zip_path'                    => $zip_path,
-			'extract_dir'                 => trailingslashit( $run_dir ) . 'extract',
-			'manifest_path'               => trailingslashit( $run_dir ) . 'entries.jsonl',
-			'entries_jsonl_path'          => trailingslashit( $run_dir ) . 'entries.jsonl',
-			'zip_index'                   => 0,
-			'zip_total'                   => 0,
-			'zip_preflight_done'          => false,
-			'zip_json_candidates'         => array(),
-			'zip_photo_dirs'              => array(),
-			'extract_index'               => 0,
-			'extract_total'               => 0,
-			'json_files'                  => array(),
-			'json_files_found'            => 0,
-			'photo_dirs'                  => array(),
-			'json_file_index'             => 0,
-			'json_entry_index'            => 0,
-			'json_discovery_done'         => false,
-			'seen_uuids'                  => array(),
-			'entries_total'               => 0,
-			'entry_index'                 => 0,
-			'current_entry_uuid'          => '',
-			'current_post_id'             => 0,
-			'current_media_index'         => 0,
-			'current_media_total'         => 0,
-			'current_attachment_ids'      => array(),
-			'current_entry_post_prepared' => false,
-			'current_entry_media_complete'=> false,
-			'current_entry_media_counted' => false,
+			'id'                             => $job_id,
+			'owner_user_id'                  => $owner_user_id,
+			'created_at'                     => $now,
+			'updated_at'                     => $now,
+			'expires_at'                     => $now + $this->retention_seconds(),
+			'status'                         => Day_One_Importer_Job_State::STATUS_QUEUED,
+			'phase'                          => 'uploaded',
+			'run_dir'                        => $run_dir,
+			'zip_path'                       => $zip_path,
+			'extract_dir'                    => trailingslashit( $run_dir ) . 'extract',
+			'manifest_path'                  => trailingslashit( $run_dir ) . 'entries.jsonl',
+			'entries_jsonl_path'             => trailingslashit( $run_dir ) . 'entries.jsonl',
+			'zip_index'                      => 0,
+			'zip_total'                      => 0,
+			'zip_preflight_done'             => false,
+			'zip_json_candidates'            => array(),
+			'zip_photo_dirs'                 => array(),
+			'extract_index'                  => 0,
+			'extract_total'                  => 0,
+			'json_files'                     => array(),
+			'json_files_found'               => 0,
+			'photo_dirs'                     => array(),
+			'json_file_index'                => 0,
+			'json_entry_index'               => 0,
+			'json_discovery_done'            => false,
+			'seen_uuids'                     => array(),
+			'entries_total'                  => 0,
+			'entry_index'                    => 0,
+			'current_entry_uuid'             => '',
+			'current_post_id'                => 0,
+			'current_media_index'            => 0,
+			'current_media_total'            => 0,
+			'current_attachment_ids'         => array(),
+			'current_entry_post_prepared'    => false,
+			'current_entry_media_complete'   => false,
+			'current_entry_media_counted'    => false,
 			'current_entry_content_appended' => false,
-			'files_cleaned'               => false,
-			'results'                     => $results->to_array(),
+			'files_cleaned'                  => false,
+			'results'                        => $results->to_array(),
 		);
 
 		if ( ! self::option_add( self::JOB_PREFIX . $job_id, $job ) ) {
@@ -506,81 +499,54 @@ class Day_One_Importer_Job_Store {
 	}
 
 	/**
-	 * Option get wrapper with pure-test fallback.
+	 * Option get wrapper.
 	 *
 	 * @param string $name Option name.
 	 * @return mixed|null
 	 */
 	private static function option_get( $name ) {
-		if ( function_exists( 'get_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			$value = get_option( $name, null );
-			return false === $value ? null : $value;
-		}
-
-		return array_key_exists( $name, self::$test_options ) ? self::$test_options[ $name ] : null;
+		$value = get_option( $name, null );
+		return false === $value ? null : $value;
 	}
 
 	/**
-	 * Atomic option add wrapper with pure-test fallback.
+	 * Atomic option add wrapper.
 	 *
 	 * @param string $name Option name.
 	 * @param mixed  $value Value.
 	 * @return bool
 	 */
 	private static function option_add( $name, $value ) {
-		if ( function_exists( 'add_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			$added = (bool) add_option( $name, $value, '', 'no' );
-			if ( $added ) {
-				self::track_option_name( $name );
-			}
-			return $added;
+		$added = (bool) add_option( $name, $value, '', 'no' );
+		if ( $added ) {
+			self::track_option_name( $name );
 		}
-
-		if ( array_key_exists( $name, self::$test_options ) ) {
-			return false;
-		}
-		self::$test_options[ $name ] = $value;
-		self::track_option_name( $name );
-		return true;
+		return $added;
 	}
 
 	/**
-	 * Option update wrapper with pure-test fallback.
+	 * Option update wrapper.
 	 *
 	 * @param string $name Option name.
 	 * @param mixed  $value Value.
 	 * @return bool
 	 */
 	private static function option_update( $name, $value ) {
-		if ( function_exists( 'update_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			return (bool) update_option( $name, $value, false );
-		}
-
-		self::$test_options[ $name ] = $value;
-		return true;
+		return (bool) update_option( $name, $value, false );
 	}
 
 	/**
-	 * Option delete wrapper with pure-test fallback.
+	 * Option delete wrapper.
 	 *
 	 * @param string $name Option name.
 	 * @return bool
 	 */
 	private static function option_delete( $name ) {
-		if ( function_exists( 'delete_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			$deleted = (bool) delete_option( $name );
-			if ( $deleted ) {
-				self::untrack_option_name( $name );
-			}
-			return $deleted;
-		}
-
-		$exists = array_key_exists( $name, self::$test_options );
-		unset( self::$test_options[ $name ] );
-		if ( $exists ) {
+		$deleted = (bool) delete_option( $name );
+		if ( $deleted ) {
 			self::untrack_option_name( $name );
 		}
-		return $exists;
+		return $deleted;
 	}
 
 	/**
@@ -591,16 +557,8 @@ class Day_One_Importer_Job_Store {
 	 * @return bool
 	 */
 	private static function option_delete_if_value( $name, $expected ) {
-		if ( function_exists( 'get_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			$current = self::option_get( $name );
-			if ( $current !== $expected ) {
-				return false;
-			}
-
-			return self::option_delete( $name );
-		}
-
-		if ( ! array_key_exists( $name, self::$test_options ) || self::$test_options[ $name ] !== $expected ) {
+		$current = self::option_get( $name );
+		if ( $current !== $expected ) {
 			return false;
 		}
 
@@ -616,21 +574,12 @@ class Day_One_Importer_Job_Store {
 	 * @return bool
 	 */
 	private static function option_update_if_value( $name, $expected, $new_value ) {
-		if ( function_exists( 'get_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			$current = self::option_get( $name );
-			if ( $current !== $expected ) {
-				return false;
-			}
-
-			return self::option_update( $name, $new_value );
-		}
-
-		if ( ! array_key_exists( $name, self::$test_options ) || self::$test_options[ $name ] !== $expected ) {
+		$current = self::option_get( $name );
+		if ( $current !== $expected ) {
 			return false;
 		}
-		self::$test_options[ $name ] = $new_value;
 
-		return true;
+		return self::option_update( $name, $new_value );
 	}
 
 	/**
@@ -670,11 +619,7 @@ class Day_One_Importer_Job_Store {
 	 * @return string[]
 	 */
 	private static function get_tracked_option_names() {
-		if ( function_exists( 'get_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			$names = get_option( self::OPTION_INDEX, array() );
-		} else {
-			$names = array_key_exists( self::OPTION_INDEX, self::$test_options ) ? self::$test_options[ self::OPTION_INDEX ] : array();
-		}
+		$names = get_option( self::OPTION_INDEX, array() );
 
 		return is_array( $names ) ? array_values( array_filter( $names, 'is_string' ) ) : array();
 	}
@@ -687,12 +632,7 @@ class Day_One_Importer_Job_Store {
 	 */
 	private static function update_tracked_option_names( $names ) {
 		$names = array_values( array_unique( array_filter( $names, 'is_string' ) ) );
-		if ( function_exists( 'update_option' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			update_option( self::OPTION_INDEX, $names, false );
-			return;
-		}
-
-		self::$test_options[ self::OPTION_INDEX ] = $names;
+		update_option( self::OPTION_INDEX, $names, false );
 	}
 
 	/**
@@ -703,10 +643,6 @@ class Day_One_Importer_Job_Store {
 	 */
 	private static function list_option_names( $prefix ) {
 		$names = self::get_tracked_option_names();
-		if ( defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			$names = array_unique( array_merge( $names, array_keys( self::$test_options ) ) );
-		}
-
 		$matches = array();
 		foreach ( $names as $name ) {
 			if ( is_string( $name ) && 0 === strpos( $name, $prefix ) && null !== self::option_get( $name ) ) {

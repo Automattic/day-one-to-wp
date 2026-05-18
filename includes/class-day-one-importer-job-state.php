@@ -5,7 +5,7 @@
  * @package Day_One_Importer
  */
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
@@ -246,16 +246,16 @@ class Day_One_Importer_Job_State {
 	 */
 	public static function phase_label( $phase ) {
 		$labels = array(
-			'uploaded'           => function_exists( '__' ) ? __( 'Queued', 'day-one-importer' ) : 'Queued',
-			'preflight_open'     => function_exists( '__' ) ? __( 'Opening ZIP', 'day-one-importer' ) : 'Opening ZIP',
-			'preflighting'       => function_exists( '__' ) ? __( 'Checking ZIP contents', 'day-one-importer' ) : 'Checking ZIP contents',
-			'extracting'         => function_exists( '__' ) ? __( 'Extracting ZIP', 'day-one-importer' ) : 'Extracting ZIP',
-			'validating_tree'    => function_exists( '__' ) ? __( 'Validating extracted files', 'day-one-importer' ) : 'Validating extracted files',
-			'indexing_discover'  => function_exists( '__' ) ? __( 'Finding journal JSON files', 'day-one-importer' ) : 'Finding journal JSON files',
-			'indexing_entries'   => function_exists( '__' ) ? __( 'Indexing entries', 'day-one-importer' ) : 'Indexing entries',
-			'importing'          => function_exists( '__' ) ? __( 'Importing entries and media', 'day-one-importer' ) : 'Importing entries and media',
-			'cleanup'            => function_exists( '__' ) ? __( 'Cleaning up temporary files', 'day-one-importer' ) : 'Cleaning up temporary files',
-			'done'               => function_exists( '__' ) ? __( 'Done', 'day-one-importer' ) : 'Done',
+			'uploaded'          => function_exists( '__' ) ? __( 'Queued', 'day-one-importer' ) : 'Queued',
+			'preflight_open'    => function_exists( '__' ) ? __( 'Opening ZIP', 'day-one-importer' ) : 'Opening ZIP',
+			'preflighting'      => function_exists( '__' ) ? __( 'Checking ZIP contents', 'day-one-importer' ) : 'Checking ZIP contents',
+			'extracting'        => function_exists( '__' ) ? __( 'Extracting ZIP', 'day-one-importer' ) : 'Extracting ZIP',
+			'validating_tree'   => function_exists( '__' ) ? __( 'Validating extracted files', 'day-one-importer' ) : 'Validating extracted files',
+			'indexing_discover' => function_exists( '__' ) ? __( 'Finding journal JSON files', 'day-one-importer' ) : 'Finding journal JSON files',
+			'indexing_entries'  => function_exists( '__' ) ? __( 'Indexing entries', 'day-one-importer' ) : 'Indexing entries',
+			'importing'         => function_exists( '__' ) ? __( 'Importing entries and media', 'day-one-importer' ) : 'Importing entries and media',
+			'cleanup'           => function_exists( '__' ) ? __( 'Cleaning up temporary files', 'day-one-importer' ) : 'Cleaning up temporary files',
+			'done'              => function_exists( '__' ) ? __( 'Done', 'day-one-importer' ) : 'Done',
 		);
 
 		$phase = self::normalize_phase( $phase );
@@ -418,11 +418,11 @@ class Day_One_Importer_Job_State {
 	 * Normalize a positive integer.
 	 *
 	 * @param mixed $value Value.
-	 * @param int   $default Default.
+	 * @param int   $default_value Default.
 	 * @return int
 	 */
-	private static function positive_int( $value, $default ) {
+	private static function positive_int( $value, $default_value ) {
 		$value = (int) $value;
-		return $value > 0 ? $value : (int) $default;
+		return $value > 0 ? $value : (int) $default_value;
 	}
 }

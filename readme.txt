@@ -1,11 +1,11 @@
 === Day One Importer ===
-Contributors: automattic, cbravobernal
+Contributors: cbravobernal
 Tags: import, importer, day-one, journal, privacy
 Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.4
+Stable tag: 0.2.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -22,11 +22,11 @@ The importer is designed for local or private archive migration workflows:
 * Re-importing the same export skips completed entries using Day One UUID metadata.
 * Interrupted, failed, or older-schema imports can be retried, continued, or refreshed in place without duplicating completed posts or media.
 * Supported photos are imported into the Media Library and attached to their posts.
-* New Day One media is stored outside the public uploads tree and served through a permission-checked WordPress endpoint.
+* New Day One media is stored in a protected uploads subfolder and served through a nonce- and permission-checked WordPress endpoint.
 * Generated image sub-sizes are skipped during import to reduce timeout risk on large exports.
 * Result screens report counts, UUIDs, dates, filenames, and generic warnings rather than full journal content.
 
-Privacy note: the importer stores new imported media outside the public uploads tree, preferring a location outside the WordPress web root when the host allows it. It writes best-effort server protection files as defense in depth and serves imported media only to logged-in users who can read the associated private post or attachment. If media privacy is critical, confirm your host does not expose the private filesystem directory through custom server configuration.
+Privacy note: the importer stores new imported media in a dedicated uploads subfolder with best-effort server protection files as defense in depth. It serves imported media through WordPress only to logged-in users with a valid media nonce who can read the associated private post or attachment. If media privacy is critical, confirm your host honors the protection files for that uploads subfolder.
 
 The plugin does not send journal content or media to external services.
 
@@ -35,7 +35,7 @@ For development and testing, the repository includes a wholly fictional sample D
 == Installation ==
 
 1. Optionally confirm PHP has the ZipArchive extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
-2. Upload the plugin files to the `/wp-content/plugins/day-one-importer/` directory, or install the plugin ZIP through the WordPress Plugins screen.
+2. Install the plugin ZIP through the WordPress Plugins screen, or upload the plugin files to your site's configured plugins directory.
 3. Activate the plugin through the Plugins screen in WordPress.
 4. Go to Tools > Import and choose Day One.
 5. Upload the original Day One JSON export ZIP and click Import Day One export.
@@ -50,7 +50,7 @@ Export your journal from Day One as JSON and keep the original ZIP intact. The i
 
 = Are imported entries public? =
 
-No. Imported entries are created as private WordPress posts by default. New Day One media is stored outside the public uploads tree and served through a permission-checked endpoint, but you should still confirm your host does not expose the private filesystem directory through custom server configuration.
+No. Imported entries are created as private WordPress posts by default. New Day One media is stored in a protected uploads subfolder and served through a nonce- and permission-checked endpoint, but you should still confirm your host honors the protection files for that directory.
 
 = Can I rerun the same export? =
 
@@ -58,13 +58,16 @@ Yes. The importer stores Day One UUID metadata and skips entries that were alrea
 
 = What media types are imported? =
 
-The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Unsupported or missing media generates warnings without stopping unrelated entries. New imported media is stored outside the public uploads tree and served through a permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
+The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Unsupported or missing media generates warnings without stopping unrelated entries. New imported media is stored in a protected uploads subfolder and served through a nonce- and permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
 
 = Does the plugin contact external services? =
 
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.5 =
+* Address WordPress.org review feedback: remove the extra contributor, add nonce verification for admin job/media URLs, sanitize uploaded file arrays before processing, escape generated job-panel markup with an allow-list, store private media in a protected uploads subfolder, stop changing PHP time limits, and avoid switching the current user during cron processing.
 
 = 0.2.4 =
 * Add a missing `translators:` comment to the `%d%% complete` localized progress format used by the resumable job panel's JavaScript so Plugin Check no longer flags the call as `WordPress.WP.I18n.MissingTranslatorsComment`.
@@ -86,8 +89,8 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Collapse the job panel notice color to three states: canceled or failed runs are red, queued or running runs are blue, completed runs are green regardless of warnings.
 * Recalibrate the import progress percentage so the bar tracks entries imported during the importing phase instead of jumping to roughly 65% once preflight, extract, and indexing finish. Resumed jobs paint at their already-imported ratio on first render, and failed or canceled mid-import jobs keep the computed value rather than snapping to 100%.
 * Add an estimated import progress bar to the resumable job panel so paused, canceled, retried, or re-opened uploads visibly report their current status.
-* Plugin Check compliance cleanup with no user-facing behavior change: private media writability checks now call `wp_is_writable()` directly (the prior `is_writable()` fallback is moved to the test bootstrap as a polyfill), the long-running-import `set_time_limit()` call is kept with a narrowly scoped, justified `phpcs:ignore`, and the media class direct-access guard is rewritten in the nested form already used elsewhere in the plugin.
-* Additional Plugin Check compliance cleanup with no user-facing behavior change: add a `translators:` hint to the `%d%% complete` progress string in the resumable job panel, and annotate intentionally low-level lint findings with justified `phpcs:ignore` directives — the admin importer's pre-escaped progress-panel helpers, the indirect nonce check on the upload dispatch, the custom `sanitize_job_id()` reads from `$_GET`, the streaming JSON parser's `fclose()` calls paired with `fopen()`/`fopen('x')` handles, and the job store's atomic compare-and-swap and prefix-scan queries on `wp_options` that implement the distributed import lock.
+* Plugin Check compliance cleanup with no user-facing behavior change: private media writability checks now call `wp_is_writable()` directly (the prior `is_writable()` fallback is moved to the test bootstrap as a polyfill), long-running imports use the resumable job flow rather than changing the PHP time limit, and the media class direct-access guard is rewritten in the nested form already used elsewhere in the plugin.
+* Additional Plugin Check compliance cleanup with no user-facing behavior change: add a `translators:` hint to the `%d%% complete` progress string in the resumable job panel, and annotate intentionally low-level lint findings with justified `phpcs:ignore` directives for the streaming JSON parser's `fclose()` calls paired with `fopen()`/`fopen('x')` handles and the job store's atomic compare-and-swap and prefix-scan queries on `wp_options` that implement the distributed import lock.
 
 = 0.1.0 =
 * Initial release.
@@ -96,6 +99,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.5 =
+Addresses WordPress.org review feedback for nonces, upload sanitization, escaping, contributor metadata, private media directory selection, PHP time limits, and cron processing.
 
 = 0.2.4 =
 Adds a missing `translators:` comment for the `%d%% complete` progress format so Plugin Check passes cleanly.

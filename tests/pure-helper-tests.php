@@ -26,10 +26,61 @@ if ( ! function_exists( 'apply_filters' ) ) {
 	}
 }
 
+$GLOBALS['day_one_importer_test_options'] = array();
+if ( ! function_exists( 'get_option' ) ) {
+	function get_option( $option, $default = false ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return array_key_exists( $option, $GLOBALS['day_one_importer_test_options'] ) ? $GLOBALS['day_one_importer_test_options'][ $option ] : $default;
+	}
+}
+
+if ( ! function_exists( 'add_option' ) ) {
+	function add_option( $option, $value = '', $deprecated = '', $autoload = null ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		unset( $deprecated, $autoload );
+		if ( array_key_exists( $option, $GLOBALS['day_one_importer_test_options'] ) ) {
+			return false;
+		}
+
+		$GLOBALS['day_one_importer_test_options'][ $option ] = $value;
+		return true;
+	}
+}
+
+if ( ! function_exists( 'update_option' ) ) {
+	function update_option( $option, $value, $autoload = null ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		unset( $autoload );
+		$GLOBALS['day_one_importer_test_options'][ $option ] = $value;
+		return true;
+	}
+}
+
+if ( ! function_exists( 'delete_option' ) ) {
+	function delete_option( $option ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		$exists = array_key_exists( $option, $GLOBALS['day_one_importer_test_options'] );
+		unset( $GLOBALS['day_one_importer_test_options'][ $option ] );
+
+		return $exists;
+	}
+}
+
 if ( ! function_exists( 'sanitize_file_name' ) ) {
 	function sanitize_file_name( $filename ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
 		$filename = basename( (string) $filename );
 		return preg_replace( '/[^A-Za-z0-9._-]/', '-', $filename );
+	}
+}
+
+if ( ! function_exists( 'wp_strip_all_tags' ) ) {
+	function wp_strip_all_tags( $text ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return (string) preg_replace( '/<[^>]*>/', '', (string) $text );
+	}
+}
+
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( $str ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		$str = wp_strip_all_tags( (string) $str );
+		$str = preg_replace( '/[\x00-\x1F\x7F]/u', '', $str );
+
+		return trim( (string) $str );
 	}
 }
 
@@ -60,6 +111,53 @@ if ( ! function_exists( 'wp_mkdir_p' ) ) {
 if ( ! function_exists( 'wp_is_writable' ) ) {
 	function wp_is_writable( $path ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
 		return is_writable( $path );
+	}
+}
+
+if ( ! class_exists( 'Day_One_Importer_Test_Filesystem' ) ) {
+	class Day_One_Importer_Test_Filesystem {
+		public function chmod( $path, $mode, $recursive = false ) {
+			unset( $recursive );
+			return chmod( $path, $mode );
+		}
+	}
+}
+
+if ( ! function_exists( 'WP_Filesystem' ) ) {
+	function WP_Filesystem() { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		global $wp_filesystem;
+
+		$wp_filesystem = new Day_One_Importer_Test_Filesystem();
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_delete_file' ) ) {
+	function wp_delete_file( $file ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		if ( is_string( $file ) && file_exists( $file ) ) {
+			unlink( $file );
+		}
+	}
+}
+
+if ( ! function_exists( 'wp_upload_dir' ) ) {
+	function wp_upload_dir( $time = null, $create_dir = true, $refresh_cache = false ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		unset( $time, $create_dir, $refresh_cache );
+		if ( isset( $GLOBALS['day_one_importer_test_wp_upload_dir_calls'] ) ) {
+			++$GLOBALS['day_one_importer_test_wp_upload_dir_calls'];
+		}
+		$basedir = isset( $GLOBALS['day_one_importer_test_upload_basedir'] ) ? $GLOBALS['day_one_importer_test_upload_basedir'] : sys_get_temp_dir() . '/day-one-importer-uploads';
+		return array(
+			'basedir' => $basedir,
+			'baseurl' => 'https://example.test/wp-content/uploads',
+		);
+	}
+}
+
+if ( ! function_exists( 'wp_create_nonce' ) ) {
+	function wp_create_nonce( $action = -1 ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		unset( $action );
+		return 'day-one-nonce';
 	}
 }
 
@@ -761,8 +859,10 @@ $filtered_sizes = Day_One_Importer_Media::filter_import_image_sizes(
 );
 assert_true( array() === $filtered_sizes, 'Importer sideloads disable generated image sub-sizes.' );
 
-$public_upload_root = sys_get_temp_dir() . '/day-one-importer-public-upload-test-' . uniqid();
-$upload_dirs        = Day_One_Importer_Media::filter_private_upload_dir(
+$public_upload_root                               = sys_get_temp_dir() . '/day-one-importer-public-upload-test-' . uniqid();
+$GLOBALS['day_one_importer_test_upload_basedir'] = $public_upload_root;
+$GLOBALS['day_one_importer_test_wp_upload_dir_calls'] = 0;
+$upload_dirs                                      = Day_One_Importer_Media::filter_private_upload_dir(
 	array(
 		'basedir' => $public_upload_root,
 		'baseurl' => 'https://example.test/wp-content/uploads',
@@ -771,10 +871,11 @@ $upload_dirs        = Day_One_Importer_Media::filter_private_upload_dir(
 		'url'     => 'https://example.test/wp-content/uploads/2026/05',
 	)
 );
-$private_media_root = Day_One_Importer_Media::private_media_base_dir();
+$private_media_root = Day_One_Importer_Media::private_media_base_dir( $public_upload_root );
+assert_true( 0 === $GLOBALS['day_one_importer_test_wp_upload_dir_calls'], 'Private media upload filter uses the provided upload directory data.' );
 assert_true( '/2026/05' === $upload_dirs['subdir'], 'Private media upload subdir preserves WordPress date structure.' );
-assert_true( 0 === strpos( $upload_dirs['path'], $private_media_root ), 'Private media upload path is outside the public uploads tree.' );
-assert_true( false === strpos( $upload_dirs['path'], $public_upload_root ), 'Private media upload path does not use the public uploads root.' );
+assert_true( 0 === strpos( $upload_dirs['path'], $private_media_root ), 'Private media upload path is under the protected private root.' );
+assert_true( 0 === strpos( $private_media_root, $public_upload_root ), 'Private media root uses a dedicated uploads subfolder.' );
 assert_true( file_exists( $private_media_root . '/.htaccess' ), 'Private media root receives defense-in-depth protection files.' );
 $private_test_file = $upload_dirs['path'] . '/private-test.jpg';
 file_put_contents( $private_test_file, 'fake' );
@@ -783,7 +884,7 @@ Day_One_Importer_Cleanup::remove( dirname( $private_media_root ) );
 Day_One_Importer_Cleanup::remove( $public_upload_root );
 
 $private_media_url = Day_One_Importer_Media::private_media_url( 123 );
-assert_true( 'https://example.test/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=123' === $private_media_url, 'Private media URL uses the authenticated AJAX endpoint.' );
+assert_true( 'https://example.test/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=123&nonce=day-one-nonce' === $private_media_url, 'Private media URL uses the authenticated AJAX endpoint with a nonce.' );
 
 $tmp = sys_get_temp_dir() . '/day-one-importer-test-' . uniqid();
 mkdir( $tmp . '/Export/photos', 0777, true );

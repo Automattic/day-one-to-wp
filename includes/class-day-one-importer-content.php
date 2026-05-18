@@ -5,7 +5,7 @@
  * @package Day_One_Importer
  */
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
@@ -151,7 +151,7 @@ class Day_One_Importer_Content {
 
 			$tag = day_one_importer_sanitize_text( $tag );
 			if ( '' !== $tag ) {
-				$key = function_exists( 'mb_strtolower' ) ? mb_strtolower( $tag ) : strtolower( $tag );
+				$key                = function_exists( 'mb_strtolower' ) ? mb_strtolower( $tag ) : strtolower( $tag );
 				$normalized[ $key ] = $tag;
 			}
 		}
@@ -256,7 +256,7 @@ class Day_One_Importer_Content {
 
 		$encoded_attrs = '';
 		if ( ! empty( $attrs ) ) {
-			$encoded_attrs = function_exists( 'wp_json_encode' ) ? wp_json_encode( $attrs, $flags ) : json_encode( $attrs, $flags );
+			$encoded_attrs = wp_json_encode( $attrs, $flags );
 			$encoded_attrs = is_string( $encoded_attrs ) ? ' ' . $encoded_attrs : '';
 		}
 

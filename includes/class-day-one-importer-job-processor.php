@@ -382,13 +382,14 @@ class Day_One_Importer_Job_Processor {
 			}
 
 			$uuid = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
-			if ( $uuid !== ( isset( $job['current_entry_uuid'] ) ? (string) $job['current_entry_uuid'] : '' ) ) {
+			if ( ( isset( $job['current_entry_uuid'] ) ? (string) $job['current_entry_uuid'] : '' ) !== $uuid ) {
 				$this->clear_current_entry_state( $job );
 				$job['current_entry_uuid'] = $uuid;
 			}
 
 			if ( empty( $job['current_entry_post_prepared'] ) ) {
-				$prepared = $runner->prepare_imported_entry_post( $entry, $results );
+				$owner_user_id = isset( $job['owner_user_id'] ) ? absint( $job['owner_user_id'] ) : 0;
+				$prepared      = $runner->prepare_imported_entry_post( $entry, $results, $owner_user_id );
 				if ( 'ready' === $prepared['status'] ) {
 					$job['current_post_id']             = (int) $prepared['post_id'];
 					$job['current_entry_post_prepared'] = true;

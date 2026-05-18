@@ -6,9 +6,7 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-	if ( ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-		exit;
-	}
+	exit;
 }
 
 /**
@@ -512,7 +510,7 @@ class Day_One_Importer_Media {
 		$tmp      = wp_tempnam( $filename );
 		if ( ! $tmp || ! copy( $source, $tmp ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_copy
 			if ( $tmp ) {
-				@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+				wp_delete_file( $tmp );
 			}
 			return 0;
 		}
@@ -542,7 +540,7 @@ class Day_One_Importer_Media {
 		}
 
 		if ( is_wp_error( $attachment_id ) ) {
-			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+			wp_delete_file( $tmp );
 			return 0;
 		}
 
@@ -565,7 +563,8 @@ class Day_One_Importer_Media {
 	 * @param array<string,array<string,int>> $sizes Existing size definitions.
 	 * @return array<string,array<string,int>> Empty size list.
 	 */
-	public static function filter_import_image_sizes( $sizes ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- WordPress filter signature.
+	public static function filter_import_image_sizes( $sizes ) {
+		unset( $sizes );
 		return array();
 	}
 
@@ -576,9 +575,10 @@ class Day_One_Importer_Media {
 	 * @return array<string,mixed> Filtered upload directory data.
 	 */
 	public static function filter_private_upload_dir( $dirs ) {
+		$basedir = isset( $dirs['basedir'] ) ? (string) $dirs['basedir'] : '';
 		$baseurl = isset( $dirs['baseurl'] ) ? untrailingslashit( (string) $dirs['baseurl'] ) : '';
 		$subdir  = isset( $dirs['subdir'] ) ? (string) $dirs['subdir'] : '';
-		$private = self::prepare_private_media_base_dir();
+		$private = self::prepare_private_media_base_dir( $basedir );
 
 		if ( '' === $baseurl || '' === $private ) {
 			$dirs['error'] = __( 'The private media directory could not be prepared.', 'day-one-importer' );
@@ -612,10 +612,11 @@ class Day_One_Importer_Media {
 	/**
 	 * Prepare the private media base directory.
 	 *
+	 * @param string $upload_basedir Optional uploads base directory.
 	 * @return string Absolute directory path, or empty string on failure.
 	 */
-	public static function prepare_private_media_base_dir() {
-		$dir = self::private_media_base_dir();
+	public static function prepare_private_media_base_dir( $upload_basedir = '' ) {
+		$dir = self::private_media_base_dir( $upload_basedir );
 		if ( '' === $dir ) {
 			return '';
 		}
@@ -633,57 +634,24 @@ class Day_One_Importer_Media {
 	}
 
 	/**
-	 * Return the private media base directory outside the web root where possible.
+	 * Return the protected private media base directory in the uploads tree.
 	 *
+	 * @param string $upload_basedir Optional uploads base directory.
 	 * @return string Directory path.
 	 */
-	public static function private_media_base_dir() {
-		$candidates = array();
-		if ( defined( 'ABSPATH' ) ) {
-			$candidates[] = dirname( untrailingslashit( ABSPATH ) ) . DIRECTORY_SEPARATOR . self::PRIVATE_UPLOAD_SUBDIR;
-		}
-		if ( function_exists( 'get_temp_dir' ) ) {
-			$candidates[] = trailingslashit( get_temp_dir() ) . self::PRIVATE_UPLOAD_SUBDIR;
-		} else {
-			$candidates[] = trailingslashit( sys_get_temp_dir() ) . self::PRIVATE_UPLOAD_SUBDIR;
-		}
-		if ( defined( 'WP_CONTENT_DIR' ) ) {
-			$candidates[] = untrailingslashit( WP_CONTENT_DIR ) . DIRECTORY_SEPARATOR . self::PRIVATE_UPLOAD_SUBDIR;
+	public static function private_media_base_dir( $upload_basedir = '' ) {
+		if ( '' === $upload_basedir ) {
+			$upload_dir     = wp_upload_dir( null, false );
+			$upload_basedir = empty( $upload_dir['basedir'] ) ? '' : (string) $upload_dir['basedir'];
 		}
 
-		$default = self::first_writable_private_media_dir( $candidates );
-		if ( function_exists( 'apply_filters' ) ) {
-			$default = (string) apply_filters( 'day_one_importer_private_media_dir', $default );
-		}
+		$basedir = untrailingslashit( $upload_basedir );
+		$default = $basedir ? $basedir . DIRECTORY_SEPARATOR . self::PRIVATE_UPLOAD_SUBDIR : '';
+		$default = (string) apply_filters( 'day_one_importer_private_media_dir', $default );
 
 		return $default ? untrailingslashit( $default ) : '';
 	}
 
-	/**
-	 * Pick the first candidate whose parent directory is writable.
-	 *
-	 * @param string[] $candidates Directory candidates.
-	 * @return string Directory path, or the first candidate if none can be proven writable.
-	 */
-	private static function first_writable_private_media_dir( $candidates ) {
-		$first = '';
-		foreach ( $candidates as $candidate ) {
-			$candidate = untrailingslashit( (string) $candidate );
-			if ( '' === $candidate ) {
-				continue;
-			}
-			if ( '' === $first ) {
-				$first = $candidate;
-			}
-
-			$parent = dirname( $candidate );
-			if ( is_dir( $parent ) && wp_is_writable( $parent ) ) {
-				return $candidate;
-			}
-		}
-
-		return $first;
-	}
 
 	/**
 	 * Add best-effort access-control files to a private upload directory.
@@ -728,6 +696,7 @@ class Day_One_Importer_Media {
 			array(
 				'action'        => self::PRIVATE_MEDIA_ACTION,
 				'attachment_id' => absint( $attachment_id ),
+				'nonce'         => wp_create_nonce( self::PRIVATE_MEDIA_ACTION ),
 			),
 			admin_url( 'admin-ajax.php' )
 		);
@@ -739,7 +708,11 @@ class Day_One_Importer_Media {
 	 * @return void
 	 */
 	public static function serve_private_media() {
-		$attachment_id = isset( $_GET['attachment_id'] ) ? absint( wp_unslash( $_GET['attachment_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only media endpoint with capability checks.
+		if ( ! check_ajax_referer( self::PRIVATE_MEDIA_ACTION, 'nonce', false ) ) {
+			self::private_media_status( 403 );
+		}
+
+		$attachment_id = isset( $_GET['attachment_id'] ) ? absint( wp_unslash( $_GET['attachment_id'] ) ) : 0;
 		if ( ! $attachment_id || 'day-one-export' !== (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
 			self::private_media_status( 404 );
 		}

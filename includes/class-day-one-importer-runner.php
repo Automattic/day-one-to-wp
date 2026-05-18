@@ -63,7 +63,7 @@ class Day_One_Importer_Runner {
 				return $results;
 			}
 
-			@unlink( $zip_path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+			wp_delete_file( $zip_path );
 			$zip_path = '';
 
 			$tree_valid = Day_One_Importer_Cleanup::validate_extracted_tree( $extract_dir );
@@ -91,7 +91,7 @@ class Day_One_Importer_Runner {
 			$results->add_error( __( 'The import stopped because of an unexpected error.', 'day-one-importer' ) );
 		} finally {
 			if ( $zip_path ) {
-				@unlink( $zip_path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+				wp_delete_file( $zip_path );
 			}
 			if ( $run_dir ) {
 				Day_One_Importer_Cleanup::remove( $run_dir );
@@ -127,10 +127,11 @@ class Day_One_Importer_Runner {
 	 * @param array<string,mixed>      $entry Entry.
 	 * @param string                   $extract_dir Extraction root.
 	 * @param Day_One_Importer_Results $results Results.
+	 * @param int                      $owner_user_id User ID to assign as post author.
 	 * @return void
 	 */
-	public function import_entry( $entry, $extract_dir, Day_One_Importer_Results $results ) {
-		$prepared = $this->prepare_imported_entry_post( $entry, $results );
+	public function import_entry( $entry, $extract_dir, Day_One_Importer_Results $results, $owner_user_id = 0 ) {
+		$prepared = $this->prepare_imported_entry_post( $entry, $results, $owner_user_id );
 		if ( 'ready' !== $prepared['status'] ) {
 			return;
 		}
@@ -156,13 +157,17 @@ class Day_One_Importer_Runner {
 	 *
 	 * @param array<string,mixed>      $entry Entry.
 	 * @param Day_One_Importer_Results $results Results.
+	 * @param int                      $owner_user_id User ID to assign as post author.
 	 * @return array<string,mixed> status: ready, skipped, or failed.
 	 */
-	public function prepare_imported_entry_post( $entry, Day_One_Importer_Results $results ) {
+	public function prepare_imported_entry_post( $entry, Day_One_Importer_Results $results, $owner_user_id = 0 ) {
 		$uuid = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
 		if ( '' === $uuid ) {
 			$results->increment( 'entries_failed' );
-			return array( 'status' => 'failed', 'post_id' => 0 );
+			return array(
+				'status'  => 'failed',
+				'post_id' => 0,
+			);
 		}
 
 		$post_id          = 0;
@@ -176,7 +181,10 @@ class Day_One_Importer_Runner {
 				$version  = get_post_meta( $existing_post_id, '_day_one_import_version', true );
 				if ( '1' === (string) $complete && self::IMPORT_SCHEMA_VERSION === (string) $version ) {
 					$results->increment( 'posts_skipped' );
-					return array( 'status' => 'skipped', 'post_id' => (int) $existing_post_id );
+					return array(
+						'status'  => 'skipped',
+						'post_id' => (int) $existing_post_id,
+					);
 				}
 
 				$post_id = (int) $existing_post_id;
@@ -199,11 +207,20 @@ class Day_One_Importer_Runner {
 		$content = Day_One_Importer_Content::convert_text_to_content( isset( $entry['text'] ) ? $entry['text'] : '' );
 		$title   = Day_One_Importer_Content::derive_title( isset( $entry['text'] ) ? $entry['text'] : '', $creation['gmt'] );
 
+		$owner_user_id = absint( $owner_user_id );
+		if ( ! $owner_user_id && function_exists( 'get_current_user_id' ) ) {
+			$owner_user_id = absint( get_current_user_id() );
+		}
+
 		$postarr = array(
 			'post_type'    => 'post',
 			'post_title'   => $title,
 			'post_content' => $content,
 		);
+
+		if ( $owner_user_id ) {
+			$postarr['post_author'] = $owner_user_id;
+		}
 
 		if ( $creation['valid'] ) {
 			$postarr['post_date_gmt'] = $creation['gmt'];
@@ -226,7 +243,10 @@ class Day_One_Importer_Runner {
 						$uuid
 					)
 				);
-				return array( 'status' => 'failed', 'post_id' => 0 );
+				return array(
+					'status'  => 'failed',
+					'post_id' => 0,
+				);
 			}
 			update_post_meta( $post_id, '_day_one_import_complete', '0' );
 		} else {
@@ -238,7 +258,7 @@ class Day_One_Importer_Runner {
 				'_day_one_import_complete'   => '0',
 				'_day_one_import_started_at' => current_time( 'mysql', true ),
 			);
-			$post_id = wp_insert_post( wp_slash( $postarr ), true );
+			$post_id                = wp_insert_post( wp_slash( $postarr ), true );
 			if ( is_wp_error( $post_id ) || ! $post_id ) {
 				$results->increment( 'entries_failed' );
 				$results->add_warning(
@@ -248,7 +268,10 @@ class Day_One_Importer_Runner {
 						$uuid
 					)
 				);
-				return array( 'status' => 'failed', 'post_id' => 0 );
+				return array(
+					'status'  => 'failed',
+					'post_id' => 0,
+				);
 			}
 
 			$results->increment( 'posts_created' );
@@ -278,9 +301,9 @@ class Day_One_Importer_Runner {
 	 * @return bool True when all media for the entry is complete.
 	 */
 	public function import_entry_media_batch( $entry, $extract_dir, $post_id, &$job, $deadline, Day_One_Importer_Results $results, $checkpoint = null ) {
-		$photos = isset( $entry['photos'] ) && is_array( $entry['photos'] ) ? $entry['photos'] : array();
-		$photos = Day_One_Importer_Media::sort_photos( $photos );
-		$total  = count( $photos );
+		$photos                     = isset( $entry['photos'] ) && is_array( $entry['photos'] ) ? $entry['photos'] : array();
+		$photos                     = Day_One_Importer_Media::sort_photos( $photos );
+		$total                      = count( $photos );
 		$job['current_media_total'] = $total;
 
 		if ( 0 === $total ) {
@@ -296,10 +319,10 @@ class Day_One_Importer_Runner {
 			}
 		}
 
-		$index = isset( $job['current_media_index'] ) ? max( 0, (int) $job['current_media_index'] ) : 0;
-		$ids   = isset( $job['current_attachment_ids'] ) && is_array( $job['current_attachment_ids'] ) ? array_values( array_map( 'intval', $job['current_attachment_ids'] ) ) : array();
-		$limit = class_exists( 'Day_One_Importer_Job_State' ) ? Day_One_Importer_Job_State::batch_media_limit() : $total;
-		$done  = 0;
+		$index      = isset( $job['current_media_index'] ) ? max( 0, (int) $job['current_media_index'] ) : 0;
+		$ids        = isset( $job['current_attachment_ids'] ) && is_array( $job['current_attachment_ids'] ) ? array_values( array_map( 'intval', $job['current_attachment_ids'] ) ) : array();
+		$limit      = class_exists( 'Day_One_Importer_Job_State' ) ? Day_One_Importer_Job_State::batch_media_limit() : $total;
+		$done       = 0;
 		$photo_dirs = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? $job['photo_dirs'] : null;
 		$media      = new Day_One_Importer_Media( $extract_dir, $results, $photo_dirs );
 

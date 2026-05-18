@@ -6,9 +6,7 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-	if ( ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-		exit;
-	}
+	exit;
 }
 
 /**
@@ -21,7 +19,7 @@ function day_one_importer_text_domain() {
 }
 
 /**
- * Sanitize a scalar string with a WordPress fallback for pure helper tests.
+ * Sanitize a scalar string.
  *
  * @param mixed $value Value to sanitize.
  * @return string
@@ -29,14 +27,7 @@ function day_one_importer_text_domain() {
 function day_one_importer_sanitize_text( $value ) {
 	$value = is_scalar( $value ) ? (string) $value : '';
 
-	if ( function_exists( 'sanitize_text_field' ) ) {
-		return sanitize_text_field( $value );
-	}
-
-	$value = wp_strip_all_tags( $value );
-	$value = preg_replace( '/[\x00-\x1F\x7F]/u', '', $value );
-
-	return trim( (string) $value );
+	return sanitize_text_field( $value );
 }
 
 /**
@@ -45,39 +36,38 @@ function day_one_importer_sanitize_text( $value ) {
  * @return bool
  */
 function day_one_importer_current_user_can_import() {
-	if ( ! function_exists( 'current_user_can' ) ) {
+	if ( ! function_exists( 'get_current_user_id' ) ) {
 		return false;
 	}
 
-	return current_user_can( 'import' ) && current_user_can( 'upload_files' ) && current_user_can( 'edit_posts' );
+	return day_one_importer_user_can_import( get_current_user_id() );
 }
 
 /**
- * Ask WordPress/PHP for limits suitable for a long-running admin import.
+ * Check whether a specific user can run Day One imports.
  *
- * Hosts may enforce hard request limits outside PHP control, so this is best
- * effort only. The importer remains resumable when a host stops the request.
+ * @param int $user_id User ID.
+ * @return bool
+ */
+function day_one_importer_user_can_import( $user_id ) {
+	$user_id = absint( $user_id );
+	if ( ! $user_id || ! function_exists( 'user_can' ) ) {
+		return false;
+	}
+
+	return user_can( $user_id, 'import' ) && user_can( $user_id, 'upload_files' ) && user_can( $user_id, 'edit_posts' );
+}
+
+/**
+ * Ask WordPress for memory suitable for an admin import.
+ *
+ * Hosts may enforce hard request limits outside PHP control, so the importer
+ * remains resumable when a host stops the request.
  *
  * @return void
  */
 function day_one_importer_prepare_long_running_import() {
 	if ( function_exists( 'wp_raise_memory_limit' ) ) {
 		wp_raise_memory_limit( 'admin' );
-	}
-
-	if ( function_exists( 'set_time_limit' ) ) {
-		@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Squiz.PHP.DiscouragedFunctions.Discouraged -- Best-effort host-dependent request limit adjustment for long-running imports; no WP wrapper extends the request time budget.
-	}
-}
-
-if ( ! function_exists( 'wp_strip_all_tags' ) ) {
-	/**
-	 * Minimal fallback for tests outside WordPress.
-	 *
-	 * @param string $text Text.
-	 * @return string
-	 */
-	function wp_strip_all_tags( $text ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
-		return (string) preg_replace( '/<[^>]*>/', '', (string) $text );
 	}
 }

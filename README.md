@@ -20,7 +20,7 @@ Playground runs in your browser and is useful for checking the importer screens 
 ## Install and activate
 
 1. Optionally confirm PHP has the `ZipArchive` extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
-2. Copy this plugin directory to `wp-content/plugins/day-one-importer/` on your WordPress site.
+2. Install the plugin ZIP through the WordPress Plugins screen, or copy this plugin directory into your site's configured plugins directory.
 3. In WordPress admin, go to **Plugins → Installed Plugins**.
 4. Activate **Day One Importer**.
 5. Go to **Tools → Import** and confirm **Day One** is listed.
@@ -73,11 +73,11 @@ Supported initial image types are JPEG/JPG, PNG, and other image formats that th
 
 Photos are attached to the corresponding private post and importer metadata is stored on the attachment to support reuse on reruns.
 
-New Day One media is stored in a `day-one-importer-private` filesystem directory outside the public WordPress uploads tree, preferring a location outside the WordPress web root when the host allows it. The importer uses a WordPress media endpoint instead of raw upload URLs for imported attachments. The endpoint only serves a Day One media file to a logged-in user who can read the associated private post or attachment.
+New Day One media is stored in a protected `day-one-importer-private` subfolder of the WordPress uploads directory. The importer uses a nonce- and permission-checked WordPress media endpoint instead of raw upload URLs for imported attachments. The endpoint only serves a Day One media file to a logged-in user who can read the associated private post or attachment.
 
-To reduce timeout risk during large imports, the importer asks WordPress/PHP for long-running admin request limits where the host allows it and skips generated image sub-sizes during Day One media sideloads. Imported posts use the original uploaded image file. If you need WordPress thumbnail sizes for imported media later, regenerate thumbnails after the import using your preferred trusted maintenance tool.
+To reduce timeout risk during large imports, the importer uses resumable batches, asks WordPress for the admin memory limit where the host allows it, and skips generated image sub-sizes during Day One media sideloads. Imported posts use the original uploaded image file. If you need WordPress thumbnail sizes for imported media later, regenerate thumbnails after the import using your preferred trusted maintenance tool.
 
-**Important media caveat:** The private media directory is intentionally outside WordPress' public uploads tree and usually outside the web root. The importer also writes `.htaccess` and `web.config` files as defense in depth, but privacy ultimately depends on the host not mapping that private filesystem location to a public URL through custom server configuration. Advanced operators can customize the directory with the `day_one_importer_private_media_dir` filter.
+**Important media caveat:** The private media directory is a protected subfolder of WordPress uploads. The importer writes `.htaccess` and `web.config` files as defense in depth, but privacy ultimately depends on the host honoring those protection files. Advanced operators can customize the directory with the `day_one_importer_private_media_dir` filter.
 
 ## Temporary files and external services
 
@@ -100,7 +100,7 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 
 - Day One rich text fidelity is not guaranteed; the importer uses the primary text field conservatively.
 - Images are appended after entry text rather than placed at exact original inline positions.
-- Private media storage depends on the host allowing WordPress to create a private filesystem directory outside public uploads. Media import fails safely rather than falling back to public uploads if that directory cannot be prepared.
+- Private media storage depends on the host allowing WordPress to create and protect a dedicated uploads subfolder. Media import fails safely if that directory cannot be prepared.
 - Unsupported or missing media produces warnings but does not stop unrelated entries from importing.
 - Very large exports may still hit host-enforced upload-size or memory limits before a job can be queued, and exceptionally slow hosts may require using **Retry / Continue**. Increase upload/memory limits, rerun to resume, or split exports if needed.
 - WordPress Playground is useful for quick testing, but browser-backed uploads/media handling may differ from a normal WordPress host, especially for large Day One ZIP exports or photo-heavy imports.
@@ -142,8 +142,8 @@ Run a local WordPress smoke test with `wp-env`:
 ```sh
 wp-env start
 wp-env run cli wp eval '$admin = new Day_One_Importer_Admin(); $admin->register_importer(); global $wp_importers; echo isset( $wp_importers["day-one"] ) ? "day-one importer registered\n" : "missing importer\n";'
-PLUGIN_DIR=$(wp-env run cli wp eval 'echo basename( WP_PLUGIN_DIR . "/" . dirname( plugin_basename( DAY_ONE_IMPORTER_FILE ) ) );' 2>/dev/null | tail -n 1)
-wp-env run cli wp eval-file "wp-content/plugins/${PLUGIN_DIR}/tests/wp-env-import-sample.php"
+PLUGIN_DIR=$(wp-env run cli wp eval 'echo dirname( DAY_ONE_IMPORTER_FILE );' 2>/dev/null | tail -n 1)
+wp-env run cli wp eval-file "${PLUGIN_DIR}/tests/wp-env-import-sample.php"
 ```
 
 The wp-env smoke test imports the committed fictional fixture at `tests/fixtures/day-one-fictional.zip` by default. You can optionally set `DAY_ONE_IMPORTER_SAMPLE_ZIP` or pass a ZIP path as the first WP-CLI argument to test a developer-owned private export, such as an ignored `sample/local-day-one-export.zip`. The script does not print journal content. It verifies private posts/media are created, reruns the import, verifies completed entries are skipped, simulates an older importer-schema version and verifies it is reprocessed in place, moves one imported post to Trash, and verifies a later rerun recreates only that trashed entry. The committed default fixture is required; if it is missing, the script fails as a repository setup error.

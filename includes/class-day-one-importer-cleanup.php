@@ -5,7 +5,7 @@
  * @package Day_One_Importer
  */
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
@@ -51,7 +51,7 @@ class Day_One_Importer_Cleanup {
 
 		global $wp_filesystem;
 		if ( ! $wp_filesystem || ! is_object( $wp_filesystem ) || ! method_exists( $wp_filesystem, 'chmod' ) ) {
-			if ( defined( 'ABSPATH' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) && ! function_exists( 'WP_Filesystem' ) ) {
+			if ( defined( 'ABSPATH' ) && ! function_exists( 'WP_Filesystem' ) ) {
 				require_once ABSPATH . 'wp-admin/includes/file.php';
 			}
 
@@ -108,7 +108,8 @@ class Day_One_Importer_Cleanup {
 			return function_exists( '__' ) ? __( 'The ZIP archive could not be opened.', 'day-one-importer' ) : 'The ZIP archive could not be opened.';
 		}
 
-		for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+		$total = (int) $zip->count();
+		for ( $i = 0; $i < $total; $i++ ) {
 			$stat = $zip->statIndex( $i );
 			$name = isset( $stat['name'] ) ? (string) $stat['name'] : '';
 			if ( ! self::is_safe_relative_archive_name( $name ) ) {
@@ -235,7 +236,7 @@ class Day_One_Importer_Cleanup {
 			return $result;
 		}
 
-		$total       = (int) $zip->numFiles;
+		$total       = (int) $zip->count();
 		$index       = isset( $job['tree_validation_zip_index'] ) ? max( 0, (int) $job['tree_validation_zip_index'] ) : 0;
 		$limit       = max( 1, (int) $limit );
 		$processed   = 0;
@@ -329,7 +330,7 @@ class Day_One_Importer_Cleanup {
 			return function_exists( '__' ) ? __( 'The ZIP archive could not be opened.', 'day-one-importer' ) : 'The ZIP archive could not be opened.';
 		}
 
-		$total = (int) $zip->numFiles;
+		$total = (int) $zip->count();
 		$zip->close();
 
 		return $total;
@@ -365,7 +366,7 @@ class Day_One_Importer_Cleanup {
 			return $result;
 		}
 
-		$total           = (int) $zip->numFiles;
+		$total           = (int) $zip->count();
 		$result['total'] = $total;
 		$index           = max( 0, (int) $start_index );
 		$limit           = max( 1, (int) $limit );
@@ -489,7 +490,7 @@ class Day_One_Importer_Cleanup {
 			return $result;
 		}
 
-		$total           = (int) $zip->numFiles;
+		$total           = (int) $zip->count();
 		$result['total'] = $total;
 		$index           = max( 0, (int) $start_index );
 		$limit           = max( 1, (int) $limit );
@@ -542,7 +543,7 @@ class Day_One_Importer_Cleanup {
 		}
 
 		if ( is_file( $path ) || is_link( $path ) ) {
-			@unlink( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+			wp_delete_file( $path );
 			return;
 		}
 
@@ -555,7 +556,7 @@ class Day_One_Importer_Cleanup {
 			if ( $item->isDir() && ! $item->isLink() ) {
 				@rmdir( $item->getPathname() ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
 			} else {
-				@unlink( $item->getPathname() ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+				wp_delete_file( $item->getPathname() );
 			}
 		}
 

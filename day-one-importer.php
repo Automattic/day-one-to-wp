@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Day One Importer
  * Description: Import Day One journal exports as private WordPress posts.
- * Version: 0.2.4
+ * Version: 0.2.5
  * Requires at least: 6.4
  * Requires PHP: 7.4
  * Author: Automattic
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DAY_ONE_IMPORTER_VERSION', '0.2.4' );
+define( 'DAY_ONE_IMPORTER_VERSION', '0.2.5' );
 define( 'DAY_ONE_IMPORTER_FILE', __FILE__ );
 define( 'DAY_ONE_IMPORTER_DIR', plugin_dir_path( __FILE__ ) );
 define( 'DAY_ONE_IMPORTER_URL', plugin_dir_url( __FILE__ ) );

@@ -21,6 +21,13 @@ class Day_One_Importer_Admin {
 	const NONCE_ACTION = 'day_one_importer_import';
 
 	/**
+	 * Nonce action for read-only job display URLs.
+	 *
+	 * @var string
+	 */
+	const JOB_VIEW_NONCE_ACTION = 'day_one_importer_job_view';
+
+	/**
 	 * Register hooks.
 	 *
 	 * @return void
@@ -66,18 +73,18 @@ class Day_One_Importer_Admin {
 		if ( 'POST' !== $request_method ) {
 			return;
 		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only screen routing check; nonce verified inside handle_submission().
-		$importer = isset( $_GET['import'] ) ? sanitize_key( wp_unslash( $_GET['import'] ) ) : '';
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Read-only screen routing check; nonce verified inside handle_submission().
-		if ( 'day-one' !== $importer || ! isset( $_POST['day_one_importer_submit'] ) ) {
+		if ( ! isset( $_POST['day_one_importer_submit'] ) ) {
 			return;
 		}
-		if ( ! $this->current_user_can_import() ) {
+		check_admin_referer( self::NONCE_ACTION );
+
+		$importer = isset( $_GET['import'] ) ? sanitize_key( wp_unslash( $_GET['import'] ) ) : '';
+		if ( 'day-one' !== $importer || ! $this->current_user_can_import() ) {
 			return;
 		}
 
 		$this->submission_handled = true;
-		$outcome                  = $this->handle_submission();
+		$outcome                  = $this->handle_submission( false );
 		if ( is_array( $outcome ) ) {
 			$this->pending_queued_job = $outcome;
 		} elseif ( $outcome instanceof Day_One_Importer_Results ) {
@@ -91,10 +98,6 @@ class Day_One_Importer_Admin {
 	 * @return void
 	 */
 	public function register_importer() {
-		if ( ! function_exists( 'register_importer' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/import.php';
-		}
-
 		if ( ! function_exists( 'register_importer' ) ) {
 			return;
 		}
@@ -112,10 +115,8 @@ class Day_One_Importer_Admin {
 	 *
 	 * @return void
 	 */
-	public function enqueue_assets() {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only screen check for asset scoping.
-		$importer = isset( $_GET['import'] ) ? sanitize_key( wp_unslash( $_GET['import'] ) ) : '';
-		if ( 'day-one' !== $importer || ! $this->current_user_can_import() ) {
+	public function enqueue_assets( $hook_suffix = '' ) {
+		if ( 'import.php' !== $hook_suffix || ! $this->current_user_can_import() ) {
 			return;
 		}
 
@@ -127,9 +128,8 @@ class Day_One_Importer_Admin {
 			true
 		);
 
-		$store = new Day_One_Importer_Job_Store();
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Read-only job selection for localized polling config; sanitize_job_id() is the custom sanitizer.
-		$requested_job_id = isset( $_GET['day_one_importer_job'] ) ? Day_One_Importer_Job_Store::sanitize_job_id( wp_unslash( $_GET['day_one_importer_job'] ) ) : '';
+		$store            = new Day_One_Importer_Job_Store();
+		$requested_job_id = $this->requested_job_id_from_query();
 		$job              = $store->get_user_job( get_current_user_id(), $requested_job_id );
 
 		wp_localize_script(
@@ -193,8 +193,10 @@ class Day_One_Importer_Admin {
 	 *
 	 * @return Day_One_Importer_Results|array<string,mixed>|null Results on setup failure; queued job on success.
 	 */
-	private function handle_submission() {
-		check_admin_referer( self::NONCE_ACTION );
+	private function handle_submission( $verify_nonce = true ) {
+		if ( $verify_nonce ) {
+			check_admin_referer( self::NONCE_ACTION );
+		}
 
 		if ( ! $this->current_user_can_import() ) {
 			wp_die( esc_html__( 'You do not have permission to import Day One exports.', 'day-one-importer' ) );
@@ -207,7 +209,7 @@ class Day_One_Importer_Admin {
 			return $results;
 		}
 
-		$file = isset( $_FILES['day_one_export'] ) ? $_FILES['day_one_export'] : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$file = $this->uploaded_file_from_request();
 
 		if ( ! class_exists( 'ZipArchive' ) ) {
 			Day_One_Importer_Cleanup::remove( $run_dir );
@@ -233,19 +235,18 @@ class Day_One_Importer_Admin {
 		// Reload the importer screen at the new job's URL so the cached job pointer,
 		// enqueued config, and rendered panel are not derived from a previous (canceled)
 		// job that was still active when this request started.
-		if ( ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
-			wp_safe_redirect(
-				add_query_arg(
-					array(
-						'import'               => 'day-one',
-						'day_one_importer_job' => $job['id'],
-						'queued'               => 1,
-					),
-					admin_url( 'import.php' )
-				)
-			);
-			exit;
-		}
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'import'                     => 'day-one',
+					'day_one_importer_job'       => $job['id'],
+					'day_one_importer_job_nonce' => wp_create_nonce( self::JOB_VIEW_NONCE_ACTION ),
+					'queued'                     => 1,
+				),
+				admin_url( 'import.php' )
+			)
+		);
+		exit;
 
 		return $job;
 	}
@@ -273,9 +274,8 @@ class Day_One_Importer_Admin {
 	 * @return void
 	 */
 	private function render_job_panel( $job = null ) {
-		$store = new Day_One_Importer_Job_Store();
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Read-only job selection for display; sanitize_job_id() is the custom sanitizer.
-		$requested_job_id = isset( $_GET['day_one_importer_job'] ) ? Day_One_Importer_Job_Store::sanitize_job_id( wp_unslash( $_GET['day_one_importer_job'] ) ) : '';
+		$store            = new Day_One_Importer_Job_Store();
+		$requested_job_id = $this->requested_job_id_from_query();
 		$job              = is_array( $job ) ? $job : $store->get_user_job( get_current_user_id(), $requested_job_id );
 		if ( ! $job ) {
 			// Hidden scaffold so the upload XHR has a panel to populate before the first job exists.
@@ -313,10 +313,8 @@ class Day_One_Importer_Admin {
 		echo '<p class="day-one-importer-job-progress">' . esc_html( $this->format_progress_label( $status ) ) . '</p>';
 		/* translators: %d: percentage complete. */
 		echo '<p class="day-one-importer-job-progress-bar"><progress max="100" value="' . esc_attr( (int) $status['progress_percent'] ) . '"></progress> <span class="day-one-importer-job-progress-percent">' . esc_html( sprintf( __( '%d%% complete', 'day-one-importer' ), (int) $status['progress_percent'] ) ) . '</span></p>';
-		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_counts_html() returns pre-escaped markup.
-		echo '<div class="day-one-importer-job-counts">' . $this->render_counts_html( $status['counts'] ) . '</div>';
-		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_details_html() returns pre-escaped markup.
-		echo '<div class="day-one-importer-job-details">' . $this->render_details_html( $status ) . '</div>';
+		echo '<div class="day-one-importer-job-counts">' . wp_kses( $this->render_counts_html( $status['counts'] ), $this->job_panel_allowed_html() ) . '</div>';
+		echo '<div class="day-one-importer-job-details">' . wp_kses( $this->render_details_html( $status ), $this->job_panel_allowed_html() ) . '</div>';
 		echo '<p class="day-one-importer-job-actions">';
 		echo '<button type="button" class="button day-one-importer-job-retry"' . ( $status['can_retry'] ? '' : ' disabled' ) . '>' . esc_html__( 'Retry / Continue', 'day-one-importer' ) . '</button> ';
 		echo '<button type="button" class="button day-one-importer-job-cancel"' . ( $status['is_terminal'] ? ' disabled' : '' ) . '>' . esc_html__( 'Cancel import', 'day-one-importer' ) . '</button>';
@@ -397,7 +395,10 @@ class Day_One_Importer_Admin {
 	 */
 	private function render_details_html( $status ) {
 		$html = '';
-		foreach ( array( 'errors' => __( 'Errors', 'day-one-importer' ), 'warnings' => __( 'Warnings', 'day-one-importer' ) ) as $key => $label ) {
+		foreach ( array(
+			'errors'   => __( 'Errors', 'day-one-importer' ),
+			'warnings' => __( 'Warnings', 'day-one-importer' ),
+		) as $key => $label ) {
 			$messages = isset( $status[ $key ] ) && is_array( $status[ $key ] ) ? $status[ $key ] : array();
 			if ( empty( $messages ) ) {
 				continue;
@@ -411,6 +412,85 @@ class Day_One_Importer_Admin {
 		}
 
 		return $html;
+	}
+
+	/**
+	 * Read and sanitize the uploaded ZIP file array.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private function uploaded_file_from_request() {
+		$nonce = isset( $_POST['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ) : '';
+		if ( ! wp_verify_nonce( $nonce, self::NONCE_ACTION ) ) {
+			return array();
+		}
+
+		if ( empty( $_FILES['day_one_export'] ) || ! is_array( $_FILES['day_one_export'] ) ) {
+			return array();
+		}
+
+		$name     = '';
+		$type     = '';
+		$tmp_name = '';
+		$error    = UPLOAD_ERR_NO_FILE;
+		$size     = 0;
+
+		if ( isset( $_FILES['day_one_export']['name'] ) ) {
+			$name = sanitize_file_name( wp_unslash( $_FILES['day_one_export']['name'] ) );
+		}
+		if ( isset( $_FILES['day_one_export']['type'] ) ) {
+			$type = sanitize_mime_type( wp_unslash( $_FILES['day_one_export']['type'] ) );
+		}
+		if ( isset( $_FILES['day_one_export']['tmp_name'] ) ) {
+			$tmp_name = sanitize_text_field( wp_unslash( wp_normalize_path( $_FILES['day_one_export']['tmp_name'] ) ) );
+		}
+		if ( isset( $_FILES['day_one_export']['error'] ) ) {
+			$error = absint( wp_unslash( $_FILES['day_one_export']['error'] ) );
+		}
+		if ( isset( $_FILES['day_one_export']['size'] ) ) {
+			$size = absint( wp_unslash( $_FILES['day_one_export']['size'] ) );
+		}
+
+		return array(
+			'name'     => $name,
+			'type'     => $type,
+			'tmp_name' => $tmp_name,
+			'error'    => $error,
+			'size'     => $size,
+		);
+	}
+
+	/**
+	 * Read a nonce-protected job ID from the query string for display-only job panels.
+	 *
+	 * @return string
+	 */
+	private function requested_job_id_from_query() {
+		if ( empty( $_GET['day_one_importer_job'] ) || empty( $_GET['day_one_importer_job_nonce'] ) ) {
+			return '';
+		}
+
+		$nonce = sanitize_text_field( wp_unslash( $_GET['day_one_importer_job_nonce'] ) );
+		if ( ! wp_verify_nonce( $nonce, self::JOB_VIEW_NONCE_ACTION ) ) {
+			return '';
+		}
+
+		$job_id = sanitize_text_field( wp_unslash( $_GET['day_one_importer_job'] ) );
+		return Day_One_Importer_Job_Store::sanitize_job_id( $job_id );
+	}
+
+	/**
+	 * Allowed markup for generated job-panel fragments.
+	 *
+	 * @return array<string,array<string,bool>>
+	 */
+	private function job_panel_allowed_html() {
+		return array(
+			'ul'     => array( 'class' => true ),
+			'li'     => array(),
+			'p'      => array(),
+			'strong' => array(),
+		);
 	}
 
 	/**

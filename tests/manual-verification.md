@@ -6,7 +6,7 @@ Use this checklist on a local or staging WordPress site before relying on the im
 
 1. Install WordPress 6.4+ with PHP 7.4+ and the PHP `ZipArchive` extension enabled.
 2. Enable `WP_DEBUG` and review PHP logs during testing.
-3. Copy this plugin to `wp-content/plugins/day-one-importer/` and activate it.
+3. Install this plugin in the site's configured plugins directory and activate it.
 4. Confirm the testing user can import, upload files, and edit posts.
 5. In a test-only environment, optionally force small batches with filters returning `1` for `day_one_importer_batch_zip_limit`, `day_one_importer_batch_index_entry_limit`, `day_one_importer_batch_entry_limit`, and `day_one_importer_batch_media_limit`.
 

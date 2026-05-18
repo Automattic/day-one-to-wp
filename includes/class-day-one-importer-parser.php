@@ -5,7 +5,7 @@
  * @package Day_One_Importer
  */
 
-if ( ! defined( 'ABSPATH' ) && ! defined( 'DAY_ONE_IMPORTER_TESTING' ) ) {
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
@@ -74,9 +74,12 @@ class Day_One_Importer_Parser {
 	 * @param callable|null            $checkpoint Optional checkpoint callback.
 	 * @return array<string,mixed>
 	 */
-	public function discover_json_files_batch( $root, &$job, Day_One_Importer_Results $results, $deadline, $checkpoint = null ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- Results retained for uniform processor callbacks.
+	public function discover_json_files_batch( $root, &$job, Day_One_Importer_Results $results, $deadline, $checkpoint = null ) {
 		if ( ! empty( $job['json_discovery_done'] ) ) {
-			return array( 'done' => true, 'error' => '' );
+			return array(
+				'done'  => true,
+				'error' => '',
+			);
 		}
 
 		$root_real = realpath( $root );
@@ -107,16 +110,16 @@ class Day_One_Importer_Parser {
 	 * @param callable|null            $checkpoint Checkpoint callback.
 	 * @return array<string,mixed>
 	 */
-	private function discover_archive_candidates_batch( $root_real, &$job, Day_One_Importer_Results $results, $deadline, $checkpoint ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- Results retained for uniform checkpoint signature.
+	private function discover_archive_candidates_batch( $root_real, &$job, Day_One_Importer_Results $results, $deadline, $checkpoint ) {
 		if ( empty( $job['archive_discovery_initialized'] ) ) {
 			$job['archive_json_candidate_index']      = 0;
 			$job['archive_photo_dir_candidate_index'] = 0;
-			$job['json_files']                       = array();
-			$job['photo_dirs']                       = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? array_values( $job['photo_dirs'] ) : array();
+			$job['json_files']                        = array();
+			$job['photo_dirs']                        = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? array_values( $job['photo_dirs'] ) : array();
 			$job['archive_discovery_initialized']     = true;
 		}
 
-		$json_candidates = isset( $job['zip_json_candidates'] ) && is_array( $job['zip_json_candidates'] ) ? array_values( $job['zip_json_candidates'] ) : array();
+		$json_candidates  = isset( $job['zip_json_candidates'] ) && is_array( $job['zip_json_candidates'] ) ? array_values( $job['zip_json_candidates'] ) : array();
 		$photo_candidates = isset( $job['zip_photo_dirs'] ) && is_array( $job['zip_photo_dirs'] ) ? array_values( $job['zip_photo_dirs'] ) : array();
 		$files            = isset( $job['json_files'] ) && is_array( $job['json_files'] ) ? array_values( $job['json_files'] ) : array();
 		$photo_dirs       = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? array_values( $job['photo_dirs'] ) : array();
@@ -125,7 +128,10 @@ class Day_One_Importer_Parser {
 		$processed        = 0;
 		$limit            = $this->discovery_node_limit();
 
-		while ( $processed < $limit && $json_i < count( $json_candidates ) ) {
+		$json_candidate_count  = count( $json_candidates );
+		$photo_candidate_count = count( $photo_candidates );
+
+		while ( $processed < $limit && $json_i < $json_candidate_count ) {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
 				break;
 			}
@@ -138,7 +144,7 @@ class Day_One_Importer_Parser {
 			$job['archive_json_candidate_index'] = $json_i;
 		}
 
-		while ( $processed < $limit && $json_i >= count( $json_candidates ) && $photo_i < count( $photo_candidates ) ) {
+		while ( $processed < $limit && $json_i >= $json_candidate_count && $photo_i < $photo_candidate_count ) {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
 				break;
 			}
@@ -155,17 +161,23 @@ class Day_One_Importer_Parser {
 		$job['json_files_found'] = count( $files );
 		$job['photo_dirs']       = $photo_dirs;
 
-		if ( $json_i >= count( $json_candidates ) && $photo_i >= count( $photo_candidates ) ) {
+		if ( $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count ) {
 			$job['json_discovery_done'] = true;
 			$job['json_file_index']     = 0;
 			$job['json_entry_index']    = 0;
 			$this->reset_json_stream_state( $job, 0 );
 			$this->checkpoint_job( $checkpoint, $job, $results );
-			return array( 'done' => true, 'error' => '' );
+			return array(
+				'done'  => true,
+				'error' => '',
+			);
 		}
 
 		$this->checkpoint_job( $checkpoint, $job, $results );
-		return array( 'done' => false, 'error' => '' );
+		return array(
+			'done'  => false,
+			'error' => '',
+		);
 	}
 
 	/**
@@ -201,10 +213,14 @@ class Day_One_Importer_Parser {
 	 * @param callable|null            $checkpoint Optional checkpoint callback.
 	 * @return array<string,mixed>
 	 */
-	public function index_export_batch( $root, &$job, Day_One_Importer_Results $results, $deadline, $checkpoint = null ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- Root retained for signature compatibility.
+	public function index_export_batch( $root, &$job, Day_One_Importer_Results $results, $deadline, $checkpoint = null ) {
+		unset( $root );
 		$files = isset( $job['json_files'] ) && is_array( $job['json_files'] ) ? array_values( $job['json_files'] ) : array();
 		if ( empty( $files ) ) {
-			return array( 'done' => true, 'error' => '' );
+			return array(
+				'done'  => true,
+				'error' => '',
+			);
 		}
 
 		$manifest = isset( $job['manifest_path'] ) ? (string) $job['manifest_path'] : '';
@@ -220,12 +236,16 @@ class Day_One_Importer_Parser {
 		$processed = 0;
 		$limit     = class_exists( 'Day_One_Importer_Job_State' ) ? Day_One_Importer_Job_State::batch_index_entry_limit() : 100;
 
-		while ( $file_i < count( $files ) ) {
+		$file_count = count( $files );
+		while ( $file_i < $file_count ) {
 			if ( $processed >= $limit || ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) ) {
 				$job['seen_uuids']      = $seen;
 				$job['json_file_index'] = $file_i;
 				$this->checkpoint_job( $checkpoint, $job, $results );
-				return array( 'done' => false, 'error' => '' );
+				return array(
+					'done'  => false,
+					'error' => '',
+				);
 			}
 
 			if ( ! isset( $job['json_stream_file_index'] ) || (int) $job['json_stream_file_index'] !== $file_i ) {
@@ -242,7 +262,10 @@ class Day_One_Importer_Parser {
 
 			if ( empty( $batch['file_done'] ) ) {
 				$this->checkpoint_job( $checkpoint, $job, $results );
-				return array( 'done' => false, 'error' => '' );
+				return array(
+					'done'  => false,
+					'error' => '',
+				);
 			}
 
 			++$file_i;
@@ -255,7 +278,10 @@ class Day_One_Importer_Parser {
 		$job['seen_uuids'] = $seen;
 		$this->checkpoint_job( $checkpoint, $job, $results );
 
-		return array( 'done' => true, 'error' => '' );
+		return array(
+			'done'  => true,
+			'error' => '',
+		);
 	}
 
 	/**
@@ -272,7 +298,7 @@ class Day_One_Importer_Parser {
 			return null;
 		}
 
-		$file = new SplFileObject( $manifest, 'r' );
+		$file    = new SplFileObject( $manifest, 'r' );
 		$current = 0;
 		while ( ! $file->eof() ) {
 			$line = trim( (string) $file->fgets() );
@@ -305,7 +331,11 @@ class Day_One_Importer_Parser {
 	private function stream_json_file_batch( $file, &$job, Day_One_Importer_Results $results, $deadline, $limit, $manifest, &$seen, $checkpoint ) {
 		$handle = @fopen( $file, 'rb' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 		if ( ! $handle ) {
-			return array( 'file_done' => true, 'processed' => 0, 'error' => '' );
+			return array(
+				'file_done' => true,
+				'processed' => 0,
+				'error'     => '',
+			);
 		}
 
 		$offset = isset( $job['json_stream_offset'] ) ? max( 0, (int) $job['json_stream_offset'] ) : 0;
@@ -386,14 +416,14 @@ class Day_One_Importer_Parser {
 							fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the streaming fopen() read; WP_Filesystem has no streaming equivalent.
 							return array(
 								'file_done' => false,
-								'processed'  => $processed,
-								'error'      => function_exists( '__' ) ? __( 'The import manifest could not be written.', 'day-one-importer' ) : 'The import manifest could not be written.',
+								'processed' => $processed,
+								'error'     => function_exists( '__' ) ? __( 'The import manifest could not be written.', 'day-one-importer' ) : 'The import manifest could not be written.',
 							);
 						}
 						++$entry_i;
-						$entry_buffer    = '';
-						$entry_in_string = false;
-						$entry_escape    = false;
+						$entry_buffer            = '';
+						$entry_in_string         = false;
+						$entry_escape            = false;
 						$job['json_entry_index'] = $entry_i;
 						$this->persist_stream_state( $job, $offset, $mode, $in_string, $escape, $string_buffer, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i );
 						$this->checkpoint_job( $checkpoint, $job, $results );
@@ -431,7 +461,11 @@ class Day_One_Importer_Parser {
 		$this->persist_stream_state( $job, $offset, $mode, $in_string, $escape, $string_buffer, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i );
 		$job['seen_uuids'] = $seen;
 
-		return array( 'file_done' => $file_done, 'processed' => $processed, 'error' => '' );
+		return array(
+			'file_done' => $file_done,
+			'processed' => $processed,
+			'error'     => '',
+		);
 	}
 
 	/**
@@ -468,8 +502,8 @@ class Day_One_Importer_Parser {
 		}
 
 		if ( '"' === $char ) {
-			$in_string = false;
-			$mode      = 'entries' === $string_buffer ? 'search_colon' : 'search_key';
+			$in_string     = false;
+			$mode          = 'entries' === $string_buffer ? 'search_colon' : 'search_key';
 			$string_buffer = '';
 			return;
 		}
@@ -658,7 +692,7 @@ class Day_One_Importer_Parser {
 			$flags |= JSON_UNESCAPED_UNICODE;
 		}
 
-		$encoded = function_exists( 'wp_json_encode' ) ? wp_json_encode( $entry, $flags ) : json_encode( $entry, $flags );
+		$encoded = wp_json_encode( $entry, $flags );
 		if ( ! is_string( $encoded ) ) {
 			return false;
 		}
@@ -914,19 +948,19 @@ class Day_One_Importer_Parser {
 		}
 
 		return array(
-			'uuid'                 => $uuid,
-			'creationDate'         => isset( $raw_entry['creationDate'] ) && is_scalar( $raw_entry['creationDate'] ) ? (string) $raw_entry['creationDate'] : '',
-			'modifiedDate'         => isset( $raw_entry['modifiedDate'] ) && is_scalar( $raw_entry['modifiedDate'] ) ? (string) $raw_entry['modifiedDate'] : '',
-			'timeZone'             => isset( $raw_entry['timeZone'] ) && is_scalar( $raw_entry['timeZone'] ) ? day_one_importer_sanitize_text( $raw_entry['timeZone'] ) : '',
-			'text'                 => isset( $raw_entry['text'] ) && is_scalar( $raw_entry['text'] ) ? (string) $raw_entry['text'] : '',
-			'tags'                 => isset( $raw_entry['tags'] ) && is_array( $raw_entry['tags'] ) ? $raw_entry['tags'] : array(),
-			'journal'              => Day_One_Importer_Content::derive_journal_name( $raw_entry, $source_file ),
-			'photos'               => $photos,
-			'starred'              => ! empty( $raw_entry['starred'] ),
-			'isPinned'             => ! empty( $raw_entry['isPinned'] ),
-			'creationDeviceType'   => isset( $raw_entry['creationDeviceType'] ) && is_scalar( $raw_entry['creationDeviceType'] ) ? day_one_importer_sanitize_text( $raw_entry['creationDeviceType'] ) : '',
-			'creationDeviceModel'  => isset( $raw_entry['creationDeviceModel'] ) && is_scalar( $raw_entry['creationDeviceModel'] ) ? day_one_importer_sanitize_text( $raw_entry['creationDeviceModel'] ) : '',
-			'source_file'          => basename( $source_file ),
+			'uuid'                => $uuid,
+			'creationDate'        => isset( $raw_entry['creationDate'] ) && is_scalar( $raw_entry['creationDate'] ) ? (string) $raw_entry['creationDate'] : '',
+			'modifiedDate'        => isset( $raw_entry['modifiedDate'] ) && is_scalar( $raw_entry['modifiedDate'] ) ? (string) $raw_entry['modifiedDate'] : '',
+			'timeZone'            => isset( $raw_entry['timeZone'] ) && is_scalar( $raw_entry['timeZone'] ) ? day_one_importer_sanitize_text( $raw_entry['timeZone'] ) : '',
+			'text'                => isset( $raw_entry['text'] ) && is_scalar( $raw_entry['text'] ) ? (string) $raw_entry['text'] : '',
+			'tags'                => isset( $raw_entry['tags'] ) && is_array( $raw_entry['tags'] ) ? $raw_entry['tags'] : array(),
+			'journal'             => Day_One_Importer_Content::derive_journal_name( $raw_entry, $source_file ),
+			'photos'              => $photos,
+			'starred'             => ! empty( $raw_entry['starred'] ),
+			'isPinned'            => ! empty( $raw_entry['isPinned'] ),
+			'creationDeviceType'  => isset( $raw_entry['creationDeviceType'] ) && is_scalar( $raw_entry['creationDeviceType'] ) ? day_one_importer_sanitize_text( $raw_entry['creationDeviceType'] ) : '',
+			'creationDeviceModel' => isset( $raw_entry['creationDeviceModel'] ) && is_scalar( $raw_entry['creationDeviceModel'] ) ? day_one_importer_sanitize_text( $raw_entry['creationDeviceModel'] ) : '',
+			'source_file'         => basename( $source_file ),
 		);
 	}
 
