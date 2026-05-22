@@ -88,6 +88,68 @@ class Day_One_Importer_Content {
 	}
 
 	/**
+	 * Convert a Day One richText payload to safe WordPress block content.
+	 *
+	 * Scaffold-only renderer. Walks the decoded `contents[]` array in order
+	 * and emits one paragraph block per non-empty plain run, delegating each
+	 * run to convert_text_to_content() so escape and intra-paragraph line-break
+	 * semantics match the legacy markdown path byte-for-byte.
+	 *
+	 * Plain runs are routed through convert_text_to_content(), so a run
+	 * beginning with a markdown sigil (`#`, `- `, `*`) renders as the
+	 * corresponding markdown block. This is intentional for the scaffold;
+	 * strict line-attribute handling is tracked separately for follow-up.
+	 *
+	 * Empty-text items are silently dropped regardless of whether they
+	 * carry embeddedObjects, attributes.line, or nothing. Items with both
+	 * non-empty text and embeddedObjects emit only the paragraph from text;
+	 * the embeddedObjects key is ignored in this scaffold.
+	 *
+	 * @todo Inline attributes (bold, italic, links, etc.) and line
+	 *       attributes (header, list, quote, codeBlock, indent) are
+	 *       intentionally not handled in this scaffold; tracked
+	 *       separately for follow-up.
+	 *
+	 * @param mixed $rich_text Decoded richText array or JSON-encoded string.
+	 * @return string
+	 */
+	public static function convert_rich_text_to_content( $rich_text ) {
+		if ( is_string( $rich_text ) ) {
+			$decoded   = json_decode( $rich_text, true );
+			$rich_text = is_array( $decoded ) ? $decoded : null;
+		}
+
+		if ( ! is_array( $rich_text ) ) {
+			return '';
+		}
+
+		$contents = isset( $rich_text['contents'] ) && is_array( $rich_text['contents'] ) ? $rich_text['contents'] : array();
+		if ( empty( $contents ) ) {
+			return '';
+		}
+
+		$output = '';
+		foreach ( $contents as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$text = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
+			if ( '' === trim( $text ) ) {
+				continue;
+			}
+
+			if ( "\n" === substr( $text, -1 ) ) {
+				$text = substr( $text, 0, -1 );
+			}
+
+			$output .= self::convert_text_to_content( $text );
+		}
+
+		return trim( $output );
+	}
+
+	/**
 	 * Derive a safe title from text and date.
 	 *
 	 * @param mixed  $text Raw text.
