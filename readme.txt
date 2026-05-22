@@ -67,8 +67,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 == Changelog ==
 
 = 0.2.6 =
-* Read Day One `richText` payloads when present (both JSON-encoded string and pre-decoded object forms) and render each text run as a paragraph block. Legacy `text`-only entries import unchanged. Inline formatting, headings/lists/quotes/code blocks, and inline-positioned media are intentionally not interpreted in this release; they are tracked as separate follow-ups.
-* Bump the internal `IMPORT_SCHEMA_VERSION` so existing imported posts are re-rendered when the same export is re-imported. For legacy `text`-only entries the re-rendered output is byte-identical to the previous version; entries that ship `richText` will switch from the legacy markdown-rendered body to paragraph blocks.
+* Read Day One `richText` payloads when present (both JSON-encoded string and pre-decoded object forms) and route each text run through the existing Day One text-to-block conversion (typically a paragraph block; runs that begin with a markdown sigil such as `# `, `- `, or `*` still produce the matching heading or list block, matching legacy `text`-only rendering). Legacy `text`-only entries import unchanged. Inline formatting (bold/italic/links/etc.), explicit richText line attributes (proper code blocks, blockquotes, checklists, nested lists, header levels), and inline-positioned media are intentionally not interpreted from richText in this release; they are tracked as separate follow-ups.
+* Bump the internal `IMPORT_SCHEMA_VERSION` so existing imported posts are re-rendered when the same export is re-imported. For legacy `text`-only entries the re-rendered output is byte-identical to the previous version; entries that ship `richText` switch from a single legacy markdown-rendered body to one block per richText run (preserving the same per-run escape and markdown semantics).
+* Malformed `richText` payloads no longer drop the entry: the importer falls back to the legacy `text` rendering and records a privacy-safe warning naming the affected entry UUID.
 
 = 0.2.5 =
 * Address WordPress.org review feedback: remove the extra contributor, add nonce verification for admin job/media URLs, sanitize and validate request/upload values before processing, escape generated job-panel markup with an allow-list, store private media in a protected uploads subfolder, stop changing PHP time limits, and avoid switching the current user during cron processing.
@@ -105,7 +106,7 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 == Upgrade Notice ==
 
 = 0.2.6 =
-Adds initial Day One `richText` parsing (paragraph-only) and bumps the import schema version so re-imports refresh existing posts.
+Adds initial Day One `richText` parsing (one block per text run, delegating to the legacy markdown helper), bumps the import schema version so re-imports refresh existing posts, and falls back to legacy `text` with a privacy-safe warning if a `richText` payload cannot be decoded.
 
 = 0.2.5 =
 Addresses WordPress.org review feedback for nonces, upload sanitization, escaping, contributor metadata, private media directory selection, PHP time limits, and cron processing.
