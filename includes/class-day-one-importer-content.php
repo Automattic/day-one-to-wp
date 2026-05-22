@@ -118,9 +118,10 @@ class Day_One_Importer_Content {
 	 *
 	 * @param mixed                         $rich_text Decoded richText array or JSON-encoded string.
 	 * @param Day_One_Importer_Results|null $results   Optional warning sink for inline-attribute rejection paths (R7, R9).
+	 * @param array<string,int>             $photo_map identifier → attachment_id map (#56 R12); forwarded to the media emitter.
 	 * @return string
 	 */
-	public static function convert_rich_text_to_content( $rich_text, ?Day_One_Importer_Results $results = null ) {
+	public static function convert_rich_text_to_content( $rich_text, ?Day_One_Importer_Results $results = null, array $photo_map = array() ) {
 		if ( is_string( $rich_text ) ) {
 			$decoded   = json_decode( $rich_text, true );
 			$rich_text = is_array( $decoded ) ? $decoded : null;
@@ -154,7 +155,7 @@ class Day_One_Importer_Content {
 				continue;
 			}
 			if ( null !== $run ) {
-				$output .= self::flush_run( $run, $results );
+				$output .= self::flush_run( $run, $photo_map, $results );
 			}
 			$run = array(
 				'kind'  => $kind,
@@ -162,7 +163,7 @@ class Day_One_Importer_Content {
 			);
 		}
 		if ( null !== $run ) {
-			$output .= self::flush_run( $run, $results );
+			$output .= self::flush_run( $run, $photo_map, $results );
 		}
 
 		return trim( $output );
@@ -234,19 +235,20 @@ class Day_One_Importer_Content {
 	/**
 	 * Dispatch a closed run to the matching block emitter (R2.8).
 	 *
-	 * @param array{kind:string,items:array} $run     Closed run.
-	 * @param Day_One_Importer_Results|null  $results Optional warning sink.
+	 * `$photo_map` is forwarded only to the `media` branch (#56 R7) — other
+	 * emitters keep their original signatures.
+	 *
+	 * @param array{kind:string,items:array} $run       Closed run.
+	 * @param array<string,int>              $photo_map identifier → attachment_id map (#56 R12).
+	 * @param Day_One_Importer_Results|null  $results   Optional warning sink.
 	 * @return string
 	 */
-	private static function flush_run( $run, ?Day_One_Importer_Results $results ) {
+	private static function flush_run( $run, array $photo_map, ?Day_One_Importer_Results $results ) {
 		$kind  = $run['kind'];
 		$items = $run['items'];
 
 		if ( 'media' === $kind ) {
-			// #56 commit (1) transient — the photo_map is plumbed in commit (2) per the
-			// implementation plan. Until then media runs always resolve identifiers
-			// against an empty map and emit warnings.
-			return self::emit_media_group( $items, array(), $results );
+			return self::emit_media_group( $items, $photo_map, $results );
 		}
 		if ( 'paragraph' === $kind ) {
 			return self::emit_paragraph_group( $items, $results );
@@ -807,19 +809,71 @@ class Day_One_Importer_Content {
 	 * Dispatch helper called by both runner invocation sites. When the
 	 * entry carries a usable richText payload, route through the richText
 	 * renderer; otherwise fall back to the legacy markdown path so that
-	 * legacy entries produce byte-identical content.
+	 * legacy entries produce byte-identical content. The optional
+	 * `$photo_map` is forwarded to the richText renderer (#56 R12) so the
+	 * media emitter can resolve `embeddedObjects[].identifier` to an
+	 * attachment ID.
 	 *
-	 * @param mixed                         $entry   Normalized entry array.
-	 * @param Day_One_Importer_Results|null $results Optional warning sink threaded into the richText renderer.
+	 * @param mixed                         $entry     Normalized entry array.
+	 * @param Day_One_Importer_Results|null $results   Optional warning sink threaded into the richText renderer.
+	 * @param array<string,int>             $photo_map identifier → attachment_id map (#56 R12).
 	 * @return string
 	 */
-	public static function render_entry_body( $entry, ?Day_One_Importer_Results $results = null ) {
-		if ( is_array( $entry ) && isset( $entry['richText'] ) && is_array( $entry['richText'] ) ) {
-			return self::convert_rich_text_to_content( $entry['richText'], $results );
+	public static function render_entry_body( $entry, ?Day_One_Importer_Results $results = null, array $photo_map = array() ) {
+		if ( self::entry_uses_rich_text_path( $entry ) ) {
+			return self::convert_rich_text_to_content( $entry['richText'], $results, $photo_map );
 		}
 
 		$text = ( is_array( $entry ) && isset( $entry['text'] ) ) ? $entry['text'] : '';
 		return self::convert_text_to_content( $text );
+	}
+
+	/**
+	 * Predicate gating richText-vs-legacy decisions in the runner and renderer (#56 R14.1).
+	 *
+	 * @param mixed $entry Normalized entry array.
+	 * @return bool
+	 */
+	public static function entry_uses_rich_text_path( $entry ) {
+		return is_array( $entry ) && isset( $entry['richText'] ) && is_array( $entry['richText'] ) && ! empty( $entry['richText'] );
+	}
+
+	/**
+	 * Whether a richText payload contains at least one `type=photo` embed (#56 R14 detection).
+	 *
+	 * Walks `contents[]` defensively; tolerates missing keys, non-array shapes,
+	 * and non-scalar identifiers.
+	 *
+	 * @param mixed $rich_text richText payload (array or already-decoded form).
+	 * @return bool
+	 */
+	private static function richtext_has_photo_embeds( $rich_text ) {
+		if ( ! is_array( $rich_text ) ) {
+			return false;
+		}
+		$contents = isset( $rich_text['contents'] ) && is_array( $rich_text['contents'] ) ? $rich_text['contents'] : array();
+		foreach ( $contents as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+			$embeds = isset( $item['embeddedObjects'] ) && is_array( $item['embeddedObjects'] ) ? $item['embeddedObjects'] : array();
+			foreach ( $embeds as $embed ) {
+				if ( is_array( $embed ) && isset( $embed['type'] ) && 'photo' === $embed['type'] ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Negated wrapper for #56 R14 — runner gate for "richText with no photo embeds".
+	 *
+	 * @param mixed $rich_text richText payload.
+	 * @return bool
+	 */
+	public static function richtext_has_no_photo_embeds( $rich_text ) {
+		return ! self::richtext_has_photo_embeds( $rich_text );
 	}
 
 	/**

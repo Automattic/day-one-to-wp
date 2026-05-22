@@ -78,6 +78,7 @@ class Day_One_Importer_Job_Store {
 			'current_media_index'            => 0,
 			'current_media_total'            => 0,
 			'current_attachment_ids'         => array(),
+			'current_photo_identifier_map'   => array(),
 			'current_entry_post_prepared'    => false,
 			'current_entry_media_complete'   => false,
 			'current_entry_media_counted'    => false,

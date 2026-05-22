@@ -414,7 +414,13 @@ class Day_One_Importer_Job_Processor {
 			}
 
 			if ( empty( $job['current_entry_content_appended'] ) ) {
-				$finalized = $runner->finalize_imported_entry( $entry, (int) $job['current_post_id'], isset( $job['current_attachment_ids'] ) ? $job['current_attachment_ids'] : array(), $results );
+				$finalized = $runner->finalize_imported_entry(
+					$entry,
+					(int) $job['current_post_id'],
+					isset( $job['current_attachment_ids'] ) ? $job['current_attachment_ids'] : array(),
+					isset( $job['current_photo_identifier_map'] ) && is_array( $job['current_photo_identifier_map'] ) ? $job['current_photo_identifier_map'] : array(),
+					$results
+				);
 				if ( ! $finalized ) {
 					$this->fail_job( $job, $results, __( 'The import could not finalize an entry after importing media. Retry is safe.', 'day-one-importer' ) );
 					return false;
@@ -530,6 +536,7 @@ class Day_One_Importer_Job_Processor {
 		$job['current_media_index']            = 0;
 		$job['current_media_total']            = 0;
 		$job['current_attachment_ids']         = array();
+		$job['current_photo_identifier_map']   = array();
 		$job['current_entry_post_prepared']    = false;
 		$job['current_entry_media_complete']   = false;
 		$job['current_entry_media_counted']    = false;

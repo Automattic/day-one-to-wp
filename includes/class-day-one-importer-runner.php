@@ -140,6 +140,7 @@ class Day_One_Importer_Runner {
 			'current_media_index'          => 0,
 			'current_media_total'          => 0,
 			'current_attachment_ids'       => array(),
+			'current_photo_identifier_map' => array(),
 			'current_entry_media_counted'  => false,
 			'current_entry_media_complete' => false,
 		);
@@ -149,7 +150,7 @@ class Day_One_Importer_Runner {
 			day_one_importer_prepare_long_running_import();
 		}
 
-		$this->finalize_imported_entry( $entry, (int) $prepared['post_id'], $job['current_attachment_ids'], $results );
+		$this->finalize_imported_entry( $entry, (int) $prepared['post_id'], $job['current_attachment_ids'], $job['current_photo_identifier_map'], $results );
 	}
 
 	/**
@@ -204,8 +205,17 @@ class Day_One_Importer_Runner {
 			);
 		}
 
-		$content = Day_One_Importer_Content::render_entry_body( $entry, $results );
-		$title   = Day_One_Importer_Content::derive_title_from_entry( $entry, $creation['gmt'] );
+		// #56 R12 render-once pin — the prepare step writes a deterministic placeholder
+		// body. RichText entries start with '' and are materialized in finalize_imported_entry()
+		// after the identifier→attachment_id map is built; legacy entries keep their
+		// existing first-render body so the byte-parity range stays byte-identical.
+		if ( Day_One_Importer_Content::entry_uses_rich_text_path( $entry ) ) {
+			$content = '';
+		} else {
+			$text    = ( is_array( $entry ) && isset( $entry['text'] ) ) ? $entry['text'] : '';
+			$content = Day_One_Importer_Content::convert_text_to_content( $text );
+		}
+		$title = Day_One_Importer_Content::derive_title_from_entry( $entry, $creation['gmt'] );
 
 		$owner_user_id = absint( $owner_user_id );
 		if ( ! $owner_user_id && function_exists( 'get_current_user_id' ) ) {
@@ -281,6 +291,13 @@ class Day_One_Importer_Runner {
 		$this->assign_tags( (int) $post_id, $entry, $uuid, $results );
 		$this->assign_journal_category( (int) $post_id, $entry, $uuid, $results );
 
+		/*
+		 * `base_content` reflects the body inserted by wp_insert_post at the prepare step.
+		 * For richText entries this is intentionally '' — the final body is materialized by
+		 * finalize_imported_entry() once the photo identifier map is populated (#56 R12
+		 * render-once pin). No downstream consumer reads this key; it is retained for
+		 * compatibility with any external caller.
+		 */
 		return array(
 			'status'       => 'ready',
 			'post_id'      => (int) $post_id,
@@ -319,12 +336,13 @@ class Day_One_Importer_Runner {
 			}
 		}
 
-		$index      = isset( $job['current_media_index'] ) ? max( 0, (int) $job['current_media_index'] ) : 0;
-		$ids        = isset( $job['current_attachment_ids'] ) && is_array( $job['current_attachment_ids'] ) ? array_values( array_map( 'intval', $job['current_attachment_ids'] ) ) : array();
-		$limit      = class_exists( 'Day_One_Importer_Job_State' ) ? Day_One_Importer_Job_State::batch_media_limit() : $total;
-		$done       = 0;
-		$photo_dirs = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? $job['photo_dirs'] : null;
-		$media      = new Day_One_Importer_Media( $extract_dir, $results, $photo_dirs );
+		$index          = isset( $job['current_media_index'] ) ? max( 0, (int) $job['current_media_index'] ) : 0;
+		$ids            = isset( $job['current_attachment_ids'] ) && is_array( $job['current_attachment_ids'] ) ? array_values( array_map( 'intval', $job['current_attachment_ids'] ) ) : array();
+		$identifier_map = isset( $job['current_photo_identifier_map'] ) && is_array( $job['current_photo_identifier_map'] ) ? $job['current_photo_identifier_map'] : array();
+		$limit          = class_exists( 'Day_One_Importer_Job_State' ) ? Day_One_Importer_Job_State::batch_media_limit() : $total;
+		$done           = 0;
+		$photo_dirs     = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? $job['photo_dirs'] : null;
+		$media          = new Day_One_Importer_Media( $extract_dir, $results, $photo_dirs );
 
 		while ( $index < $total && $done < $limit ) {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
@@ -336,18 +354,29 @@ class Day_One_Importer_Runner {
 			if ( $attachment_id && ! in_array( (int) $attachment_id, $ids, true ) ) {
 				$ids[] = (int) $attachment_id;
 			}
+			// #56 R12 — pair the photo's identifier with its attachment ID so the
+			// richText emitter can resolve embeddedObjects[].identifier later.
+			// Photos with empty identifiers are silently absent from the map.
+			if ( $attachment_id ) {
+				$identifier = isset( $photos[ $index ]['identifier'] ) && is_scalar( $photos[ $index ]['identifier'] ) ? (string) $photos[ $index ]['identifier'] : '';
+				if ( '' !== $identifier ) {
+					$identifier_map[ $identifier ] = (int) $attachment_id;
+				}
+			}
 
 			++$index;
 			++$done;
-			$job['current_media_index']    = $index;
-			$job['current_attachment_ids'] = $ids;
+			$job['current_media_index']          = $index;
+			$job['current_attachment_ids']       = $ids;
+			$job['current_photo_identifier_map'] = $identifier_map;
 			if ( is_callable( $checkpoint ) ) {
 				call_user_func_array( $checkpoint, array( &$job, $results ) );
 			}
 		}
 
-		$job['current_media_index']    = $index;
-		$job['current_attachment_ids'] = $ids;
+		$job['current_media_index']          = $index;
+		$job['current_attachment_ids']       = $ids;
+		$job['current_photo_identifier_map'] = $identifier_map;
 		if ( $index >= $total ) {
 			$job['current_entry_media_complete'] = true;
 			return true;
@@ -359,35 +388,58 @@ class Day_One_Importer_Runner {
 	/**
 	 * Finalize post content and import completion metadata for one entry.
 	 *
-	 * @param array<string,mixed>      $entry Entry.
-	 * @param int                      $post_id Post ID.
+	 * Finalize is the sole producer of `post_content` after #56 — the prepare
+	 * step writes a deterministic placeholder body and this method materializes
+	 * the final body now that the photo identifier map is populated.
+	 *
+	 * @param array<string,mixed>      $entry          Entry.
+	 * @param int                      $post_id        Post ID.
 	 * @param int[]                    $attachment_ids Attachment IDs.
-	 * @param Day_One_Importer_Results $results Results.
+	 * @param array<string,int>        $photo_map      identifier → attachment_id map (#56 R12).
+	 * @param Day_One_Importer_Results $results        Results.
 	 * @return bool True when finalization completed and post was marked complete.
 	 */
-	public function finalize_imported_entry( $entry, $post_id, $attachment_ids, Day_One_Importer_Results $results ) {
-		$uuid = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
-		if ( ! empty( $attachment_ids ) ) {
-			$content            = Day_One_Importer_Content::render_entry_body( $entry, $results );
-			$content_with_media = Day_One_Importer_Content::append_image_section( $content, $attachment_ids );
-			$updated            = wp_update_post(
-				array(
-					'ID'           => (int) $post_id,
-					'post_content' => wp_slash( $content_with_media ),
-				),
-				true
+	public function finalize_imported_entry( $entry, $post_id, $attachment_ids, array $photo_map, Day_One_Importer_Results $results ) {
+		$uuid           = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
+		$uses_rich_text = Day_One_Importer_Content::entry_uses_rich_text_path( $entry );
+		$content        = Day_One_Importer_Content::render_entry_body( $entry, $results, $photo_map );
+
+		// #56 R10/R11 — append-at-end ONLY for the legacy markdown path.
+		if ( ! $uses_rich_text && ! empty( $attachment_ids ) ) {
+			$content = Day_One_Importer_Content::append_image_section( $content, $attachment_ids );
+		}
+
+		// #56 R14 — richText entry with imported photos but no inline embed:
+		// attach the photos to the post (already done by the media batch) and
+		// emit one warning per entry. Renderer is NOT invoked twice — the body
+		// rendered above already excludes a trailing gallery.
+		if (
+			$uses_rich_text
+			&& ! empty( $attachment_ids )
+			&& Day_One_Importer_Content::richtext_has_no_photo_embeds( isset( $entry['richText'] ) ? $entry['richText'] : array() )
+		) {
+			$results->add_warning(
+				__( 'Day One entry has imported photos but no inline embed; photos remain attached to the post but are not placed in the body.', 'day-one-importer' )
 			);
-			if ( is_wp_error( $updated ) ) {
-				$results->add_warning(
-					sprintf(
-						/* translators: %s: Day One entry UUID. */
-						__( 'Could not append imported media to post content for UUID %s.', 'day-one-importer' ),
-						$uuid
-					)
-				);
-				update_post_meta( $post_id, '_day_one_import_complete', '0' );
-				return false;
-			}
+		}
+
+		$updated = wp_update_post(
+			array(
+				'ID'           => (int) $post_id,
+				'post_content' => wp_slash( $content ),
+			),
+			true
+		);
+		if ( is_wp_error( $updated ) ) {
+			$results->add_warning(
+				sprintf(
+					/* translators: %s: Day One entry UUID. */
+					__( 'Could not update post content for UUID %s.', 'day-one-importer' ),
+					$uuid
+				)
+			);
+			update_post_meta( $post_id, '_day_one_import_complete', '0' );
+			return false;
 		}
 
 		update_post_meta( $post_id, '_day_one_import_version', self::IMPORT_SCHEMA_VERSION );
