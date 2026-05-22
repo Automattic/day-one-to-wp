@@ -852,7 +852,7 @@ $rt_break = Day_One_Importer_Content::convert_rich_text_to_content(
 );
 assert_true( false !== strpos( $rt_break, "<p>Line one<br />\nLine two</p>" ), 'richText intra-paragraph newlines render as <br />.' );
 
-// R11.4 — embeddedObjects-only items are silently dropped.
+// R11.4 — embeddedObjects-only items survive drop (R5.1); with empty photo_map and null results, emit_media_group returns ''.
 $rt_embed_only = Day_One_Importer_Content::convert_rich_text_to_content(
 	array(
 		'contents' => array(
@@ -867,9 +867,10 @@ $rt_embed_only = Day_One_Importer_Content::convert_rich_text_to_content(
 		),
 	)
 );
-assert_true( '' === $rt_embed_only, 'richText embeddedObjects-only item is silently dropped (scaffold).' );
+assert_true( '' === $rt_embed_only, 'richText embeddedObjects-only item survives drop check; empty map yields no block.' );
 
 // R11.5 — text + embeddedObjects: only the paragraph renders, embedded object is ignored.
+// AC8 — verified by R11.5 (below) after #56 changes (R5 precedence unchanged).
 $rt_precedence = Day_One_Importer_Content::convert_rich_text_to_content(
 	array(
 		'contents' => array(
@@ -888,6 +889,117 @@ $rt_precedence = Day_One_Importer_Content::convert_rich_text_to_content(
 assert_true( 1 === substr_count( $rt_precedence, '<!-- wp:paragraph -->' ), 'richText text+embeddedObjects produces exactly one paragraph (precedence rule).' );
 assert_true( false !== strpos( $rt_precedence, 'Caption' ), 'richText text+embeddedObjects keeps the caption text.' );
 assert_true( 0 === substr_count( $rt_precedence, 'identifier' ), 'richText text+embeddedObjects does not leak embeddedObject identifier into output.' );
+
+// #56 AC1 — is_day_one_media_placeholder accepts every R1 variant on a fully-trimmed line.
+$ac1_positives = array(
+	'![](dayone-moment://4223F59BF563410FAACA8EDBF888C3FB)',
+	'![](dayone-moment:/photo/4223F59BF563410FAACA8EDBF888C3FB)',
+	'![](dayone-moment:/video/36AFEC058A8640F98420344B2CCCD145)',
+	'![](dayone-moment:/audio/A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1)',
+	'![](dayone-moment:/pdfAttachment/2540EC0D96C24252AB79706C8BDED592)',
+	'![](dayone-photo://B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2)',
+	'![](dayone-video://C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3)',
+	'![](dayone-audio://D4D4D4D4D4D4D4D4D4D4D4D4D4D4D4D4)',
+	'![](dayone-pdf://E5E5E5E5E5E5E5E5E5E5E5E5E5E5E5E5)',
+	// R1 case-insensitivity check (pdfAttachment uppercased).
+	'![](dayone-moment:/PDFATTACHMENT/2540EC0D96C24252AB79706C8BDED592)',
+	// R1 alt-text allowed (bracket pair MAY contain text).
+	'![alt text](dayone-moment://4223F59BF563410FAACA8EDBF888C3FB)',
+);
+foreach ( $ac1_positives as $ac1_line ) {
+	assert_true(
+		true === Day_One_Importer_Content::is_day_one_media_placeholder( $ac1_line ),
+		'#56 AC1 — is_day_one_media_placeholder matches placeholder line: ' . $ac1_line
+	);
+}
+
+// #56 AC2 — is_day_one_media_placeholder rejects non-placeholder lines and forbidden shapes.
+$ac2_negatives = array(
+	'dayone-moment://4223F59BF563410FAACA8EDBF888C3FB',
+	'prefix ![](dayone-moment://4223F59BF563410FAACA8EDBF888C3FB) suffix',
+	'![](https://example.com/dayone-moment-something)',
+	'dayone-moment://something happened',
+	'![](dayone-bogus://4223F59BF563410FAACA8EDBF888C3FB)',
+);
+foreach ( $ac2_negatives as $ac2_line ) {
+	assert_true(
+		false === Day_One_Importer_Content::is_day_one_media_placeholder( $ac2_line ),
+		'#56 AC2 — is_day_one_media_placeholder rejects: ' . $ac2_line
+	);
+}
+
+// #56 AC2a — is_line_item_dropped() contract via convert_rich_text_to_content() indirection.
+// (a) Item with empty text + non-empty embeddedObjects (no map) → output '', warning recorded.
+$ac2a_results_embed_only = new Day_One_Importer_Results();
+$ac2a_embed_only         = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC2A-MISSING',
+					),
+				),
+			),
+		),
+	),
+	$ac2a_results_embed_only
+);
+assert_true( '' === $ac2a_embed_only, '#56 AC2a — embed-only item with empty map produces no block.' );
+assert_true( $ac2a_results_embed_only->has_warnings(), '#56 AC2a — embed-only item with empty map records the unresolved-photo warning (survives drop).' );
+
+// (b) Item with empty text + no embeddedObjects → '' AND no warning (truly dropped).
+$ac2a_results_text_empty = new Day_One_Importer_Results();
+$ac2a_text_empty         = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'text' => '' ),
+		),
+	),
+	$ac2a_results_text_empty
+);
+assert_true( '' === $ac2a_text_empty, '#56 AC2a — empty-text + no embeds yields empty output.' );
+assert_true( ! $ac2a_results_text_empty->has_warnings(), '#56 AC2a — empty-text + no embeds records no warning (dropped silently).' );
+
+// (c) Item with empty text + empty embeddedObjects[] → '' AND no warning (empty array counts as absent).
+$ac2a_results_empty_embeds = new Day_One_Importer_Results();
+$ac2a_empty_embeds         = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'text'            => '',
+				'embeddedObjects' => array(),
+			),
+		),
+	),
+	$ac2a_results_empty_embeds
+);
+assert_true( '' === $ac2a_empty_embeds, '#56 AC2a — empty-text + empty embeddedObjects yields empty output.' );
+assert_true( ! $ac2a_results_empty_embeds->has_warnings(), '#56 AC2a — empty-text + empty embeddedObjects records no warning (treated as absent).' );
+
+// (d) Non-empty text + embeddedObjects → paragraph only, no media block, no warning (R5 precedence).
+$ac2a_results_precedence = new Day_One_Importer_Results();
+$ac2a_precedence         = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'text'            => 'AC2A precedence text',
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC2A-PRECEDENCE',
+					),
+				),
+			),
+		),
+	),
+	$ac2a_results_precedence
+);
+assert_true( 1 === substr_count( $ac2a_precedence, '<!-- wp:paragraph -->' ), '#56 AC2a — text+embed item renders paragraph only (R5 precedence).' );
+assert_true( 0 === substr_count( $ac2a_precedence, '<!-- wp:image' ), '#56 AC2a — text+embed item emits no image block.' );
+assert_true( 0 === substr_count( $ac2a_precedence, '<!-- wp:gallery' ), '#56 AC2a — text+embed item emits no gallery block.' );
+assert_true( ! $ac2a_results_precedence->has_warnings(), '#56 AC2a — text+embed item does NOT add an unresolved-photo warning.' );
 
 // R11.6 (R19.1 inversion) — italic attribute wraps text in <em> inside the paragraph block.
 $rt_italic = Day_One_Importer_Content::convert_rich_text_to_content(

@@ -169,17 +169,22 @@ class Day_One_Importer_Content {
 	}
 
 	/**
-	 * Determine whether a richText content item should be dropped (R1.3).
+	 * Determine whether a richText content item should be dropped (R1.3 / #56 R5.1).
 	 *
-	 * An item with no scalar `text` or trim-empty `text` is dropped regardless of
-	 * its attributes. Dropped items are transparent to run-collapsing (R2.1).
+	 * An item is dropped iff BOTH conditions hold: (a) `text` is missing/non-scalar
+	 * or trim-empty, AND (b) `embeddedObjects` is absent or an empty array. Items
+	 * with empty `text` but a non-empty `embeddedObjects` array survive the drop
+	 * check so the dispatcher can route them to the new `media` kind (#56 R6).
+	 * Dropped items remain transparent to run-collapsing (R2.1).
 	 *
 	 * @param array<string,mixed> $item richText content item.
 	 * @return bool
 	 */
 	private static function is_line_item_dropped( $item ) {
-		$text = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
-		return '' === trim( $text );
+		$text       = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
+		$text_empty = ( '' === trim( $text ) );
+		$has_embeds = isset( $item['embeddedObjects'] ) && is_array( $item['embeddedObjects'] ) && ! empty( $item['embeddedObjects'] );
+		return $text_empty && ! $has_embeds;
 	}
 
 	/**
@@ -197,6 +202,15 @@ class Day_One_Importer_Content {
 	private static function classify_line_item( $item ) {
 		$attributes = isset( $item['attributes'] ) && is_array( $item['attributes'] ) ? $item['attributes'] : array();
 		$line       = isset( $attributes['line'] ) && is_array( $attributes['line'] ) ? $attributes['line'] : array();
+
+		// #56 R6 — text-empty items with embeddedObjects classify as `media`. Items
+		// with non-empty `text` continue via the existing line-attribute hierarchy
+		// regardless of embeddedObjects content (R5 precedence preserved).
+		$text       = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
+		$has_embeds = isset( $item['embeddedObjects'] ) && is_array( $item['embeddedObjects'] ) && ! empty( $item['embeddedObjects'] );
+		if ( '' === trim( $text ) && $has_embeds ) {
+			return 'media';
+		}
 
 		if ( isset( $line['codeBlock'] ) && true === $line['codeBlock'] ) {
 			return 'code';
@@ -228,6 +242,12 @@ class Day_One_Importer_Content {
 		$kind  = $run['kind'];
 		$items = $run['items'];
 
+		if ( 'media' === $kind ) {
+			// #56 commit (1) transient — the photo_map is plumbed in commit (2) per the
+			// implementation plan. Until then media runs always resolve identifiers
+			// against an empty map and emit warnings.
+			return self::emit_media_group( $items, array(), $results );
+		}
 		if ( 'paragraph' === $kind ) {
 			return self::emit_paragraph_group( $items, $results );
 		}
@@ -669,6 +689,116 @@ class Day_One_Importer_Content {
 		$inner .= '</blockquote>';
 
 		return self::serialize_block( 'quote', array(), $inner );
+	}
+
+	/**
+	 * Emit one image/gallery block (or nothing) for a consecutive media run (#56 R7).
+	 *
+	 * Walks each item's `embeddedObjects[]` in scan order. Photo embeds resolve
+	 * their `identifier` against the runner-supplied `$photo_map` and contribute
+	 * an attachment ID to the run-level scan-ordered list. Unsupported types
+	 * (video/audio/pdfAttachment) emit nothing and route one per-entry-per-type
+	 * warning (issues #57/#58/#59 — internal traceability only; warning text is
+	 * issue-number-free per Risk 6). Unresolved photo identifiers emit nothing
+	 * and route one warning per missing identifier (per-identifier, not deduped).
+	 *
+	 * Cardinality (#56 R8):
+	 *   - 0 resolved IDs → no block.
+	 *   - 1 resolved ID  → core/image block.
+	 *   - 2+ resolved IDs → core/gallery block.
+	 *
+	 * @param array<int,array<string,mixed>> $items     Media-run items.
+	 * @param array<string,int>              $photo_map identifier → attachment_id map (runner-built; may be empty).
+	 * @param Day_One_Importer_Results|null  $results   Optional warning sink.
+	 * @return string
+	 */
+	private static function emit_media_group( array $items, array $photo_map, ?Day_One_Importer_Results $results ) {
+		$resolved_ids = array();
+		$warned_types = array(); // Per-entry-per-type dedupe for unsupported media (#56 R8 / Risk 5).
+
+		foreach ( $items as $item ) {
+			$embeds = isset( $item['embeddedObjects'] ) && is_array( $item['embeddedObjects'] ) ? $item['embeddedObjects'] : array();
+			foreach ( $embeds as $embed ) {
+				if ( ! is_array( $embed ) ) {
+					continue;
+				}
+				$type       = isset( $embed['type'] ) && is_string( $embed['type'] ) ? $embed['type'] : '';
+				$identifier = isset( $embed['identifier'] ) && is_scalar( $embed['identifier'] ) ? (string) $embed['identifier'] : '';
+
+				if ( 'photo' === $type ) {
+					if ( '' !== $identifier && isset( $photo_map[ $identifier ] ) ) {
+						$resolved_ids[] = (int) $photo_map[ $identifier ];
+					} elseif ( null !== $results ) {
+						$results->add_warning(
+							__( 'Skipping embedded photo in Day One entry: referenced media file is not present in the export.', 'day-one-importer' )
+						);
+					}
+					continue;
+				}
+
+				if ( 'video' === $type ) {
+					if ( ! isset( $warned_types['video'] ) ) {
+						$warned_types['video'] = true;
+						if ( null !== $results ) {
+							// Tracked by issue #57 (internal traceability only).
+							$results->add_warning( __( 'Skipping embedded video; video import is not yet supported.', 'day-one-importer' ) );
+						}
+					}
+					continue;
+				}
+
+				if ( 'audio' === $type ) {
+					if ( ! isset( $warned_types['audio'] ) ) {
+						$warned_types['audio'] = true;
+						if ( null !== $results ) {
+							// Tracked by issue #58 (internal traceability only).
+							$results->add_warning( __( 'Skipping embedded audio; audio import is not yet supported.', 'day-one-importer' ) );
+						}
+					}
+					continue;
+				}
+
+				if ( 'pdfAttachment' === $type ) {
+					if ( ! isset( $warned_types['pdfAttachment'] ) ) {
+						$warned_types['pdfAttachment'] = true;
+						if ( null !== $results ) {
+							// Tracked by issue #59 (internal traceability only).
+							$results->add_warning( __( 'Skipping embedded PDF attachment; PDF import is not yet supported.', 'day-one-importer' ) );
+						}
+					}
+					continue;
+				}
+
+				// Unknown embed type: silent skip — no warning, no block.
+			}
+		}
+
+		if ( empty( $resolved_ids ) ) {
+			return '';
+		}
+
+		if ( 1 === count( $resolved_ids ) ) {
+			$image = self::build_attachment_image_record( $resolved_ids[0] );
+			if ( null === $image ) {
+				return '';
+			}
+			return self::serialize_image_block( $image );
+		}
+
+		$images = array();
+		foreach ( $resolved_ids as $attachment_id ) {
+			$image = self::build_attachment_image_record( $attachment_id );
+			if ( $image ) {
+				$images[] = $image;
+			}
+		}
+		if ( empty( $images ) ) {
+			return '';
+		}
+		if ( 1 === count( $images ) ) {
+			return self::serialize_image_block( $images[0] );
+		}
+		return self::serialize_gallery_block( $images );
 	}
 
 	/**
@@ -1139,7 +1269,22 @@ class Day_One_Importer_Content {
 	 * @return bool
 	 */
 	public static function is_day_one_media_placeholder( $line ) {
-		return (bool) preg_match( '/^!\[[^\]]*\]\(dayone-(?:moment|photo|video):\/\/[^\s)]+\)$/i', trim( (string) $line ) );
+		/*
+		 * Scheme suffix enumeration is intentionally closed — `dayone-foo://X`
+		 * MUST NOT match (#56 R3 / AC2). Supported forms (case-insensitive,
+		 * fully-trimmed line):
+		 *   dayone-moment://<UUID>
+		 *   dayone-moment:/{photo|video|audio|pdfAttachment}/<UUID>
+		 *   dayone-{photo|video|audio|pdf}://<UUID>
+		 */
+		return (bool) preg_match(
+			'/^!\[[^\]]*\]\(dayone-(?:'
+			. 'moment:\/\/[^\s)]+'
+			. '|moment:\/(?:photo|video|audio|pdfAttachment)\/[^\s)]+'
+			. '|(?:photo|video|audio|pdf):\/\/[^\s)]+'
+			. ')\)$/i',
+			trim( (string) $line )
+		);
 	}
 
 	/**
