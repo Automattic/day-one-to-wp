@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.9
+Stable tag: 0.2.10
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,11 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.10 =
+* Import Day One `entry.videos[]` from the JSON export as `core/video` blocks at their inline `embeddedObjects[]` positions. Each video is sideloaded into the existing private uploads subfolder, deduped against any matching attachment on the same post via Day One UUID + identifier (or md5), and emitted via the existing inline media routing introduced in 0.2.9. An entry containing interleaved photo and video embeds renders them in scan order, with consecutive photos collapsing into a single `core/image` or `core/gallery` and each video producing one `core/video` block in between. The `core/video` block uses the standard `<figure class="wp-block-video">` markup and serves the file through the nonce-checked private endpoint, so videos remain readable only to users who can read the parent private post.
+* Videos whose MIME type the target site refuses (for example because `video/quicktime` or `video/mp4` is not in `get_allowed_mime_types()`) are dropped with a privacy-safe warning that does not leak identifier, UUID, filename, or md5. Unresolved video identifiers (referenced media file missing from the export, or rejected by the MIME gate) produce one warning per affected embed. To support additional video MIME types, extend the uploader allowlist via the standard WordPress `upload_mimes` filter or your multisite Add to mime types setting.
+* Bump the internal `IMPORT_SCHEMA_VERSION` from `6` to `7` so existing imported posts that contain video embeds are re-rendered when the same export is re-imported. Posts that do not reference any `embeddedObjects[].type === "video"` still re-render but the output is byte-identical to the previous version (modulo the same ID/nonce churn already documented for 0.2.6 and 0.2.9). The reprocessing cost is the same shape as previous schema bumps.
 
 = 0.2.9 =
 * Place Day One `richText` inline photos at their original position in the text stream. When a `richText` payload lists photos via `contents[].embeddedObjects[]`, each `type: photo` embed resolves against the imported attachment for the same identifier and renders inline: a single embed becomes a `core/image` block between the surrounding paragraphs, and two or more consecutive embeds (including embeds separated only by transparent empty items) collapse into a single `core/gallery` block. Legacy `text`-only entries continue to append photos after the entry text in entry order.
@@ -126,6 +131,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.10 =
+Imports Day One `entry.videos[]` into the existing private uploads subfolder and renders them as `core/video` blocks at their inline `embeddedObjects[]` positions, including interleaved photo + video sequences. Videos whose MIME the site refuses are dropped with a privacy-safe warning (no identifier leak) — extend `upload_mimes` to allow them. Bumps the internal import schema so re-imports refresh existing posts that contain video embeds.
 
 = 0.2.9 =
 Places Day One richText inline photos at their original position in the text stream (single embed → `core/image`, consecutive embeds → `core/gallery`) and broadens the legacy-text placeholder regex to strip all nine observed `dayone-moment` variants. Embedded video, audio, and PDF references are recognized but not yet sideloaded — each logs one privacy-safe warning per entry per type until #57/#58/#59 land. `richText` entries that import photos without any inline `embeddedObjects` keep their photos attached to the post but no longer receive an appended gallery, and the runner records a privacy-safe warning so the dropped placement is not silent.
