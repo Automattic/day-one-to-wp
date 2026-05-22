@@ -227,8 +227,8 @@ $created = isset( $first_counts['posts_created'] ) ? (int) $first_counts['posts_
 $media   = isset( $first_counts['media_imported'] ) ? (int) $first_counts['media_imported'] : 0;
 if ( $using_default_zip ) {
 	$entries_found = isset( $first_counts['entries_found'] ) ? (int) $first_counts['entries_found'] : 0;
-	day_one_importer_wp_env_assert( 3 === $entries_found, 'Fictional fixture parsed three entries.' );
-	day_one_importer_wp_env_assert( 3 === $created, 'Fictional fixture created exactly three private posts.' );
+	day_one_importer_wp_env_assert( 7 === $entries_found, 'Fictional fixture parsed seven entries.' );
+	day_one_importer_wp_env_assert( 7 === $created, 'Fictional fixture created exactly seven private posts.' );
 } else {
 	day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
 }
@@ -329,6 +329,53 @@ foreach ( $imported_posts as $post_id ) {
 if ( $using_default_zip ) {
 	day_one_importer_wp_env_assert( $found_fixture_tag, 'Expected fictional fixture tag exists on imported posts.' );
 	day_one_importer_wp_env_assert( $found_fixture_category, 'Expected fictional journal category exists on imported posts.' );
+
+	// --- richText scaffold assertions (issue #53) ---
+	// Locate each scaffold fixture entry by its known UUID via post meta.
+	$day_one_importer_uuid_to_post_id = array();
+	foreach ( $imported_posts as $post_id ) {
+		$uuid = (string) get_post_meta( (int) $post_id, '_day_one_uuid', true );
+		if ( '' !== $uuid ) {
+			$day_one_importer_uuid_to_post_id[ $uuid ] = (int) $post_id;
+		}
+	}
+
+	// R10.1 — richText (JSON-string form) produces a paragraph block with the expected text.
+	$entry_0004_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0004'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0004'] : 0;
+	day_one_importer_wp_env_assert( $entry_0004_post_id > 0, 'Fixture entry 0004 (richText as JSON-encoded string) was imported.' );
+	if ( $entry_0004_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0004_content    = (string) get_post_field( 'post_content', $entry_0004_post_id );
+		$entry_0004_blocks     = parse_blocks( $entry_0004_content );
+		$entry_0004_paragraphs = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0004_blocks, 'core/paragraph', $entry_0004_paragraphs );
+		$found_marigold_paragraph = false;
+		foreach ( $entry_0004_paragraphs as $paragraph ) {
+			if ( false !== strpos( (string) $paragraph['innerHTML'], 'Imaginary trip to the paper marigolds' ) ) {
+				$found_marigold_paragraph = true;
+				break;
+			}
+		}
+		day_one_importer_wp_env_assert( $found_marigold_paragraph, 'Entry 0004 produces a core/paragraph block from the JSON-string richText payload.' );
+	}
+
+	// R10.2 / A13 — byte-for-byte legacy regression assertion against entry 0003 (text-only, no media).
+	$entry_0003_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0003'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0003'] : 0;
+	day_one_importer_wp_env_assert( $entry_0003_post_id > 0, 'Legacy fixture entry 0003 (text-only) was imported.' );
+	if ( $entry_0003_post_id > 0 ) {
+		$entry_0003_legacy_text = "Quiet text-only entry for the imaginary mooncake tasting club.\n\nThis entry has no media and exists only to exercise text-only imports with paragraph breaks.";
+		$entry_0003_expected    = Day_One_Importer_Content::convert_text_to_content( $entry_0003_legacy_text );
+		$entry_0003_actual      = (string) get_post_field( 'post_content', $entry_0003_post_id );
+		day_one_importer_wp_env_assert( $entry_0003_expected === $entry_0003_actual, 'Entry 0003 post_content is byte-for-byte equal to convert_text_to_content( legacy text ) — no regression on the legacy path.' );
+	}
+
+	// R10.3 / A7 — photo-append still works for a richText entry. Entry 0007 carries one photo (md5-deduped with entry 0001).
+	$entry_0007_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0007'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0007'] : 0;
+	day_one_importer_wp_env_assert( $entry_0007_post_id > 0, 'Fixture entry 0007 (richText + 1 photo) was imported.' );
+	if ( $entry_0007_post_id > 0 ) {
+		$entry_0007_attachments    = get_attached_media( 'image', $entry_0007_post_id );
+		$entry_0007_attachment_ids = array_map( 'intval', wp_list_pluck( $entry_0007_attachments, 'ID' ) );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0007_attachment_ids ), 'Entry 0007 (richText + photo) has exactly one attached image (photo-append behaviour preserved).' );
+	}
 }
 
 $second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );

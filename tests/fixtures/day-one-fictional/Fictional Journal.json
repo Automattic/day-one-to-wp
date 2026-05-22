@@ -66,6 +66,137 @@
       "creationDeviceType": "Fictional Device",
       "creationDeviceModel": "Sample Simulator",
       "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0004",
+      "creationDate": "2031-04-08T11:00:00Z",
+      "modifiedDate": "2031-04-08T11:20:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": "{\"meta\":{\"version\":1},\"contents\":[{\"attributes\":{\"italic\":true},\"text\":\"Imaginary trip to the paper marigolds\"},{\"attributes\":{},\"text\":\"\\nDay One scaffold sample, fictional content only.\"}]}",
+      "tags": [
+        "fictional",
+        "scaffold",
+        "richtext-string"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0005",
+      "creationDate": "2031-04-09T18:45:00Z",
+      "modifiedDate": "2031-04-09T19:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Pre-decoded richText fixture for the imaginary lantern festival.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Pre-decoded richText fixture for the imaginary lantern festival.\n"
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-9999"
+              }
+            ]
+          },
+          {
+            "attributes": {},
+            "text": "Second paragraph after a dropped embedded-object item."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "scaffold",
+        "richtext-object"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0006",
+      "creationDate": "2031-04-10T08:30:00Z",
+      "modifiedDate": "2031-04-10T08:35:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Caption-bearing fictional entry for precedence testing.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Caption-bearing fictional entry for precedence testing.",
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-8888"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "scaffold",
+        "precedence"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0007",
+      "creationDate": "2031-04-11T16:15:00Z",
+      "modifiedDate": "2031-04-11T16:30:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Imaginary garden photo accompanies a richText paragraph.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Imaginary garden photo accompanies a richText paragraph."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "scaffold",
+        "richtext-photo"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0007",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-04-11T16:20:00Z",
+          "orderInEntry": 0,
+          "width": 2,
+          "height": 2
+        }
+      ]
     }
   ]
 }
