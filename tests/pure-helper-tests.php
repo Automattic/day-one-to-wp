@@ -889,7 +889,7 @@ assert_true( 1 === substr_count( $rt_precedence, '<!-- wp:paragraph -->' ), 'ric
 assert_true( false !== strpos( $rt_precedence, 'Caption' ), 'richText text+embeddedObjects keeps the caption text.' );
 assert_true( 0 === substr_count( $rt_precedence, 'identifier' ), 'richText text+embeddedObjects does not leak embeddedObject identifier into output.' );
 
-// R11.6 — inline attributes ignored, plain text still rendered as paragraph.
+// R11.6 (R19.1 inversion) — italic attribute wraps text in <em> inside the paragraph block.
 $rt_italic = Day_One_Importer_Content::convert_rich_text_to_content(
 	array(
 		'contents' => array(
@@ -900,8 +900,10 @@ $rt_italic = Day_One_Importer_Content::convert_rich_text_to_content(
 		),
 	)
 );
-assert_true( false !== strpos( $rt_italic, '<p>fancy</p>' ), 'richText inline italic attribute renders text as plain paragraph.' );
-assert_true( false === strpos( $rt_italic, '<em>' ) && false === strpos( $rt_italic, '<i>' ) && false === strpos( $rt_italic, '<strong>' ), 'richText scaffold does not emit inline styling tags.' );
+assert_true( false !== strpos( $rt_italic, '<p><em>fancy</em></p>' ), 'richText inline italic attribute wraps text in <em> inside the paragraph block.' );
+assert_true( false !== strpos( $rt_italic, '<em>fancy</em>' ), 'richText italic wrapper encloses the run text.' );
+assert_true( false === strpos( $rt_italic, '<i>' ), 'richText italic does NOT emit <i> (semantic <em> only).' );
+assert_true( false === strpos( $rt_italic, '<strong>' ), 'richText italic does NOT also emit <strong> (guard against over-wrapping).' );
 
 // R11.7 — JSON-string vs decoded-array equivalence on rendered output.
 $rt_payload = array(

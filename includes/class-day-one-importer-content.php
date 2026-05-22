@@ -90,32 +90,37 @@ class Day_One_Importer_Content {
 	/**
 	 * Convert a Day One richText payload to safe WordPress block content.
 	 *
-	 * Scaffold-only renderer. Walks the decoded `contents[]` array in order
-	 * and emits one paragraph block per non-empty plain run, delegating each
-	 * run to convert_text_to_content() so escape and intra-paragraph line-break
-	 * semantics match the legacy markdown path byte-for-byte.
+	 * Walks the decoded `contents[]` array in order. Each non-empty run is
+	 * rendered as one paragraph block; runs that carry supported inline
+	 * attributes own paragraph serialization here (R10 option (b)) so that
+	 * inline wrapper tags survive escaping. Runs without supported inline
+	 * attributes continue to delegate to convert_text_to_content() so the
+	 * legacy markdown path stays byte-for-byte identical and any sigil
+	 * leakage is preserved exactly as the scaffold renders it today.
 	 *
-	 * Plain runs are routed through convert_text_to_content(), so a run
-	 * beginning with a markdown sigil (`#`, `- `, `*`) renders as the
-	 * corresponding markdown block. This is intentional for the scaffold;
-	 * strict line-attribute handling is tracked separately for follow-up.
+	 * Empty-text items are dropped regardless of their attributes — no empty
+	 * `<strong></strong>` or `<a href="…"></a>` may appear in output.
 	 *
-	 * Empty-text items are silently dropped regardless of whether they
-	 * carry embeddedObjects, attributes.line, or nothing. Items with both
-	 * non-empty text and embeddedObjects emit only the paragraph from text;
-	 * the embeddedObjects key is ignored in this scaffold.
+	 * Wrapper order (innermost to outermost, pinned for deterministic tests
+	 * and documented in spec R11):
+	 *   1. `<code>`        (inlineCode)
+	 *   2. `<s>`           (strikethrough)
+	 *   3. `<em>`          (italic)
+	 *   4. `<strong>`      (bold)
+	 *   5. `<mark style="background-color:#RRGGBB">` (highlightedColor)
+	 *   6. `<a href="…">`  (linkURL / autolink)
 	 *
-	 * @todo Inline attributes (bold, italic, links, etc.) and line
-	 *       attributes (header, list, quote, codeBlock, indent) are
-	 *       intentionally not handled in this scaffold; tracked
-	 *       separately for follow-up.
+	 * Escape contract: the run's text is escaped via
+	 * escape_imported_text_fragment() BEFORE any inline wrapper is applied,
+	 * so the inline tags emitted here are the only HTML in the rendered
+	 * fragment. serialize_paragraph_block() is deliberately bypassed for
+	 * the owning path so the wrapper tags are not re-escaped into entities.
 	 *
 	 * @param mixed                         $rich_text Decoded richText array or JSON-encoded string.
-	 * @param Day_One_Importer_Results|null $results   Optional warning sink.
+	 * @param Day_One_Importer_Results|null $results   Optional warning sink for inline-attribute rejection paths (R7, R9).
 	 * @return string
 	 */
 	public static function convert_rich_text_to_content( $rich_text, ?Day_One_Importer_Results $results = null ) {
-		unset( $results ); // Sink threading is wired up; usage lands in inline-attribute follow-up.
 		if ( is_string( $rich_text ) ) {
 			$decoded   = json_decode( $rich_text, true );
 			$rich_text = is_array( $decoded ) ? $decoded : null;
@@ -145,7 +150,76 @@ class Day_One_Importer_Content {
 				$text = substr( $text, 0, -1 );
 			}
 
-			$output .= self::convert_text_to_content( $text );
+			$attributes = isset( $item['attributes'] ) && is_array( $item['attributes'] ) ? $item['attributes'] : array();
+
+			// Strict boolean attributes (R12 — only literal true triggers).
+			$is_bold          = isset( $attributes['bold'] ) && true === $attributes['bold'];
+			$is_italic        = isset( $attributes['italic'] ) && true === $attributes['italic'];
+			$is_strikethrough = isset( $attributes['strikethrough'] ) && true === $attributes['strikethrough'];
+			$is_code          = isset( $attributes['inlineCode'] ) && true === $attributes['inlineCode'];
+
+			// linkURL validation (R5 / R7). autolink is observed identically when present (R6).
+			$valid_href = '';
+			if ( isset( $attributes['linkURL'] ) ) {
+				$link_raw = $attributes['linkURL'];
+				if ( is_string( $link_raw ) && '' !== $link_raw && preg_match( '#^https?://#i', $link_raw ) ) {
+					$href_candidate = esc_url( $link_raw );
+					if ( '' !== $href_candidate ) {
+						$valid_href = $href_candidate;
+					}
+				}
+				if ( '' === $valid_href && null !== $results ) {
+					$results->add_warning( __( 'Skipped non-http(s) link inside richText payload.', 'day-one-importer' ) );
+				}
+			}
+
+			// highlightedColor validation (R8 / R9). Warn on every present-but-invalid value;
+			// silent only when the key is absent.
+			$highlight_color_hex = '';
+			if ( array_key_exists( 'highlightedColor', $attributes ) ) {
+				$color_raw = $attributes['highlightedColor'];
+				if ( is_string( $color_raw ) && '' !== $color_raw && 1 === preg_match( '/^0x([0-9A-Fa-f]{6})$/', $color_raw, $color_match ) ) {
+					$highlight_color_hex = '#' . $color_match[1];
+				} elseif ( null !== $results ) {
+					$results->add_warning( __( 'Skipped invalid highlight color inside richText payload.', 'day-one-importer' ) );
+				}
+			}
+
+			$has_supported = $is_bold || $is_italic || $is_strikethrough || $is_code || '' !== $valid_href || '' !== $highlight_color_hex;
+
+			if ( ! $has_supported ) {
+				// R13 delegation — byte-for-byte legacy path.
+				$output .= self::convert_text_to_content( $text );
+				continue;
+			}
+
+			// R10 option (b) — own paragraph serialization for runs with inline attributes.
+			$lines        = explode( "\n", $text );
+			$escaped_line = array_map( array( 'Day_One_Importer_Content', 'escape_imported_text_fragment' ), $lines );
+			$wrapped      = implode( "<br />\n", $escaped_line );
+
+			// R11 wrapper order — innermost to outermost. Plain `if` chain (not a generic loop)
+			// so the order pin is visually obvious in the diff.
+			if ( $is_code ) {
+				$wrapped = '<code>' . $wrapped . '</code>';
+			}
+			if ( $is_strikethrough ) {
+				$wrapped = '<s>' . $wrapped . '</s>';
+			}
+			if ( $is_italic ) {
+				$wrapped = '<em>' . $wrapped . '</em>';
+			}
+			if ( $is_bold ) {
+				$wrapped = '<strong>' . $wrapped . '</strong>';
+			}
+			if ( '' !== $highlight_color_hex ) {
+				$wrapped = '<mark style="background-color:' . $highlight_color_hex . '">' . $wrapped . '</mark>';
+			}
+			if ( '' !== $valid_href ) {
+				$wrapped = '<a href="' . $valid_href . '">' . $wrapped . '</a>';
+			}
+
+			$output .= self::serialize_block( 'paragraph', array(), '<p>' . $wrapped . '</p>' );
 		}
 
 		return trim( $output );
