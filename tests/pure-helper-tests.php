@@ -2561,8 +2561,8 @@ Day_One_Importer_Cleanup::remove( $parser_dir );
 $fixture_dir     = __DIR__ . '/fixtures/day-one-fictional';
 $fixture_results = new Day_One_Importer_Results();
 $fixture_entries = $parser->parse_export( $fixture_dir, $fixture_results );
-assert_true( 19 === count( $fixture_entries ), 'Committed fictional fixture parses nineteen entries.' );
-assert_true( 19 === $fixture_results->get_count( 'entries_found' ), 'Committed fictional fixture reports nineteen found entries.' );
+assert_true( 21 === count( $fixture_entries ), 'Committed fictional fixture parses twenty-one entries.' );
+assert_true( 21 === $fixture_results->get_count( 'entries_found' ), 'Committed fictional fixture reports twenty-one found entries.' );
 assert_true( empty( $fixture_results->get_warnings() ), 'Committed fictional fixture parses without warnings.' );
 assert_true( ! empty( $fixture_entries[0]['photos'] ), 'Committed fictional fixture includes photo metadata.' );
 $fixture_photo_path = Day_One_Importer_Media::resolve_photo_path( $fixture_dir, $fixture_entries[0]['photos'][0] );
@@ -2585,7 +2585,7 @@ $checkpoint       = static function () use ( &$checkpoint_count ) {
 	++$checkpoint_count;
 };
 $batch_index = $parser->index_export_batch( $fixture_dir, $batch_job, $batch_results, 1.0E+30, $checkpoint );
-assert_true( ! empty( $batch_index['done'] ) && 19 === $batch_job['entries_total'], 'Batch parser indexes fixture entries into a manifest.' );
+assert_true( ! empty( $batch_index['done'] ) && 21 === $batch_job['entries_total'], 'Batch parser indexes fixture entries into a manifest.' );
 assert_true( $checkpoint_count >= 3, 'Batch parser checkpoints after safe manifest units.' );
 $manifest_entry = $parser->read_manifest_entry( $batch_job['manifest_path'], 0 );
 assert_true( is_array( $manifest_entry ) && 'FICTIONAL-SAMPLE-ENTRY-0001' === $manifest_entry['uuid'], 'Batch parser can read a manifest entry by cursor.' );
@@ -2616,7 +2616,7 @@ do {
 	$bounded_index = $parser->index_export_batch( $fixture_dir, $bounded_job, $bounded_results, 1.0E+30 );
 	++$bounded_batches;
 } while ( empty( $bounded_index['done'] ) && $bounded_batches < 100 );
-assert_true( 19 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
+assert_true( 21 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
 Day_One_Importer_Cleanup::remove( dirname( $bounded_job['manifest_path'] ) );
 $GLOBALS['day_one_importer_test_filters'] = array();
 
@@ -2964,6 +2964,40 @@ mkdir( $discover_root . '/photos', 0777, true );
 $found_dirs = Day_One_Importer_Media::find_video_dirs( $discover_root );
 assert_true( 1 === count( $found_dirs ) && false !== strpos( $found_dirs[0], DIRECTORY_SEPARATOR . 'videos' ), 'find_video_dirs picks up a top-level videos directory.' );
 Day_One_Importer_Cleanup::remove( $discover_root );
+
+// --- C5 — fictional fixture entries 20 (video) + 21 (interleaved) round-trip (#57 R11.4). ---
+
+$fixture_video_entry = null;
+$fixture_mixed_entry = null;
+foreach ( $fixture_entries as $fx ) {
+	if ( 'FICTIONAL-SAMPLE-ENTRY-0020' === ( isset( $fx['uuid'] ) ? $fx['uuid'] : '' ) ) {
+		$fixture_video_entry = $fx;
+	}
+	if ( 'FICTIONAL-SAMPLE-ENTRY-0021' === ( isset( $fx['uuid'] ) ? $fx['uuid'] : '' ) ) {
+		$fixture_mixed_entry = $fx;
+	}
+}
+assert_true( is_array( $fixture_video_entry ), 'Fixture entry 0020 is present in the parsed fixture (#57 R11.1).' );
+assert_true( is_array( $fixture_mixed_entry ), 'Fixture entry 0021 is present in the parsed fixture (#57 R11.1).' );
+assert_true( isset( $fixture_video_entry['videos'][0]['identifier'] ) && '36AFEC058A8640F98420344B2CCCD145' === $fixture_video_entry['videos'][0]['identifier'], 'Fixture entry 0020 carries the expected video identifier.' );
+assert_true( isset( $fixture_video_entry['videos'][0]['duration'] ) && abs( floatval( $fixture_video_entry['videos'][0]['duration'] ) - 1.0 ) < 1e-9, 'Fixture entry 0020 round-trips duration through the parser within 1e-9 (R1.4).' );
+
+$fixture_video_path = Day_One_Importer_Media::resolve_video_path( $fixture_dir, $fixture_video_entry['videos'][0] );
+assert_true( '' !== $fixture_video_path && is_file( $fixture_video_path ), 'Fixture entry 0020 video resolves on disk via resolve_video_path().' );
+
+// Entry 21 mixed-sequence rendering (AC9 pure-helper layer).
+$mixed_results = new Day_One_Importer_Results();
+$mixed_html    = Day_One_Importer_Content::convert_rich_text_to_content(
+	isset( $fixture_mixed_entry['richText'] ) ? $fixture_mixed_entry['richText'] : array(),
+	$mixed_results,
+	array( 'FICTIONAL-SAMPLE-PHOTO-0001' => 101 ),
+	array( '36AFEC058A8640F98420344B2CCCD145' => 501 )
+);
+$mixed_blocks = parse_blocks( $mixed_html );
+$mixed_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $mixed_blocks );
+assert_true( array( 'core/image', 'core/video', 'core/image' ) === $mixed_names, '#57 AC9 — fictional entry 0021 (interleaved photo,video,photo) renders core/image, core/video, core/image in order.' );
 
 // --- C3 — signature smoke for render_entry_body / convert_rich_text_to_content with $video_map (#57 R7.5, R7.6). ---
 

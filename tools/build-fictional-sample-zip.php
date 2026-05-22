@@ -2,6 +2,17 @@
 /**
  * Build the committed fictional Day One sample ZIP.
  *
+ * Video fixture regeneration (spec #57 R11.2):
+ *   mkdir -p tests/fixtures/day-one-fictional/videos
+ *   ffmpeg -y -f lavfi -i color=c=black:s=320x180:d=1:r=15 -an \
+ *     -c:v libx264 -profile:v baseline -pix_fmt yuv420p \
+ *     -movflags +faststart \
+ *     tests/fixtures/day-one-fictional/videos/_tmp.mov
+ *   md5 -q tests/fixtures/day-one-fictional/videos/_tmp.mov  # macOS; or md5sum on Linux
+ *   mv tests/fixtures/day-one-fictional/videos/_tmp.mov \
+ *      tests/fixtures/day-one-fictional/videos/<lowercase md5>.mov
+ * Verify size <= 200 KB (#57 R11.2 / K1). If over, lower the bitrate with -b:v 100k.
+ *
  * @package Day_One_Importer
  */
 
@@ -62,33 +73,64 @@ function day_one_fixture_validate_json_file( $json_file, $source_dir ) {
 			day_one_fixture_fail( "Entry {$entry_index} is missing a UUID." );
 		}
 
-		if ( empty( $entry['photos'] ) ) {
-			continue;
+		if ( ! empty( $entry['photos'] ) ) {
+			if ( ! is_array( $entry['photos'] ) ) {
+				day_one_fixture_fail( "Photos for entry {$entry_index} must be an array." );
+			}
+
+			foreach ( $entry['photos'] as $photo_index => $photo ) {
+				if ( ! is_array( $photo ) ) {
+					day_one_fixture_fail( "Photo {$photo_index} for entry {$entry_index} is not an object." );
+				}
+
+				$md5  = isset( $photo['md5'] ) && is_scalar( $photo['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $photo['md5'] ) ) : '';
+				$type = isset( $photo['type'] ) && is_scalar( $photo['type'] ) ? strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', (string) $photo['type'] ) ) : '';
+				if ( '' === $md5 || '' === $type ) {
+					day_one_fixture_fail( "Photo {$photo_index} for entry {$entry_index} needs md5 and type metadata." );
+				}
+
+				$photo_path = $source_dir . '/photos/' . $md5 . '.' . $type;
+				if ( ! is_file( $photo_path ) ) {
+					day_one_fixture_fail( "Photo file missing for metadata {$md5}.{$type}." );
+				}
+
+				$actual_md5 = md5_file( $photo_path );
+				if ( $actual_md5 !== $md5 ) {
+					day_one_fixture_fail( "Photo file MD5 mismatch for {$md5}.{$type}; actual hash is {$actual_md5}." );
+				}
+			}
 		}
 
-		if ( ! is_array( $entry['photos'] ) ) {
-			day_one_fixture_fail( "Photos for entry {$entry_index} must be an array." );
-		}
-
-		foreach ( $entry['photos'] as $photo_index => $photo ) {
-			if ( ! is_array( $photo ) ) {
-				day_one_fixture_fail( "Photo {$photo_index} for entry {$entry_index} is not an object." );
+		if ( ! empty( $entry['videos'] ) ) {
+			if ( ! is_array( $entry['videos'] ) ) {
+				day_one_fixture_fail( "Videos for entry {$entry_index} must be an array." );
 			}
 
-			$md5  = isset( $photo['md5'] ) && is_scalar( $photo['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $photo['md5'] ) ) : '';
-			$type = isset( $photo['type'] ) && is_scalar( $photo['type'] ) ? strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', (string) $photo['type'] ) ) : '';
-			if ( '' === $md5 || '' === $type ) {
-				day_one_fixture_fail( "Photo {$photo_index} for entry {$entry_index} needs md5 and type metadata." );
-			}
+			foreach ( $entry['videos'] as $video_index => $video ) {
+				if ( ! is_array( $video ) ) {
+					day_one_fixture_fail( "Video {$video_index} for entry {$entry_index} is not an object." );
+				}
 
-			$photo_path = $source_dir . '/photos/' . $md5 . '.' . $type;
-			if ( ! is_file( $photo_path ) ) {
-				day_one_fixture_fail( "Photo file missing for metadata {$md5}.{$type}." );
-			}
+				$md5  = isset( $video['md5'] ) && is_scalar( $video['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $video['md5'] ) ) : '';
+				$type = isset( $video['type'] ) && is_scalar( $video['type'] ) ? strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', (string) $video['type'] ) ) : '';
+				if ( '' === $md5 || '' === $type ) {
+					day_one_fixture_fail( "Video {$video_index} for entry {$entry_index} needs md5 and type metadata." );
+				}
 
-			$actual_md5 = md5_file( $photo_path );
-			if ( $actual_md5 !== $md5 ) {
-				day_one_fixture_fail( "Photo file MD5 mismatch for {$md5}.{$type}; actual hash is {$actual_md5}." );
+				$video_path = $source_dir . '/videos/' . $md5 . '.' . $type;
+				if ( ! is_file( $video_path ) ) {
+					day_one_fixture_fail( "Video file missing for metadata {$md5}.{$type}." );
+				}
+
+				$actual_md5 = md5_file( $video_path );
+				if ( $actual_md5 !== $md5 ) {
+					day_one_fixture_fail( "Video file MD5 mismatch for {$md5}.{$type}; actual hash is {$actual_md5}." );
+				}
+
+				$size = filesize( $video_path );
+				if ( $size > 200 * 1024 ) {
+					day_one_fixture_fail( "Video fixture {$md5}.{$type} exceeds the 200 KB cap ({$size} bytes); see header for regeneration command." );
+				}
 			}
 		}
 	}
