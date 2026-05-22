@@ -56,18 +56,27 @@ class Day_One_Importer_Media {
 	private $video_dirs = null;
 
 	/**
+	 * Cached audio directories for async jobs, or null to discover synchronously.
+	 *
+	 * @var string[]|null
+	 */
+	private $audio_dirs = null;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param string                   $root Extraction root.
 	 * @param Day_One_Importer_Results $results Results.
 	 * @param string[]|null            $photo_dirs Cached photo directories, or null to discover.
 	 * @param string[]|null            $video_dirs Cached video directories, or null to discover.
+	 * @param string[]|null            $audio_dirs Cached audio directories, or null to discover.
 	 */
-	public function __construct( $root, Day_One_Importer_Results $results, $photo_dirs = null, $video_dirs = null ) {
+	public function __construct( $root, Day_One_Importer_Results $results, $photo_dirs = null, $video_dirs = null, $audio_dirs = null ) {
 		$this->root       = $root;
 		$this->results    = $results;
 		$this->photo_dirs = is_array( $photo_dirs ) ? array_values( array_filter( array_map( 'strval', $photo_dirs ) ) ) : null;
 		$this->video_dirs = is_array( $video_dirs ) ? array_values( array_filter( array_map( 'strval', $video_dirs ) ) ) : null;
+		$this->audio_dirs = is_array( $audio_dirs ) ? array_values( array_filter( array_map( 'strval', $audio_dirs ) ) ) : null;
 	}
 
 	/**
@@ -132,6 +141,40 @@ class Day_One_Importer_Media {
 	}
 
 	/**
+	 * Import all audios for an entry.
+	 *
+	 * Mirrors import_entry_videos(). Used by tests and as a convenience wrapper;
+	 * the runner's per-entry batch loop calls import_or_reuse_audio() directly so
+	 * it can checkpoint between audios.
+	 *
+	 * @param array<string,mixed> $entry Entry.
+	 * @param int                 $post_id Post ID.
+	 * @return array<int,array{identifier:string,attachment_id:int}> Records in scan order.
+	 */
+	public function import_entry_audios( $entry, $post_id ) {
+		$audios = isset( $entry['audios'] ) && is_array( $entry['audios'] ) ? $entry['audios'] : array();
+		if ( empty( $audios ) ) {
+			return array();
+		}
+
+		$this->results->increment( 'media_found', count( $audios ) );
+		$audios = self::sort_audios( $audios );
+
+		$records = array();
+		foreach ( $audios as $audio ) {
+			$attachment_id = $this->import_or_reuse_audio( $audio, $entry, $post_id );
+			if ( $attachment_id ) {
+				$records[] = array(
+					'identifier'    => isset( $audio['identifier'] ) ? (string) $audio['identifier'] : '',
+					'attachment_id' => (int) $attachment_id,
+				);
+			}
+		}
+
+		return $records;
+	}
+
+	/**
 	 * Sort videos by orderInEntry then original index. Mirrors sort_photos().
 	 *
 	 * @param array<int,array<string,mixed>> $videos Videos.
@@ -157,6 +200,34 @@ class Day_One_Importer_Media {
 		);
 
 		return $videos;
+	}
+
+	/**
+	 * Sort audios by orderInEntry then original index. Mirrors sort_videos().
+	 *
+	 * @param array<int,array<string,mixed>> $audios Audios.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function sort_audios( $audios ) {
+		foreach ( $audios as $index => &$audio ) {
+			$audio['_original_index'] = $index;
+		}
+		unset( $audio );
+
+		usort(
+			$audios,
+			static function ( $a, $b ) {
+				$a_order = isset( $a['orderInEntry'] ) && null !== $a['orderInEntry'] ? (int) $a['orderInEntry'] : PHP_INT_MAX;
+				$b_order = isset( $b['orderInEntry'] ) && null !== $b['orderInEntry'] ? (int) $b['orderInEntry'] : PHP_INT_MAX;
+				if ( $a_order === $b_order ) {
+					return (int) $a['_original_index'] <=> (int) $b['_original_index'];
+				}
+
+				return $a_order <=> $b_order;
+			}
+		);
+
+		return $audios;
 	}
 
 	/**
@@ -322,6 +393,71 @@ class Day_One_Importer_Media {
 		}
 
 		$this->apply_video_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $video );
+		$this->results->increment( 'media_imported' );
+		return $attachment_id;
+	}
+
+	/**
+	 * Import or reuse one audio.
+	 *
+	 * Mirrors import_or_reuse_video(). On MIME rejection (validate_media_file()
+	 * sentinel), the embed is dropped with a privacy-safe warning per spec R5.2.
+	 *
+	 * @param array<string,mixed> $audio Audio metadata.
+	 * @param array<string,mixed> $entry Entry.
+	 * @param int                 $post_id Post ID.
+	 * @return int Attachment ID, or 0.
+	 */
+	public function import_or_reuse_audio( $audio, $entry, $post_id ) {
+		$uuid       = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
+		$identifier = isset( $audio['identifier'] ) ? (string) $audio['identifier'] : '';
+		$md5        = isset( $audio['md5'] ) ? (string) $audio['md5'] : '';
+
+		$existing = $this->find_existing_attachment( $post_id, $uuid, $identifier, $md5 );
+		if ( $existing ) {
+			$this->results->increment( 'media_reused' );
+			return $existing;
+		}
+
+		$source = self::resolve_audio_path( $this->root, $audio, $this->audio_dirs );
+		if ( ! $source ) {
+			$this->results->increment( 'media_missing' );
+			$this->results->add_warning(
+				__( 'Skipping embedded audio in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+			);
+			return 0;
+		}
+
+		$partial = $this->find_partial_attachment_by_source( $post_id, $uuid, $audio, $source );
+		if ( $partial ) {
+			$this->apply_audio_marker_metadata( $partial, $uuid, $identifier, $md5, $audio );
+			$this->results->increment( 'media_reused' );
+			return $partial;
+		}
+
+		$valid = $this->validate_media_file( $source, 'audio' );
+		if ( true !== $valid ) {
+			if ( 'unsupported' === $valid ) {
+				$this->results->increment( 'media_unsupported' );
+			} else {
+				$this->results->increment( 'media_failed' );
+			}
+			$this->results->add_warning(
+				__( 'Skipping embedded audio in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+			);
+			return 0;
+		}
+
+		$attachment_id = $this->sideload_media( $source, $audio, $entry, $post_id );
+		if ( ! $attachment_id ) {
+			$this->results->increment( 'media_failed' );
+			$this->results->add_warning(
+				__( 'Skipping embedded audio in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+			);
+			return 0;
+		}
+
+		$this->apply_audio_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $audio );
 		$this->results->increment( 'media_imported' );
 		return $attachment_id;
 	}
@@ -564,6 +700,152 @@ class Day_One_Importer_Media {
 	}
 
 	/**
+	 * Resolve a Day One audio to an exported file path. Mirrors resolve_video_path().
+	 *
+	 * Reads `format` (not `type`) from the audio record (spec R4.5).
+	 *
+	 * @param string              $root Extraction root.
+	 * @param array<string,mixed> $audio Audio metadata.
+	 * @param string[]|null       $audio_dirs Cached audio directories, or null to discover.
+	 * @return string Empty if unresolved.
+	 */
+	public static function resolve_audio_path( $root, $audio, $audio_dirs = null ) {
+		$root_real = realpath( $root );
+		if ( false === $root_real ) {
+			return '';
+		}
+
+		if ( null !== $audio_dirs ) {
+			$audio_dirs = self::sanitize_audio_dirs( $root_real, $audio_dirs );
+		} else {
+			$audio_dirs = self::find_audio_dirs( $root_real );
+		}
+		if ( empty( $audio_dirs ) ) {
+			return '';
+		}
+
+		$candidates = array();
+		$md5        = isset( $audio['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $audio['md5'] ) ) : '';
+		$format     = isset( $audio['format'] ) ? strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', (string) $audio['format'] ) ) : '';
+		$filename   = isset( $audio['filename'] ) ? basename( (string) $audio['filename'] ) : '';
+
+		if ( $md5 ) {
+			$extensions = self::candidate_extensions_audio( $format );
+			foreach ( $extensions as $extension ) {
+				$candidates[] = $md5 . '.' . $extension;
+			}
+		}
+
+		if ( $filename ) {
+			$candidates[] = $filename;
+		}
+
+		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+		foreach ( $audio_dirs as $dir ) {
+			foreach ( array_unique( $candidates ) as $candidate ) {
+				$path = $dir . DIRECTORY_SEPARATOR . $candidate;
+				if ( is_file( $path ) ) {
+					$real = realpath( $path );
+					if ( $real && ( $real === $root_real || 0 === strpos( $real, $root_prefix ) ) ) {
+						return $real;
+					}
+				}
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Sanitize cached audio directories against the extraction root.
+	 *
+	 * @param string   $root_real Real extraction root.
+	 * @param string[] $audio_dirs Cached directories.
+	 * @return string[]
+	 */
+	private static function sanitize_audio_dirs( $root_real, $audio_dirs ) {
+		$dirs        = array();
+		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+		foreach ( (array) $audio_dirs as $dir ) {
+			$real = realpath( (string) $dir );
+			if ( false === $real || ! is_dir( $real ) ) {
+				continue;
+			}
+			if ( $real === $root_real || 0 === strpos( $real, $root_prefix ) ) {
+				$dirs[] = $real;
+			}
+		}
+
+		return array_values( array_unique( $dirs ) );
+	}
+
+	/**
+	 * Find audios directories in an export. Mirrors find_video_dirs().
+	 *
+	 * @param string $root Root.
+	 * @return string[]
+	 */
+	public static function find_audio_dirs( $root ) {
+		$dirs = array();
+		if ( ! is_dir( $root ) ) {
+			return $dirs;
+		}
+
+		$iterator = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator( $root, FilesystemIterator::SKIP_DOTS ),
+			RecursiveIteratorIterator::SELF_FIRST
+		);
+
+		foreach ( $iterator as $item ) {
+			if ( $item->isDir() && 'audios' === strtolower( $item->getFilename() ) ) {
+				$dirs[] = $item->getPathname();
+			}
+		}
+
+		sort( $dirs );
+		return $dirs;
+	}
+
+	/**
+	 * Candidate extensions for a Day One audio format. Mirrors candidate_extensions_video().
+	 *
+	 * @param string $format Format (normalized: no leading dot, lowercased).
+	 * @return string[]
+	 */
+	private static function candidate_extensions_audio( $format ) {
+		$extensions = array();
+		if ( $format ) {
+			$extensions[] = $format;
+		}
+
+		switch ( $format ) {
+			case 'mp3':
+				$extensions[] = 'm4a';
+				$extensions[] = 'aac';
+				break;
+			case 'aac':
+				$extensions[] = 'm4a';
+				$extensions[] = 'mp3';
+				break;
+			case 'lpcm':
+				$extensions[] = 'wav';
+				$extensions[] = 'm4a';
+				break;
+			case 'm4a':
+				$extensions[] = 'mp3';
+				$extensions[] = 'aac';
+				break;
+			case 'wav':
+				$extensions[] = 'lpcm';
+				$extensions[] = 'm4a';
+				break;
+		}
+
+		$extensions = array_merge( $extensions, array( 'mp3', 'm4a', 'aac', 'wav' ) );
+		return array_values( array_unique( array_filter( $extensions ) ) );
+	}
+
+	/**
 	 * Candidate extensions for a Day One media type.
 	 *
 	 * @param string $type Type.
@@ -597,11 +879,12 @@ class Day_One_Importer_Media {
 	 * Validate media is a WordPress-accepted type for the requested kind.
 	 *
 	 * For kind 'photo' (default) the MIME must start with `image/`; for kind
-	 * 'video' it must start with `video/`. In both cases the MIME must also be
-	 * present in get_allowed_mime_types(), otherwise sideload would refuse it.
+	 * 'video' it must start with `video/`; for kind 'audio' it must start with
+	 * `audio/`. In all cases the MIME must also be present in
+	 * get_allowed_mime_types(), otherwise sideload would refuse it.
 	 *
 	 * @param string $path Path.
-	 * @param string $kind 'photo' (default) or 'video'.
+	 * @param string $kind 'photo' (default), 'video', or 'audio'.
 	 * @return true|string True or reason ('unreadable'|'unsupported'|'mime-not-allowed').
 	 */
 	private function validate_media_file( $path, $kind = 'photo' ) {
@@ -614,6 +897,10 @@ class Day_One_Importer_Media {
 
 		if ( 'video' === $kind ) {
 			if ( ! $mime || 0 !== strpos( $mime, 'video/' ) ) {
+				return 'unsupported';
+			}
+		} elseif ( 'audio' === $kind ) {
+			if ( ! $mime || 0 !== strpos( $mime, 'audio/' ) ) {
 				return 'unsupported';
 			}
 		} elseif ( ! $mime || 0 !== strpos( $mime, 'image/' ) ) {
@@ -801,6 +1088,50 @@ class Day_One_Importer_Media {
 		}
 		if ( isset( $video['duration'] ) && floatval( $video['duration'] ) > 0 ) {
 			update_post_meta( $attachment_id, '_day_one_video_duration', (string) $video['duration'] );
+		}
+	}
+
+	/**
+	 * Apply Day One marker metadata for an audio attachment.
+	 *
+	 * Mirrors apply_video_marker_metadata() for the shared keys. Adds:
+	 *  - `_day_one_media_kind = 'audio'` (always)
+	 *  - `_day_one_audio_duration` (string) only when the canonical numeric value
+	 *    is greater than zero.
+	 *  - `_day_one_audio_title` (string) only when non-empty after sanitization.
+	 *
+	 * Width / height are intentionally NOT persisted for audio (spec R4.1) --
+	 * Day One ships zeros and they carry no signal.
+	 *
+	 * @param int                 $attachment_id Attachment ID.
+	 * @param string              $uuid Entry UUID.
+	 * @param string              $identifier Media identifier.
+	 * @param string              $md5 Media MD5.
+	 * @param array<string,mixed> $audio Audio metadata.
+	 * @return void
+	 */
+	private function apply_audio_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $audio ) {
+		$attachment_id = (int) $attachment_id;
+		if ( ! $attachment_id ) {
+			return;
+		}
+
+		update_post_meta( $attachment_id, '_day_one_media_identifier', $identifier );
+		update_post_meta( $attachment_id, '_day_one_media_md5', $md5 );
+		update_post_meta( $attachment_id, '_day_one_uuid', $uuid );
+		update_post_meta( $attachment_id, '_day_one_source', 'day-one-export' );
+		update_post_meta( $attachment_id, '_day_one_media_kind', 'audio' );
+		if ( ! empty( $audio['date'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_media_date', day_one_importer_sanitize_text( $audio['date'] ) );
+		}
+		if ( ! empty( $audio['filename'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_original_filename', day_one_importer_sanitize_text( $audio['filename'] ) );
+		}
+		if ( isset( $audio['duration'] ) && floatval( $audio['duration'] ) > 0 ) {
+			update_post_meta( $attachment_id, '_day_one_audio_duration', (string) $audio['duration'] );
+		}
+		if ( isset( $audio['title'] ) && '' !== (string) $audio['title'] ) {
+			update_post_meta( $attachment_id, '_day_one_audio_title', (string) $audio['title'] );
 		}
 	}
 

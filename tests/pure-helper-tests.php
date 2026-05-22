@@ -3173,4 +3173,75 @@ assert_true( 'rt-title' === $rt_audio['title'], '#58 audios manifest round-trip 
 Day_One_Importer_Cleanup::remove( dirname( $audio_roundtrip_job['manifest_path'] ) );
 Day_One_Importer_Cleanup::remove( $audio_roundtrip_dir );
 
+// --- #58 C2 — Media helpers for audios. ---
+
+// sort_audios() preserves order by orderInEntry then original index (R11.4).
+$audio_sort_input  = array(
+	array( 'identifier' => 'A', 'orderInEntry' => 2 ),
+	array( 'identifier' => 'B', 'orderInEntry' => 0 ),
+	array( 'identifier' => 'C', 'orderInEntry' => null ),
+	array( 'identifier' => 'D', 'orderInEntry' => 0 ),
+);
+$audio_sort_output = Day_One_Importer_Media::sort_audios( $audio_sort_input );
+assert_true(
+	'B' === $audio_sort_output[0]['identifier']
+	&& 'D' === $audio_sort_output[1]['identifier']
+	&& 'A' === $audio_sort_output[2]['identifier']
+	&& 'C' === $audio_sort_output[3]['identifier'],
+	'#58 sort_audios orders by orderInEntry then original index (null sinks to end).'
+);
+
+// resolve_audio_path() probes mp3,m4a,aac for format=mp3 (R11.4 light coverage).
+$audio_resolve_root = sys_get_temp_dir() . '/day-one-importer-aud-resolve-' . uniqid();
+mkdir( $audio_resolve_root . '/audios', 0777, true );
+$audio_resolve_md5 = '11112222333344445555666677778888';
+
+// format=mp3: probes mp3 first; with only .m4a on disk, falls through to m4a.
+$audio_resolve_m4a = $audio_resolve_root . '/audios/' . $audio_resolve_md5 . '.m4a';
+file_put_contents( $audio_resolve_m4a, 'placeholder' );
+$audio_resolved_m4a = Day_One_Importer_Media::resolve_audio_path(
+	$audio_resolve_root,
+	array(
+		'md5'      => $audio_resolve_md5,
+		'format'   => 'mp3',
+		'filename' => '',
+	)
+);
+assert_true( '' !== $audio_resolved_m4a && realpath( $audio_resolve_m4a ) === $audio_resolved_m4a, '#58 resolve_audio_path falls back to m4a when mp3 absent for format=mp3 (R4.1).' );
+// Once .mp3 exists too, format=mp3 prefers it.
+$audio_resolve_mp3 = $audio_resolve_root . '/audios/' . $audio_resolve_md5 . '.mp3';
+file_put_contents( $audio_resolve_mp3, 'placeholder' );
+$audio_resolved_mp3 = Day_One_Importer_Media::resolve_audio_path(
+	$audio_resolve_root,
+	array(
+		'md5'      => $audio_resolve_md5,
+		'format'   => 'mp3',
+		'filename' => '',
+	)
+);
+assert_true( '' !== $audio_resolved_mp3 && realpath( $audio_resolve_mp3 ) === $audio_resolved_mp3, '#58 resolve_audio_path prefers the requested format (mp3) when both mp3 and m4a exist.' );
+
+// format=lpcm: probes lpcm,wav,m4a -- with only .wav on disk it falls back.
+$audio_lpcm_md5 = '22223333444455556666777788889999';
+$audio_lpcm_wav = $audio_resolve_root . '/audios/' . $audio_lpcm_md5 . '.wav';
+file_put_contents( $audio_lpcm_wav, 'placeholder' );
+$audio_resolved_lpcm = Day_One_Importer_Media::resolve_audio_path(
+	$audio_resolve_root,
+	array(
+		'md5'      => $audio_lpcm_md5,
+		'format'   => 'lpcm',
+		'filename' => '',
+	)
+);
+assert_true( '' !== $audio_resolved_lpcm && realpath( $audio_lpcm_wav ) === $audio_resolved_lpcm, '#58 resolve_audio_path probes lpcm,wav,m4a for format=lpcm.' );
+Day_One_Importer_Cleanup::remove( $audio_resolve_root );
+
+// find_audio_dirs() discovers a top-level audios/ directory (R4.1).
+$audio_discover_root = sys_get_temp_dir() . '/day-one-importer-aud-discover-' . uniqid();
+mkdir( $audio_discover_root . '/audios', 0777, true );
+mkdir( $audio_discover_root . '/photos', 0777, true );
+$audio_found_dirs = Day_One_Importer_Media::find_audio_dirs( $audio_discover_root );
+assert_true( 1 === count( $audio_found_dirs ) && false !== strpos( $audio_found_dirs[0], DIRECTORY_SEPARATOR . 'audios' ), '#58 find_audio_dirs picks up a top-level audios directory.' );
+Day_One_Importer_Cleanup::remove( $audio_discover_root );
+
 echo "All pure helper tests passed.\n";
