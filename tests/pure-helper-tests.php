@@ -952,6 +952,330 @@ $rt_empty_line_attr = Day_One_Importer_Content::convert_rich_text_to_content(
 );
 assert_true( '' === $rt_empty_line_attr, 'richText empty-text item with line.header attribute is silently dropped (no heading, no empty paragraph).' );
 
+// R12.x — inline attribute wrapping (issue #54).
+
+// R12.1 — bold wraps in <strong>.
+$rt_bold = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'bold' => true ),
+				'text'       => 'b',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_bold, '<p><strong>b</strong></p>' ), 'R12.1 — bold attribute wraps in <strong>.' );
+
+// R12.2 — italic wraps in <em>. (Mirrors the R11.6 inversion for completeness in the R12 block.)
+$rt_em = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'italic' => true ),
+				'text'       => 'i',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_em, '<p><em>i</em></p>' ), 'R12.2 — italic attribute wraps in <em>.' );
+
+// R12.3 — strikethrough wraps in <s>.
+$rt_s = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'strikethrough' => true ),
+				'text'       => 's',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_s, '<p><s>s</s></p>' ), 'R12.3 — strikethrough attribute wraps in <s>.' );
+
+// R12.4 — inlineCode wraps in <code>.
+$rt_code = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'inlineCode' => true ),
+				'text'       => 'c',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_code, '<p><code>c</code></p>' ), 'R12.4 — inlineCode attribute wraps in <code>.' );
+
+// R12.5 — valid https linkURL wraps in <a href="…">.
+$rt_link = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'linkURL' => 'https://example.com/x' ),
+				'text'       => 'Linked.',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_link, '<p><a href="https://example.com/x">Linked.</a></p>' ), 'R12.5 — valid https linkURL wraps in <a href="…">.' );
+
+// R12.6 — autolink + valid linkURL behaves identically to R12.5.
+$rt_autolink_with_url = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array(
+					'autolink' => true,
+					'linkURL'  => 'https://example.com/auto',
+				),
+				'text'       => 'Auto.',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_autolink_with_url, '<p><a href="https://example.com/auto">Auto.</a></p>' ), 'R12.6 — autolink + valid linkURL wraps identically to bare linkURL.' );
+
+// R12.7 — valid highlightedColor wraps in <mark style="background-color:#RRGGBB"> (case preserved).
+$rt_highlight = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'highlightedColor' => '0x000FFF' ),
+				'text'       => 'Highlighted.',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_highlight, '<p><mark style="background-color:#000FFF">Highlighted.</mark></p>' ), 'R12.7 — valid highlightedColor wraps in <mark style="background-color:#RRGGBB">.' );
+
+// R12.8 — multi-attribute combination: exact byte sequence pinned in spec R18.
+$rt_combo       = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array(
+					'bold'             => true,
+					'italic'           => true,
+					'strikethrough'    => true,
+					'inlineCode'       => true,
+					'highlightedColor' => '0x000FFF',
+					'linkURL'          => 'https://example.com/x',
+				),
+				'text'       => 'hello',
+			),
+		),
+	)
+);
+$rt_combo_pinned = '<a href="https://example.com/x"><mark style="background-color:#000FFF"><strong><em><s><code>hello</code></s></em></strong></mark></a>';
+assert_true( false !== strpos( $rt_combo, $rt_combo_pinned ), 'R12.8 — multi-attribute combination produces the pinned R18 byte sequence.' );
+assert_true( false !== strpos( $rt_combo, '<p>' . $rt_combo_pinned . '</p>' ), 'R12.8 — pinned R18 sequence sits inside the paragraph block.' );
+
+// R12.9 — wrapped text is HTML-escaped before wrapping (R10 invariant).
+$rt_escape_wrapped = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'bold' => true ),
+				'text'       => '<script>x</script>',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_escape_wrapped, '<strong>&lt;script&gt;x&lt;/script&gt;</strong>' ), 'R12.9 — bold wrapper contains HTML-escaped angle brackets, not raw script tags.' );
+assert_true( false === strpos( $rt_escape_wrapped, '<script>' ), 'R12.9 — raw <script> never reaches output even inside a wrapper.' );
+
+// R12.10 — non-http(s) linkURL drops anchor, preserves escaped text, records privacy-safe warning.
+$rt_link_results = new Day_One_Importer_Results();
+$rt_bad_link     = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'linkURL' => 'javascript:alert(1)' ),
+				'text'       => 'Bad link.',
+			),
+		),
+	),
+	$rt_link_results
+);
+assert_true( false === strpos( $rt_bad_link, '<a ' ), 'R12.10 — non-http(s) linkURL emits no anchor.' );
+assert_true( false === strpos( $rt_bad_link, 'javascript' ), 'R12.10 — rejected URL value does not leak into output.' );
+assert_true( false !== strpos( $rt_bad_link, 'Bad link.' ), 'R12.10 — rejected-link run text still renders.' );
+$rt_link_warnings = $rt_link_results->get_warnings();
+assert_true( ! empty( $rt_link_warnings ), 'R12.10 — rejected linkURL records a warning.' );
+$rt_link_warning_msg = (string) $rt_link_warnings[0];
+assert_true( false !== strpos( $rt_link_warning_msg, 'richText' ), 'R12.10 — warning contains the "richText" locator substring.' );
+assert_true( false === strpos( $rt_link_warning_msg, 'javascript:alert(1)' ), 'R12.10 — warning does NOT contain the rejected URL verbatim.' );
+
+// R12.10b — relative URL "/foo" rejects at preg_match (no https? prefix) even if esc_url accepts it.
+$rt_rel_results = new Day_One_Importer_Results();
+$rt_rel_link    = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'linkURL' => '/foo' ),
+				'text'       => 'Rel.',
+			),
+		),
+	),
+	$rt_rel_results
+);
+assert_true( false === strpos( $rt_rel_link, '<a ' ), 'R12.10b — relative URL "/foo" emits no anchor (no https? prefix).' );
+assert_true( ! empty( $rt_rel_results->get_warnings() ), 'R12.10b — relative URL records a warning.' );
+
+// R12.11 — malformed highlightedColor drops <mark>, preserves escaped text, records privacy-safe warning.
+$rt_color_results = new Day_One_Importer_Results();
+$rt_bad_color     = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'highlightedColor' => '0xZZZZZZ' ),
+				'text'       => 'Bad color.',
+			),
+		),
+	),
+	$rt_color_results
+);
+assert_true( false === strpos( $rt_bad_color, '<mark' ), 'R12.11 — malformed highlightedColor emits no <mark>.' );
+assert_true( false === strpos( $rt_bad_color, '0xZZZZZZ' ), 'R12.11 — rejected color value does not leak into output.' );
+assert_true( false !== strpos( $rt_bad_color, 'Bad color.' ), 'R12.11 — rejected-color run text still renders.' );
+$rt_color_warnings = $rt_color_results->get_warnings();
+assert_true( ! empty( $rt_color_warnings ), 'R12.11 — rejected highlightedColor records a warning.' );
+$rt_color_warning_msg = (string) $rt_color_warnings[0];
+assert_true( false !== strpos( $rt_color_warning_msg, 'richText' ), 'R12.11 — warning contains "richText" locator.' );
+assert_true( false === strpos( $rt_color_warning_msg, '0xZZZZZZ' ), 'R12.11 — warning does NOT contain the rejected color verbatim.' );
+
+// R12.11b — every present-but-invalid highlightedColor variant drops <mark> AND records a warning.
+foreach ( array( '0x12345', '#FF0000', '0x000FFFF', '0xF0F', '', null, 123, array(), true, false ) as $rt_present_invalid ) {
+	$rt_variant_results = new Day_One_Importer_Results();
+	$rt_variant_output  = Day_One_Importer_Content::convert_rich_text_to_content(
+		array(
+			'contents' => array(
+				array(
+					'attributes' => array( 'highlightedColor' => $rt_present_invalid ),
+					'text'       => 'x',
+				),
+			),
+		),
+		$rt_variant_results
+	);
+	assert_true( false === strpos( $rt_variant_output, '<mark' ), sprintf( 'R12.11b — highlightedColor=%s drops <mark>.', var_export( $rt_present_invalid, true ) ) );
+	assert_true( ! empty( $rt_variant_results->get_warnings() ), sprintf( 'R12.11b — highlightedColor=%s records a warning (present-but-invalid).', var_export( $rt_present_invalid, true ) ) );
+}
+
+// R12.11c — truly-absent highlightedColor records no warning.
+$rt_absent_results = new Day_One_Importer_Results();
+Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'bold' => true ),
+				'text'       => 'x',
+			),
+		),
+	),
+	$rt_absent_results
+);
+assert_true( empty( $rt_absent_results->get_warnings() ), 'R12.11c — absent highlightedColor records no warning.' );
+
+// R12.12 — autolink: true without linkURL emits no anchor and no warning.
+$rt_auto_results = new Day_One_Importer_Results();
+$rt_autolink     = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'autolink' => true ),
+				'text'       => 'Autolink alone.',
+			),
+		),
+	),
+	$rt_auto_results
+);
+assert_true( false === strpos( $rt_autolink, '<a ' ), 'R12.12 — autolink without linkURL emits no anchor.' );
+assert_true( empty( $rt_auto_results->get_warnings() ), 'R12.12 — autolink without linkURL records no warning (not an error).' );
+assert_true( false !== strpos( $rt_autolink, 'Autolink alone.' ), 'R12.12 — autolink-without-URL run text still renders.' );
+
+// R12.13 — loose-truthy values for boolean attributes do NOT trigger wrapping.
+foreach ( array( 1, '1', 'true', 'yes', 'TRUE' ) as $rt_loose_value ) {
+	$rt_loose_out = Day_One_Importer_Content::convert_rich_text_to_content(
+		array(
+			'contents' => array(
+				array(
+					'attributes' => array( 'bold' => $rt_loose_value ),
+					'text'       => 'plain',
+				),
+			),
+		)
+	);
+	assert_true( false === strpos( $rt_loose_out, '<strong>' ), sprintf( 'R12.13 — bold=%s (loose-truthy) does NOT trigger <strong>.', var_export( $rt_loose_value, true ) ) );
+}
+
+// R12.14 — calling with null results emits no PHP warning and produces same wrappers.
+$rt_null_results_out = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'bold' => true ),
+				'text'       => 'b',
+			),
+		),
+	),
+	null
+);
+assert_true( false !== strpos( $rt_null_results_out, '<strong>b</strong>' ), 'R12.14 — null results argument still produces the wrapper.' );
+
+// R12.14b — rejection paths silently no-op with null results (no fatal error).
+$rt_null_reject = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'linkURL' => 'javascript:x' ),
+				'text'       => 'plain',
+			),
+		),
+	),
+	null
+);
+assert_true( false === strpos( $rt_null_reject, '<a ' ), 'R12.14b — null results still drops invalid linkURL (no fatal).' );
+
+// R12.15 — default-call back-compat: single-arg and explicit-null calls produce identical output.
+$rt_single_arg    = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'bold' => true ),
+				'text'       => 'b',
+			),
+		),
+	)
+);
+$rt_explicit_null = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'bold' => true ),
+				'text'       => 'b',
+			),
+		),
+	),
+	null
+);
+assert_true( $rt_single_arg === $rt_explicit_null, 'R12.15 — single-arg and explicit-null calls produce identical output.' );
+
+// R12.16 — render_entry_body threads $results into the richText helper.
+$rt_dispatch_results = new Day_One_Importer_Results();
+$rt_dispatch_entry   = array(
+	'richText' => array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'linkURL' => 'javascript:x' ),
+				'text'       => 'plain',
+			),
+		),
+	),
+);
+Day_One_Importer_Content::render_entry_body( $rt_dispatch_entry, $rt_dispatch_results );
+assert_true( ! empty( $rt_dispatch_results->get_warnings() ), 'R12.16 — render_entry_body threads $results into the richText branch (warning observed).' );
+
 // Step 4.16 — markdown-leakage acceptance: a `#`-prefixed run delegates to convert_text_to_content and renders as a heading block.
 // This documents the intentional R5.10 delegation behavior; strict line-attribute handling is deferred to issue #55.
 $rt_markdown_leak = Day_One_Importer_Content::convert_rich_text_to_content(
