@@ -453,6 +453,245 @@ if ( $using_default_zip ) {
 			'Entry 0008 — rejected-color run text still renders.'
 		);
 	}
+
+	// --- richText line-attribute assertions (issue #55) ---
+	// Entries 0009-0017 exercise heading / list / code / quote emitters and
+	// the transparent-drop + run-collapse contracts pinned in spec R2-R6.
+
+	// AC1 / AC2 / AC16 / R3.3 — entry 0009 covers headings 1..6, adjacent
+	// header:2 pair (no inter-collapse), multi-line heading, and the
+	// header:0 paragraph fall-through.
+	$entry_0009_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0009'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0009'] : 0;
+	day_one_importer_wp_env_assert( $entry_0009_post_id > 0, 'Fixture entry 0009 (heading levels) was imported.' );
+	if ( $entry_0009_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0009_content  = (string) get_post_field( 'post_content', $entry_0009_post_id );
+		$entry_0009_blocks   = parse_blocks( $entry_0009_content );
+		$entry_0009_headings = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0009_blocks, 'core/heading', $entry_0009_headings );
+
+		// 8 heading items in the fixture: levels 1, 2, 2, 3, 4, 5, 6, and a multi-line level 2 = 8 core/heading blocks.
+		day_one_importer_wp_env_assert( 8 === count( $entry_0009_headings ), 'Entry 0009 — exactly 8 core/heading blocks emitted.' );
+
+		// Count adjacent header:2 — fixture has three level-2 headings (two adjacent + one multi-line later).
+		$entry_0009_level_2 = 0;
+		foreach ( $entry_0009_headings as $h ) {
+			$level = isset( $h['attrs']['level'] ) ? (int) $h['attrs']['level'] : 2;
+			if ( 2 === $level ) {
+				++$entry_0009_level_2;
+			}
+		}
+		day_one_importer_wp_env_assert( $entry_0009_level_2 >= 2, 'Entry 0009 — at least two distinct core/heading blocks at level 2 (R2.3 no inter-collapse).' );
+
+		// Multi-line heading survives via <br />.
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0009_content, "<h2>line one<br />\nline two</h2>" ), 'Entry 0009 — multi-line header:2 renders as <h2>line one<br />\\nline two</h2>.' );
+
+		// header:0 falls through to a paragraph block.
+		$entry_0009_paragraphs = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0009_blocks, 'core/paragraph', $entry_0009_paragraphs );
+		$found_fallback = false;
+		foreach ( $entry_0009_paragraphs as $p ) {
+			if ( false !== strpos( (string) $p['innerHTML'], 'Header zero falls through to paragraph.' ) ) {
+				$found_fallback = true;
+				break;
+			}
+		}
+		day_one_importer_wp_env_assert( $found_fallback, 'Entry 0009 — header:0 item falls through to a core/paragraph block.' );
+	}
+
+	// AC3 / AC4 — entry 0010: bulleted list with nested level (structural assert via innerBlocks, NOT substring).
+	$entry_0010_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0010'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0010'] : 0;
+	day_one_importer_wp_env_assert( $entry_0010_post_id > 0, 'Fixture entry 0010 (bulleted nesting) was imported.' );
+	if ( $entry_0010_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0010_content = (string) get_post_field( 'post_content', $entry_0010_post_id );
+		$entry_0010_blocks  = parse_blocks( $entry_0010_content );
+		$entry_0010_outer   = array();
+		foreach ( $entry_0010_blocks as $blk ) {
+			if ( isset( $blk['blockName'] ) && 'core/list' === $blk['blockName'] ) {
+				$entry_0010_outer[] = $blk;
+			}
+		}
+		day_one_importer_wp_env_assert( 1 === count( $entry_0010_outer ), 'Entry 0010 — exactly one outer core/list block.' );
+
+		// Outer block has one list-item that itself contains a nested core/list.
+		$found_nested = false;
+		if ( ! empty( $entry_0010_outer ) && isset( $entry_0010_outer[0]['innerBlocks'] ) ) {
+			foreach ( $entry_0010_outer[0]['innerBlocks'] as $li ) {
+				if ( ! empty( $li['innerBlocks'] ) ) {
+					foreach ( $li['innerBlocks'] as $child ) {
+						if ( isset( $child['blockName'] ) && 'core/list' === $child['blockName'] ) {
+							$found_nested = true;
+							break 2;
+						}
+					}
+				}
+			}
+		}
+		day_one_importer_wp_env_assert( $found_nested, 'Entry 0010 — nested core/list lives inside a parent core/list-item (parent-child shape, R4.4).' );
+	}
+
+	// AC6 / AC7 — entry 0011: outer numbered list with start:5; nested numbered list with no start.
+	$entry_0011_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0011'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0011'] : 0;
+	day_one_importer_wp_env_assert( $entry_0011_post_id > 0, 'Fixture entry 0011 (numbered start:5 + nested) was imported.' );
+	if ( $entry_0011_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0011_content = (string) get_post_field( 'post_content', $entry_0011_post_id );
+		$entry_0011_blocks  = parse_blocks( $entry_0011_content );
+		$entry_0011_outer   = isset( $entry_0011_blocks[0] ) && isset( $entry_0011_blocks[0]['blockName'] ) && 'core/list' === $entry_0011_blocks[0]['blockName'] ? $entry_0011_blocks[0] : null;
+		day_one_importer_wp_env_assert( null !== $entry_0011_outer, 'Entry 0011 — outermost block is core/list.' );
+		if ( null !== $entry_0011_outer ) {
+			day_one_importer_wp_env_assert( isset( $entry_0011_outer['attrs']['ordered'] ) && true === $entry_0011_outer['attrs']['ordered'], 'Entry 0011 — outer list has ordered:true.' );
+			day_one_importer_wp_env_assert( isset( $entry_0011_outer['attrs']['start'] ) && 5 === (int) $entry_0011_outer['attrs']['start'], 'Entry 0011 — outer list has start:5.' );
+
+			$entry_0011_nested = null;
+			foreach ( $entry_0011_outer['innerBlocks'] as $li ) {
+				if ( ! empty( $li['innerBlocks'] ) ) {
+					foreach ( $li['innerBlocks'] as $child ) {
+						if ( isset( $child['blockName'] ) && 'core/list' === $child['blockName'] ) {
+							$entry_0011_nested = $child;
+							break 2;
+						}
+					}
+				}
+			}
+			day_one_importer_wp_env_assert( null !== $entry_0011_nested, 'Entry 0011 — nested core/list is present inside the parent list-item.' );
+			if ( null !== $entry_0011_nested ) {
+				day_one_importer_wp_env_assert( isset( $entry_0011_nested['attrs']['ordered'] ) && true === $entry_0011_nested['attrs']['ordered'], 'Entry 0011 — nested list has ordered:true.' );
+				day_one_importer_wp_env_assert( ! isset( $entry_0011_nested['attrs']['start'] ), 'Entry 0011 — nested numbered list has NO start attr (R4.5).' );
+			}
+		}
+	}
+
+	// AC5 — entry 0012: numbered list with first listIndex:1 emits NO start attr.
+	$entry_0012_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0012'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0012'] : 0;
+	day_one_importer_wp_env_assert( $entry_0012_post_id > 0, 'Fixture entry 0012 (numbered default start) was imported.' );
+	if ( $entry_0012_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0012_content = (string) get_post_field( 'post_content', $entry_0012_post_id );
+		$entry_0012_blocks  = parse_blocks( $entry_0012_content );
+		$entry_0012_outer   = isset( $entry_0012_blocks[0] ) && isset( $entry_0012_blocks[0]['blockName'] ) && 'core/list' === $entry_0012_blocks[0]['blockName'] ? $entry_0012_blocks[0] : null;
+		day_one_importer_wp_env_assert( null !== $entry_0012_outer, 'Entry 0012 — outermost block is core/list.' );
+		if ( null !== $entry_0012_outer ) {
+			day_one_importer_wp_env_assert( isset( $entry_0012_outer['attrs']['ordered'] ) && true === $entry_0012_outer['attrs']['ordered'], 'Entry 0012 — outer list has ordered:true.' );
+			day_one_importer_wp_env_assert( ! isset( $entry_0012_outer['attrs']['start'] ), 'Entry 0012 — numbered list with first listIndex:1 has NO start attr (AC5).' );
+		}
+	}
+
+	// AC8 — entry 0013: checkbox list with task-list className; Unicode glyphs survive wp_kses_post.
+	$entry_0013_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0013'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0013'] : 0;
+	day_one_importer_wp_env_assert( $entry_0013_post_id > 0, 'Fixture entry 0013 (checkbox list) was imported.' );
+	if ( $entry_0013_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0013_content = (string) get_post_field( 'post_content', $entry_0013_post_id );
+		$entry_0013_blocks  = parse_blocks( $entry_0013_content );
+		$entry_0013_outer   = isset( $entry_0013_blocks[0] ) && isset( $entry_0013_blocks[0]['blockName'] ) && 'core/list' === $entry_0013_blocks[0]['blockName'] ? $entry_0013_blocks[0] : null;
+		day_one_importer_wp_env_assert( null !== $entry_0013_outer, 'Entry 0013 — outermost block is core/list.' );
+		if ( null !== $entry_0013_outer ) {
+			day_one_importer_wp_env_assert( isset( $entry_0013_outer['attrs']['className'] ) && 'task-list' === $entry_0013_outer['attrs']['className'], 'Entry 0013 — checkbox list has className=task-list.' );
+		}
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0013_content, '<ul class="task-list">' ), 'Entry 0013 — outer <ul class="task-list"> survives wp_kses_post.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0013_content, '&#9745;' ), 'Entry 0013 — &#9745; checked glyph survives wp_kses_post byte-identically.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0013_content, '&#9744;' ), 'Entry 0013 — &#9744; unchecked glyph survives wp_kses_post byte-identically.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0013_content, '<li>&#9745; Checked box alpha</li>' ), 'Entry 0013 — checked:true list-item carries &#9745; + ASCII space before its text.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0013_content, '<li>&#9744; Unchecked box beta</li>' ), 'Entry 0013 — checked:false list-item carries &#9744; + ASCII space before its text.' );
+	}
+
+	// AC9 — entry 0014: 3-line code block. Byte-exact a\nb\nc inside <code>; no <a> / <strong> / <mark>; no warnings recorded.
+	$entry_0014_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0014'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0014'] : 0;
+	day_one_importer_wp_env_assert( $entry_0014_post_id > 0, 'Fixture entry 0014 (code block) was imported.' );
+	if ( $entry_0014_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0014_content = (string) get_post_field( 'post_content', $entry_0014_post_id );
+		$entry_0014_blocks  = parse_blocks( $entry_0014_content );
+		$entry_0014_codes   = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0014_blocks, 'core/code', $entry_0014_codes );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0014_codes ), 'Entry 0014 — exactly one core/code block.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0014_content, "<code>a\nb\nc</code>" ), 'Entry 0014 — <code> inner is a\\nb\\nc byte-exact.' );
+		day_one_importer_wp_env_assert( false === strpos( $entry_0014_content, '<strong>' ), 'Entry 0014 — code block has NO <strong> inside (R5.3).' );
+		day_one_importer_wp_env_assert( false === strpos( $entry_0014_content, '<a ' ), 'Entry 0014 — code block has NO <a> inside (invalid linkURL was on a code item).' );
+		day_one_importer_wp_env_assert( false === strpos( $entry_0014_content, '<mark' ), 'Entry 0014 — code block has NO <mark> inside (invalid highlightedColor was on a code item).' );
+	}
+
+	// AC10 — entry 0015: multi-paragraph quote (indent ignored).
+	$entry_0015_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0015'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0015'] : 0;
+	day_one_importer_wp_env_assert( $entry_0015_post_id > 0, 'Fixture entry 0015 (multi-paragraph quote) was imported.' );
+	if ( $entry_0015_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0015_content = (string) get_post_field( 'post_content', $entry_0015_post_id );
+		$entry_0015_blocks  = parse_blocks( $entry_0015_content );
+		$entry_0015_quotes  = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0015_blocks, 'core/quote', $entry_0015_quotes );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0015_quotes ), 'Entry 0015 — exactly one core/quote block.' );
+		$entry_0015_inner_paragraphs = array();
+		if ( ! empty( $entry_0015_quotes ) ) {
+			day_one_importer_wp_env_collect_blocks_by_name( $entry_0015_quotes[0]['innerBlocks'], 'core/paragraph', $entry_0015_inner_paragraphs );
+		}
+		day_one_importer_wp_env_assert( 2 === count( $entry_0015_inner_paragraphs ), 'Entry 0015 — core/quote contains two child core/paragraph blocks.' );
+		day_one_importer_wp_env_assert( 1 === substr_count( $entry_0015_content, '<blockquote' ), 'Entry 0015 — exactly one <blockquote> in post_content (indentLevel ignored, R6.5).' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0015_content, '<strong>Imaginary quote second paragraph.</strong>' ), 'Entry 0015 — inline <strong> wrapper survives inside the quote child paragraph (R6.2).' );
+	}
+
+	// AC15 — entry 0016: mixed-line-types entry. Pin block counts and kses survival of basic wrappers.
+	$entry_0016_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0016'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0016'] : 0;
+	day_one_importer_wp_env_assert( $entry_0016_post_id > 0, 'Fixture entry 0016 (mixed line types) was imported.' );
+	if ( $entry_0016_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0016_content    = (string) get_post_field( 'post_content', $entry_0016_post_id );
+		$entry_0016_blocks     = parse_blocks( $entry_0016_content );
+		$entry_0016_top_heads  = 0;
+		$entry_0016_top_lists  = 0;
+		$entry_0016_top_codes  = 0;
+		$entry_0016_top_quotes = 0;
+		$entry_0016_top_paras  = 0;
+		foreach ( $entry_0016_blocks as $blk ) {
+			if ( ! isset( $blk['blockName'] ) ) {
+				continue;
+			}
+			switch ( $blk['blockName'] ) {
+				case 'core/heading':
+					++$entry_0016_top_heads;
+					break;
+				case 'core/list':
+					++$entry_0016_top_lists;
+					break;
+				case 'core/code':
+					++$entry_0016_top_codes;
+					break;
+				case 'core/quote':
+					++$entry_0016_top_quotes;
+					break;
+				case 'core/paragraph':
+					++$entry_0016_top_paras;
+					break;
+			}
+		}
+		day_one_importer_wp_env_assert( 1 === $entry_0016_top_heads, 'Entry 0016 — exactly 1 top-level core/heading block.' );
+		day_one_importer_wp_env_assert( 2 === $entry_0016_top_lists, 'Entry 0016 — exactly 2 top-level core/list blocks (bulleted + numbered).' );
+		day_one_importer_wp_env_assert( 1 === $entry_0016_top_codes, 'Entry 0016 — exactly 1 top-level core/code block.' );
+		day_one_importer_wp_env_assert( 1 === $entry_0016_top_quotes, 'Entry 0016 — exactly 1 top-level core/quote block.' );
+		day_one_importer_wp_env_assert( 2 === $entry_0016_top_paras, 'Entry 0016 — exactly 2 top-level core/paragraph blocks (lead + trailing).' );
+
+		// List-item count across both lists.
+		$entry_0016_list_items = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0016_blocks, 'core/list-item', $entry_0016_list_items );
+		day_one_importer_wp_env_assert( 4 === count( $entry_0016_list_items ), 'Entry 0016 — exactly 4 core/list-item blocks across both lists.' );
+
+		// kses survival of basic wrappers (hard asserts per AC15).
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0016_content, '<h1>' ), 'Entry 0016 — <h1> survives wp_kses_post.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0016_content, '<ul>' ), 'Entry 0016 — <ul> survives wp_kses_post.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0016_content, '<ol>' ), 'Entry 0016 — <ol> survives wp_kses_post.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0016_content, '<li>' ), 'Entry 0016 — <li> survives wp_kses_post.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0016_content, '<pre' ), 'Entry 0016 — <pre> survives wp_kses_post.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0016_content, '<code>' ), 'Entry 0016 — <code> survives wp_kses_post.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0016_content, '<blockquote' ), 'Entry 0016 — <blockquote> survives wp_kses_post.' );
+	}
+
+	// AC11 — entry 0017: transparent drop inside a bulleted run -> ONE list with TWO list-items.
+	$entry_0017_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0017'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0017'] : 0;
+	day_one_importer_wp_env_assert( $entry_0017_post_id > 0, 'Fixture entry 0017 (transparent drop) was imported.' );
+	if ( $entry_0017_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0017_content    = (string) get_post_field( 'post_content', $entry_0017_post_id );
+		$entry_0017_blocks     = parse_blocks( $entry_0017_content );
+		$entry_0017_lists      = array();
+		$entry_0017_list_items = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0017_blocks, 'core/list', $entry_0017_lists );
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0017_blocks, 'core/list-item', $entry_0017_list_items );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0017_lists ), 'Entry 0017 — empty-text item is transparent: same-kind run stays as ONE core/list.' );
+		day_one_importer_wp_env_assert( 2 === count( $entry_0017_list_items ), 'Entry 0017 — empty-text item is dropped: only two core/list-item blocks.' );
+	}
 }
 
 $second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
