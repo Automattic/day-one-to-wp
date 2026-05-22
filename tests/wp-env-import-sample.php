@@ -908,8 +908,69 @@ if ( $using_default_zip ) {
 		day_one_importer_wp_env_assert( array( 'core/image', 'core/video', 'core/image' ) === $entry_0021_top_names, '#57 AC9 / AC16 — entry 0021 emits core/image, core/video, core/image in inline order.' );
 	}
 
+	// --- #58 — audio embed assertions (entries 0022 + 0023). ---
+
+	$day_one_importer_58_audio_attachment_id = 0;
+	$entry_0022_post_id                      = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0022'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0022'] : 0;
+	day_one_importer_wp_env_assert( $entry_0022_post_id > 0, '#58 AC6 — fictional entry 0022 (audio embed) was imported.' );
+	if ( $entry_0022_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0022_content = (string) get_post_field( 'post_content', $entry_0022_post_id );
+		$entry_0022_blocks  = parse_blocks( $entry_0022_content );
+		$entry_0022_audios  = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0022_blocks, 'core/audio', $entry_0022_audios );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0022_audios ), '#58 AC6 / AC16 — entry 0022 contains exactly one core/audio block.' );
+
+		$entry_0022_audio_id = isset( $entry_0022_audios[0]['attrs']['id'] ) ? (int) $entry_0022_audios[0]['attrs']['id'] : 0;
+		day_one_importer_wp_env_assert( $entry_0022_audio_id > 0, '#58 AC6 — entry 0022 audio block carries a positive attachment ID.' );
+		$day_one_importer_58_audio_attachment_id = $entry_0022_audio_id;
+
+		// #58 AC16 — attachment parent linkage + private uploads URL + media_kind marker.
+		day_one_importer_wp_env_assert( (int) get_post( $entry_0022_audio_id )->post_parent === $entry_0022_post_id, '#58 AC16 — entry 0022 audio attachment is parented to its post.' );
+		day_one_importer_wp_env_assert( 'audio' === (string) get_post_meta( $entry_0022_audio_id, '_day_one_media_kind', true ), '#58 AC4 — entry 0022 audio attachment carries _day_one_media_kind = "audio".' );
+		$entry_0022_audio_url  = (string) wp_get_attachment_url( $entry_0022_audio_id );
+		$entry_0022_audio_file = (string) get_attached_file( $entry_0022_audio_id );
+		day_one_importer_wp_env_assert( '' !== $entry_0022_audio_file && false !== strpos( $entry_0022_audio_file, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ), '#58 AC16 — entry 0022 audio file lives under the private uploads subdir on disk.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0022_audio_url, 'action=' . Day_One_Importer_Media::PRIVATE_MEDIA_ACTION ), '#58 AC16 — entry 0022 audio URL routes through the authenticated private-media endpoint.' );
+
+		// #58 R1.4 / AC4 — duration metadata round-trips through floatval() to within 1e-9 of 1.0.
+		$entry_0022_duration_meta = (string) get_post_meta( $entry_0022_audio_id, '_day_one_audio_duration', true );
+		day_one_importer_wp_env_assert( '' !== $entry_0022_duration_meta && abs( floatval( $entry_0022_duration_meta ) - 1.0 ) < 1e-9, '#58 R1.4 / AC4 — entry 0022 _day_one_audio_duration round-trips within 1e-9 (string storage).' );
+
+		// #58 AC6 / AC16 — figcaption caption matches the fixture title.
+		$entry_0022_title_meta = (string) get_post_meta( $entry_0022_audio_id, '_day_one_audio_title', true );
+		day_one_importer_wp_env_assert( 'sample-1s' === $entry_0022_title_meta, '#58 R11.5 / AC4 — entry 0022 _day_one_audio_title matches the fixture title.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0022_content, '<figcaption class="wp-element-caption">' ), '#58 AC6 / AC16 — entry 0022 post body contains a wp-element-caption figcaption.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0022_content, 'sample-1s' ), '#58 AC6 / AC16 — entry 0022 figcaption text contains the fixture title "sample-1s".' );
+	}
+
+	// #58 AC16 — media_imported on the first pass includes the audio attachment.
+	day_one_importer_wp_env_assert( $media >= 3, '#58 AC16 — first-pass media_imported includes the photo, video, and audio attachments from the fixture.' );
+
+	// #58 AC7 — the obsolete #56 placeholder warning is gone.
+	$first_warnings_audio = is_object( $first ) && method_exists( $first, 'get_warnings' ) ? (array) $first->get_warnings() : array();
+	foreach ( $first_warnings_audio as $warning ) {
+		day_one_importer_wp_env_assert( false === strpos( (string) $warning, 'audio import is not yet supported' ), '#58 AC7 — the #56 placeholder "audio import is not yet supported" warning is no longer emitted.' );
+	}
+
+	// #58 AC9 / AC16 — entry 0023 emits core/image, core/video, core/audio in inline order.
+	$entry_0023_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0023'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0023'] : 0;
+	day_one_importer_wp_env_assert( $entry_0023_post_id > 0, '#58 AC9 — fictional entry 0023 (interleaved photo,video,audio) was imported.' );
+	if ( $entry_0023_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0023_content   = (string) get_post_field( 'post_content', $entry_0023_post_id );
+		$entry_0023_blocks    = parse_blocks( $entry_0023_content );
+		$entry_0023_top_names = array();
+		foreach ( $entry_0023_blocks as $entry_0023_block ) {
+			$entry_0023_block_name = isset( $entry_0023_block['blockName'] ) ? (string) $entry_0023_block['blockName'] : '';
+			if ( '' !== $entry_0023_block_name ) {
+				$entry_0023_top_names[] = $entry_0023_block_name;
+			}
+		}
+		day_one_importer_wp_env_assert( array( 'core/image', 'core/video', 'core/audio' ) === $entry_0023_top_names, '#58 AC9 / AC16 — entry 0023 emits core/image, core/video, core/audio in inline order.' );
+	}
+
 	// Stash for rerun-identity check below.
 	$GLOBALS['day_one_importer_57_video_attachment_id'] = $day_one_importer_57_video_attachment_id;
+	$GLOBALS['day_one_importer_58_audio_attachment_id'] = $day_one_importer_58_audio_attachment_id;
 }
 
 $second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
@@ -936,6 +997,28 @@ if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_57_video_attachme
 		day_one_importer_wp_env_collect_blocks_by_name( $rerun_blocks, 'core/video', $rerun_video_blocks );
 		$rerun_video_id = ! empty( $rerun_video_blocks ) && isset( $rerun_video_blocks[0]['attrs']['id'] ) ? (int) $rerun_video_blocks[0]['attrs']['id'] : 0;
 		day_one_importer_wp_env_assert( $rerun_video_id === $expected_video_id, '#57 AC10 / AC16 — entry 0020 video attachment ID is identical across the first import and the rerun (no duplicate attachment).' );
+	}
+}
+
+// #58 AC10 / AC16 — rerun identity: the entry-22 audio attachment ID is stable
+// across the first import and this rerun (no duplicate attachment created).
+if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_58_audio_attachment_id'] ) ) {
+	$expected_audio_id     = (int) $GLOBALS['day_one_importer_58_audio_attachment_id'];
+	$audio_post_id_lookup  = 0;
+	foreach ( $imported_posts as $maybe_pid ) {
+		if ( 'FICTIONAL-SAMPLE-ENTRY-0022' === (string) get_post_meta( (int) $maybe_pid, '_day_one_uuid', true ) ) {
+			$audio_post_id_lookup = (int) $maybe_pid;
+			break;
+		}
+	}
+	day_one_importer_wp_env_assert( $audio_post_id_lookup > 0, '#58 AC10 — entry 0022 post is still discoverable after the rerun.' );
+	if ( $audio_post_id_lookup > 0 && function_exists( 'parse_blocks' ) ) {
+		$rerun_audio_content = (string) get_post_field( 'post_content', $audio_post_id_lookup );
+		$rerun_audio_blocks  = parse_blocks( $rerun_audio_content );
+		$rerun_audio_records = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $rerun_audio_blocks, 'core/audio', $rerun_audio_records );
+		$rerun_audio_id = ! empty( $rerun_audio_records ) && isset( $rerun_audio_records[0]['attrs']['id'] ) ? (int) $rerun_audio_records[0]['attrs']['id'] : 0;
+		day_one_importer_wp_env_assert( $rerun_audio_id === $expected_audio_id, '#58 AC10 / AC16 — entry 0022 audio attachment ID is identical across the first import and the rerun (no duplicate attachment).' );
 	}
 }
 
