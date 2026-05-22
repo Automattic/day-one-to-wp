@@ -816,6 +816,205 @@ $escaped_content = Day_One_Importer_Content::convert_text_to_content( 'Un año s
 assert_true( false !== strpos( $escaped_content, 'Day One.' ), 'Markdown-escaped periods are normalized in content.' );
 assert_true( false !== strpos( $escaped_content, 'tiempo!' ), 'Markdown-escaped exclamation marks are normalized in content.' );
 
+// R11.1 — single-paragraph richText payload produces one Paragraph block.
+$rt_single = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array(),
+				'text'       => 'Hello world',
+			),
+		),
+	)
+);
+assert_true( 1 === substr_count( $rt_single, '<!-- wp:paragraph -->' ), 'richText single run produces exactly one Paragraph block.' );
+assert_true( false !== strpos( $rt_single, '<p>Hello world</p>' ), 'richText single run renders the text inside a paragraph tag.' );
+
+// R11.2 — multi-run payload produces multiple paragraph blocks in order.
+$rt_multi = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'text' => 'First' ),
+			array( 'text' => 'Second' ),
+		),
+	)
+);
+assert_true( 2 === substr_count( $rt_multi, '<!-- wp:paragraph -->' ), 'richText multi-run payload produces a paragraph block per run.' );
+assert_true( strpos( $rt_multi, 'First' ) < strpos( $rt_multi, 'Second' ), 'richText paragraphs preserve content order.' );
+
+// R11.3 — intra-text \n is rendered as <br />.
+$rt_break = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'text' => "Line one\nLine two" ),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_break, "<p>Line one<br />\nLine two</p>" ), 'richText intra-paragraph newlines render as <br />.' );
+
+// R11.4 — embeddedObjects-only items are silently dropped.
+$rt_embed_only = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'X',
+					),
+				),
+			),
+		),
+	)
+);
+assert_true( '' === $rt_embed_only, 'richText embeddedObjects-only item is silently dropped (scaffold).' );
+
+// R11.5 — text + embeddedObjects: only the paragraph renders, embedded object is ignored.
+$rt_precedence = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'text'            => 'Caption',
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'X',
+					),
+				),
+			),
+		),
+	)
+);
+assert_true( 1 === substr_count( $rt_precedence, '<!-- wp:paragraph -->' ), 'richText text+embeddedObjects produces exactly one paragraph (precedence rule).' );
+assert_true( false !== strpos( $rt_precedence, 'Caption' ), 'richText text+embeddedObjects keeps the caption text.' );
+assert_true( 0 === substr_count( $rt_precedence, 'identifier' ), 'richText text+embeddedObjects does not leak embeddedObject identifier into output.' );
+
+// R11.6 — inline attributes ignored, plain text still rendered as paragraph.
+$rt_italic = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'italic' => true ),
+				'text'       => 'fancy',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_italic, '<p>fancy</p>' ), 'richText inline italic attribute renders text as plain paragraph.' );
+assert_true( false === strpos( $rt_italic, '<em>' ) && false === strpos( $rt_italic, '<i>' ) && false === strpos( $rt_italic, '<strong>' ), 'richText scaffold does not emit inline styling tags.' );
+
+// R11.7 — JSON-string vs decoded-array equivalence on rendered output.
+$rt_payload = array(
+	'meta'     => array( 'version' => 1 ),
+	'contents' => array(
+		array( 'text' => 'roundtrip sample' ),
+		array(
+			'attributes' => array( 'italic' => true ),
+			'text'       => 'two',
+		),
+	),
+);
+$rt_json    = wp_json_encode( $rt_payload );
+$rt_decoded = json_decode( $rt_json, true );
+assert_true( Day_One_Importer_Content::convert_rich_text_to_content( $rt_json ) === Day_One_Importer_Content::convert_rich_text_to_content( $rt_decoded ), 'richText string and decoded payloads produce identical rendered output.' );
+
+// R11.8 — empty / missing contents returns ''.
+assert_true( '' === Day_One_Importer_Content::convert_rich_text_to_content( null ), 'richText null input returns empty string.' );
+assert_true( '' === Day_One_Importer_Content::convert_rich_text_to_content( '' ), 'richText empty string returns empty string.' );
+assert_true( '' === Day_One_Importer_Content::convert_rich_text_to_content( 'not json' ), 'richText non-JSON string returns empty string.' );
+assert_true( '' === Day_One_Importer_Content::convert_rich_text_to_content( array() ), 'richText empty array returns empty string.' );
+assert_true( '' === Day_One_Importer_Content::convert_rich_text_to_content( array( 'contents' => array() ) ), 'richText empty contents returns empty string.' );
+assert_true( '' === Day_One_Importer_Content::convert_rich_text_to_content( array( 'meta' => array( 'version' => 1 ) ) ), 'richText payload without contents returns empty string.' );
+
+// R11.9 — escape contract: shortcodes and raw HTML are neutralized.
+$rt_escape = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'text' => '[gallery] <script>x</script>' ),
+		),
+	)
+);
+assert_true( false === strpos( $rt_escape, '[gallery]' ), 'richText shortcode brackets are neutralized.' );
+assert_true( false === strpos( $rt_escape, '<script>' ), 'richText raw script tags are escaped.' );
+
+// R11.10 — empty-text line-attribute item is dropped (no heading, no empty paragraph).
+$rt_empty_line_attr = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'header' => 1 ) ),
+				'text'       => '',
+			),
+		),
+	)
+);
+assert_true( '' === $rt_empty_line_attr, 'richText empty-text item with line.header attribute is silently dropped (no heading, no empty paragraph).' );
+
+// Step 4.16 — markdown-leakage acceptance: a `#`-prefixed run delegates to convert_text_to_content and renders as a heading block.
+// This documents the intentional R5.10 delegation behavior; strict line-attribute handling is deferred to issue #55.
+$rt_markdown_leak = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'text' => '# Imaginary heading' ),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_markdown_leak, '<!-- wp:heading' ), 'Markdown sigil in a richText run delegates to convert_text_to_content; scaffold defers strict line-attribute handling to issue #55.' );
+assert_true( false === strpos( $rt_markdown_leak, '<p># ' ), 'Markdown-prefixed richText run does not render as a raw paragraph (delegated path).' );
+
+// A8 — dispatch returns same string as legacy when richText absent.
+$dispatch_legacy = array( 'text' => "# Heading\n\nParagraph" );
+assert_true( Day_One_Importer_Content::render_entry_body( $dispatch_legacy ) === Day_One_Importer_Content::convert_text_to_content( $dispatch_legacy['text'] ), 'render_entry_body falls back to convert_text_to_content when richText is absent.' );
+
+// A8 — dispatch routes through richText when richText is present.
+$dispatch_rich = array(
+	'text'     => 'unused fallback text',
+	'richText' => array(
+		'contents' => array(
+			array( 'text' => 'Rich body paragraph' ),
+		),
+	),
+);
+assert_true( Day_One_Importer_Content::render_entry_body( $dispatch_rich ) === Day_One_Importer_Content::convert_rich_text_to_content( $dispatch_rich['richText'] ), 'render_entry_body routes through richText when present.' );
+assert_true( false !== strpos( Day_One_Importer_Content::render_entry_body( $dispatch_rich ), 'Rich body paragraph' ), 'render_entry_body richText dispatch surfaces richText content.' );
+
+// R8 — derive_title_from_entry: text-present path preserves legacy behavior.
+$title_text = Day_One_Importer_Content::derive_title_from_entry(
+	array( 'text' => "# Imaginary header title\nBody" ),
+	'2026-05-08 12:00:00'
+);
+assert_true( 'Imaginary header title' === $title_text, 'derive_title_from_entry preserves legacy heading-extraction when text is present.' );
+
+// R8.2 — empty text + richText falls back to first non-empty run.
+$title_from_rich = Day_One_Importer_Content::derive_title_from_entry(
+	array(
+		'text'     => '',
+		'richText' => array(
+			'contents' => array(
+				array(
+					'attributes' => array( 'line' => array( 'header' => 1 ) ),
+					'text'       => '',
+				),
+				array(
+					'attributes' => array(),
+					'text'       => 'Imaginary fallback title',
+				),
+				array( 'text' => 'Second paragraph not used for title' ),
+			),
+		),
+	),
+	'2026-05-08 12:00:00'
+);
+assert_true( 'Imaginary fallback title' === $title_from_rich, 'derive_title_from_entry falls back to the first non-empty richText run when text is empty.' );
+
+// R8.3 — no usable text in either field falls back to date.
+$title_date_fallback = Day_One_Importer_Content::derive_title_from_entry(
+	array( 'text' => '' ),
+	'2026-05-08 12:00:00'
+);
+$expected_date_title = Day_One_Importer_Content::derive_title( '', '2026-05-08 12:00:00' );
+assert_true( $title_date_fallback === $expected_date_title, 'derive_title_from_entry falls back to the date-based title when no usable text exists.' );
+
 $base_content = '<!-- wp:paragraph -->' . "\n" . '<p>Existing</p>' . "\n" . '<!-- /wp:paragraph -->';
 assert_true( $base_content === Day_One_Importer_Content::append_image_section( $base_content, array() ), 'No attachments leave content unchanged.' );
 assert_true( $base_content === Day_One_Importer_Content::append_image_section( $base_content, array( 0, 'bad', 404 ) ), 'No renderable attachments leave content unchanged.' );
@@ -1014,5 +1213,155 @@ do {
 assert_true( 3 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
 Day_One_Importer_Cleanup::remove( dirname( $bounded_job['manifest_path'] ) );
 $GLOBALS['day_one_importer_test_filters'] = array();
+
+// --- richText parser-level tests (A5, A6, A9, A12) ---
+
+// A6 — both payload forms normalize identically.
+$rt_payload_norm  = array(
+	'meta'     => array( 'version' => 1 ),
+	'contents' => array(
+		array( 'text' => 'sample' ),
+	),
+);
+$rt_results_a     = new Day_One_Importer_Results();
+$rt_results_b     = new Day_One_Importer_Results();
+$rt_entry_string  = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-RT-STRING',
+		'creationDate' => '2024-01-01T00:00:00Z',
+		'richText'     => wp_json_encode( $rt_payload_norm ),
+	),
+	'fictional.json',
+	0,
+	$rt_results_a
+);
+$rt_entry_object  = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-RT-OBJECT',
+		'creationDate' => '2024-01-01T00:00:00Z',
+		'richText'     => $rt_payload_norm,
+	),
+	'fictional.json',
+	1,
+	$rt_results_b
+);
+assert_true( is_array( $rt_entry_string ) && isset( $rt_entry_string['richText'] ), 'normalize_entry surfaces richText key when raw payload is a JSON-encoded string.' );
+assert_true( is_array( $rt_entry_object ) && isset( $rt_entry_object['richText'] ), 'normalize_entry surfaces richText key when raw payload is a pre-decoded array.' );
+assert_true( wp_json_encode( $rt_entry_string['richText'] ) === wp_json_encode( $rt_entry_object['richText'] ), 'normalize_entry produces identical richText structures from string and array forms (JSON-canonical equality).' );
+
+// A9 — malformed richText: warning + no failure (R2.3 contract).
+$rt_failures_baseline = $rt_results_a->get_count( 'entries_failed' );
+$rt_warnings_baseline = count( $rt_results_a->get_warnings() );
+$rt_entry_bad        = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-RT-BAD',
+		'creationDate' => '2024-01-01T00:00:00Z',
+		'richText'     => '{not json',
+	),
+	'fictional.json',
+	2,
+	$rt_results_a
+);
+assert_true( is_array( $rt_entry_bad ), 'normalize_entry returns a normalized entry when richText fails to decode.' );
+assert_true( ! isset( $rt_entry_bad['richText'] ), 'normalize_entry omits the richText key on decode failure (legacy text fallback path).' );
+assert_true( $rt_results_a->get_count( 'entries_failed' ) === $rt_failures_baseline, 'Malformed richText does not increment entries_failed (A9.1).' );
+assert_true( count( $rt_results_a->get_warnings() ) > $rt_warnings_baseline, 'Malformed richText records a warning via get_warnings() (A9.2).' );
+
+// A9 complement — empty-string richText: no key, no warning.
+$rt_results_empty  = new Day_One_Importer_Results();
+$rt_entry_empty_rt = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-RT-EMPTY',
+		'creationDate' => '2024-01-01T00:00:00Z',
+		'richText'     => '',
+	),
+	'fictional.json',
+	3,
+	$rt_results_empty
+);
+assert_true( is_array( $rt_entry_empty_rt ) && ! isset( $rt_entry_empty_rt['richText'] ), 'normalize_entry treats empty-string richText as absent (no decode attempt).' );
+assert_true( 0 === count( $rt_results_empty->get_warnings() ), 'normalize_entry does not warn on empty-string richText (R2.3 contract).' );
+
+// A5 — manifest round-trip through public parser primitives (M3-resolved).
+$rt_roundtrip_payload = array(
+	'meta'     => array( 'version' => 1 ),
+	'contents' => array(
+		array(
+			'attributes' => array(),
+			'text'       => "Round-trip sample.\nSecond line.",
+		),
+		array(
+			'attributes' => array( 'italic' => true ),
+			'text'       => 'Inline-attr run kept intact.',
+		),
+	),
+);
+$rt_roundtrip_dir     = sys_get_temp_dir() . '/day-one-importer-rt-roundtrip-' . uniqid();
+mkdir( $rt_roundtrip_dir, 0777, true );
+file_put_contents(
+	$rt_roundtrip_dir . '/Journal.json',
+	wp_json_encode(
+		array(
+			'metadata' => array( 'version' => 'test' ),
+			'entries'  => array(
+				array(
+					'uuid'         => 'TEST-RT-ROUNDTRIP',
+					'creationDate' => '2024-01-01T00:00:00Z',
+					'text'         => 'Body text',
+					'richText'     => $rt_roundtrip_payload,
+				),
+			),
+		)
+	)
+);
+$rt_roundtrip_results = new Day_One_Importer_Results();
+$rt_roundtrip_job     = array(
+	'manifest_path'       => sys_get_temp_dir() . '/day-one-importer-rt-manifest-' . uniqid() . '/entries.jsonl',
+	'zip_json_candidates' => array( 'Journal.json' ),
+	'zip_photo_dirs'      => array( 'photos' ),
+	'json_files'          => array(),
+	'json_file_index'     => 0,
+	'json_entry_index'    => 0,
+	'entries_total'       => 0,
+	'seen_uuids'          => array(),
+);
+$parser->discover_json_files_batch( $rt_roundtrip_dir, $rt_roundtrip_job, $rt_roundtrip_results, 1.0E+30 );
+$rt_roundtrip_index = $parser->index_export_batch( $rt_roundtrip_dir, $rt_roundtrip_job, $rt_roundtrip_results, 1.0E+30 );
+assert_true( ! empty( $rt_roundtrip_index['done'] ) && 1 === $rt_roundtrip_job['entries_total'], 'richText round-trip indexer writes one entry to the manifest.' );
+$rt_roundtrip_entry = $parser->read_manifest_entry( $rt_roundtrip_job['manifest_path'], 0 );
+assert_true( is_array( $rt_roundtrip_entry ) && isset( $rt_roundtrip_entry['richText'] ), 'richText round-trip preserves richText key through the JSONL manifest.' );
+assert_true( wp_json_encode( $rt_roundtrip_payload ) === wp_json_encode( $rt_roundtrip_entry['richText'] ), 'richText payload is byte-identical after manifest round-trip (JSON-canonical equality).' );
+Day_One_Importer_Cleanup::remove( dirname( $rt_roundtrip_job['manifest_path'] ) );
+Day_One_Importer_Cleanup::remove( $rt_roundtrip_dir );
+
+// A12 — old-shape manifest (no richText key) reads cleanly and the dispatch helper falls back to legacy text.
+$rt_old_manifest_dir = sys_get_temp_dir() . '/day-one-importer-rt-old-manifest-' . uniqid();
+mkdir( $rt_old_manifest_dir, 0777, true );
+$rt_old_manifest_path = $rt_old_manifest_dir . '/entries.jsonl';
+file_put_contents(
+	$rt_old_manifest_path,
+	wp_json_encode(
+		array(
+			'uuid'                => 'TEST-RT-OLD-MANIFEST',
+			'creationDate'        => '2024-01-01T00:00:00Z',
+			'modifiedDate'        => '',
+			'timeZone'            => '',
+			'text'                => "# Legacy heading\n\nLegacy body paragraph.",
+			'tags'                => array(),
+			'journal'             => 'Journal',
+			'photos'              => array(),
+			'starred'             => false,
+			'isPinned'            => false,
+			'creationDeviceType'  => '',
+			'creationDeviceModel' => '',
+			'source_file'         => 'Journal.json',
+		)
+	) . "\n"
+);
+$rt_old_entry = $parser->read_manifest_entry( $rt_old_manifest_path, 0 );
+assert_true( is_array( $rt_old_entry ), 'Old-shape manifest entry (missing richText key) reads back as an array.' );
+assert_true( ! isset( $rt_old_entry['richText'] ), 'Old-shape manifest entry has no richText key (forward compatibility).' );
+assert_true( Day_One_Importer_Content::render_entry_body( $rt_old_entry ) === Day_One_Importer_Content::convert_text_to_content( $rt_old_entry['text'] ), 'render_entry_body on old-shape manifest entry equals convert_text_to_content( $entry["text"] ) (A12).' );
+Day_One_Importer_Cleanup::remove( $rt_old_manifest_dir );
 
 echo "All pure helper tests passed.\n";
