@@ -110,10 +110,12 @@ class Day_One_Importer_Content {
 	 *       intentionally not handled in this scaffold; tracked
 	 *       separately for follow-up.
 	 *
-	 * @param mixed $rich_text Decoded richText array or JSON-encoded string.
+	 * @param mixed                         $rich_text Decoded richText array or JSON-encoded string.
+	 * @param Day_One_Importer_Results|null $results   Optional warning sink.
 	 * @return string
 	 */
-	public static function convert_rich_text_to_content( $rich_text ) {
+	public static function convert_rich_text_to_content( $rich_text, ?Day_One_Importer_Results $results = null ) {
+		unset( $results ); // Sink threading is wired up; usage lands in inline-attribute follow-up.
 		if ( is_string( $rich_text ) ) {
 			$decoded   = json_decode( $rich_text, true );
 			$rich_text = is_array( $decoded ) ? $decoded : null;
@@ -157,12 +159,13 @@ class Day_One_Importer_Content {
 	 * renderer; otherwise fall back to the legacy markdown path so that
 	 * legacy entries produce byte-identical content.
 	 *
-	 * @param mixed $entry Normalized entry array.
+	 * @param mixed                         $entry   Normalized entry array.
+	 * @param Day_One_Importer_Results|null $results Optional warning sink threaded into the richText renderer.
 	 * @return string
 	 */
-	public static function render_entry_body( $entry ) {
+	public static function render_entry_body( $entry, ?Day_One_Importer_Results $results = null ) {
 		if ( is_array( $entry ) && isset( $entry['richText'] ) && is_array( $entry['richText'] ) ) {
-			return self::convert_rich_text_to_content( $entry['richText'] );
+			return self::convert_rich_text_to_content( $entry['richText'], $results );
 		}
 
 		$text = ( is_array( $entry ) && isset( $entry['text'] ) ) ? $entry['text'] : '';
