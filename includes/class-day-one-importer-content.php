@@ -718,8 +718,7 @@ class Day_One_Importer_Content {
 	 * @return string
 	 */
 	private static function emit_media_group( array $items, array $photo_map, array $video_map, ?Day_One_Importer_Results $results ) {
-		unset( $video_map ); // Wired in C4 (#57).
-		$resolved_ids = array();
+		$resolved     = array(); // Scan-ordered tagged records: ['type' => 'photo'|'video', 'attachment_id' => int].
 		$warned_types = array(); // Per-entry-per-type dedupe for unsupported media (#56 R8 / Risk 5).
 
 		foreach ( $items as $item ) {
@@ -733,7 +732,10 @@ class Day_One_Importer_Content {
 
 				if ( 'photo' === $type ) {
 					if ( '' !== $identifier && isset( $photo_map[ $identifier ] ) ) {
-						$resolved_ids[] = (int) $photo_map[ $identifier ];
+						$resolved[] = array(
+							'type'          => 'photo',
+							'attachment_id' => (int) $photo_map[ $identifier ],
+						);
 					} elseif ( null !== $results ) {
 						$results->add_warning(
 							__( 'Skipping embedded photo in Day One entry: referenced media file is not present in the export.', 'day-one-importer' )
@@ -743,12 +745,19 @@ class Day_One_Importer_Content {
 				}
 
 				if ( 'video' === $type ) {
-					if ( ! isset( $warned_types['video'] ) ) {
-						$warned_types['video'] = true;
-						if ( null !== $results ) {
-							// Tracked by issue #57 (internal traceability only).
-							$results->add_warning( __( 'Skipping embedded video; video import is not yet supported.', 'day-one-importer' ) );
-						}
+					// #57 R6.2 — resolve against $video_map; missing identifier OR MIME-rejected
+					// surfaces here as "not in map" (the media stage already dropped the embed).
+					// Emit one warning per missing identifier (no per-type dedupe; matches the
+					// photo precedent).
+					if ( '' !== $identifier && isset( $video_map[ $identifier ] ) ) {
+						$resolved[] = array(
+							'type'          => 'video',
+							'attachment_id' => (int) $video_map[ $identifier ],
+						);
+					} elseif ( null !== $results ) {
+						$results->add_warning(
+							__( 'Skipping embedded video in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+						);
 					}
 					continue;
 				}
@@ -779,32 +788,49 @@ class Day_One_Importer_Content {
 			}
 		}
 
-		if ( empty( $resolved_ids ) ) {
+		if ( empty( $resolved ) ) {
 			return '';
 		}
 
-		if ( 1 === count( $resolved_ids ) ) {
-			$image = self::build_attachment_image_record( $resolved_ids[0] );
-			if ( null === $image ) {
-				return '';
+		// #57 R6.4 — walk the scan-ordered list. Accumulate consecutive photo
+		// records into an image (n=1) or gallery (n>=2). Video records flush the
+		// pending photo run and then emit one core/video block each.
+		$output       = '';
+		$photo_run    = array();
+		$flush_photos = static function () use ( &$photo_run, &$output ) {
+			if ( empty( $photo_run ) ) {
+				return;
 			}
-			return self::serialize_image_block( $image );
-		}
+			$images = array();
+			foreach ( $photo_run as $attachment_id ) {
+				$image = self::build_attachment_image_record( $attachment_id );
+				if ( $image ) {
+					$images[] = $image;
+				}
+			}
+			if ( ! empty( $images ) ) {
+				if ( 1 === count( $images ) ) {
+					$output .= self::serialize_image_block( $images[0] );
+				} else {
+					$output .= self::serialize_gallery_block( $images );
+				}
+			}
+			$photo_run = array();
+		};
 
-		$images = array();
-		foreach ( $resolved_ids as $attachment_id ) {
-			$image = self::build_attachment_image_record( $attachment_id );
-			if ( $image ) {
-				$images[] = $image;
+		foreach ( $resolved as $record ) {
+			if ( 'photo' === $record['type'] ) {
+				$photo_run[] = (int) $record['attachment_id'];
+				continue;
+			}
+			if ( 'video' === $record['type'] ) {
+				$flush_photos();
+				$output .= self::serialize_video_block( (int) $record['attachment_id'] );
 			}
 		}
-		if ( empty( $images ) ) {
-			return '';
-		}
-		if ( 1 === count( $images ) ) {
-			return self::serialize_image_block( $images[0] );
-		}
-		return self::serialize_gallery_block( $images );
+		$flush_photos();
+
+		return $output;
 	}
 
 	/**
@@ -1250,6 +1276,42 @@ class Day_One_Importer_Content {
 			),
 			$inner_html
 		);
+	}
+
+	/**
+	 * Serialize a core/video block for an imported Day One video attachment.
+	 *
+	 * Producer contract pinned by spec R6.5 — comment payload is
+	 * `<!-- wp:video {"id":<id>} -->` followed by a single newline, then the
+	 * <figure> wrapper, then `<!-- /wp:video -->`. Tests assert semantically via
+	 * parse_blocks() + substring match, never byte-equality.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return string Empty string when the attachment URL is unavailable or not
+	 *                served from the Day One private uploads directory.
+	 */
+	private static function serialize_video_block( $attachment_id ) {
+		$attachment_id = (int) $attachment_id;
+		if ( ! $attachment_id || ! function_exists( 'wp_get_attachment_url' ) ) {
+			return '';
+		}
+
+		$url = wp_get_attachment_url( $attachment_id );
+		if ( ! is_string( $url ) || '' === $url ) {
+			return '';
+		}
+
+		// Defensive check: refuse to emit a block whose URL is not from the
+		// Day One private uploads subdir (R6.5). Should not happen in practice
+		// because the sideloader routes through filter_private_upload_dir.
+		if ( class_exists( 'Day_One_Importer_Media' ) && false === strpos( $url, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ) ) {
+			return '';
+		}
+
+		$attrs      = array( 'id' => $attachment_id );
+		$inner_html = '<figure class="wp-block-video"><video controls src="' . esc_url( $url ) . '"></video></figure>';
+
+		return self::serialize_block( 'video', $attrs, $inner_html );
 	}
 
 	/**

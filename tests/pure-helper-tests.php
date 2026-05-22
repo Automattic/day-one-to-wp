@@ -251,13 +251,79 @@ if ( ! function_exists( 'wp_get_attachment_image' ) ) {
 
 if ( ! function_exists( 'wp_get_attachment_url' ) ) {
 	function wp_get_attachment_url( $id ) {
-		return 303 === (int) $id ? 'https://example.test/303-fallback.jpg' : false;
+		$id = (int) $id;
+		if ( 303 === $id ) {
+			return 'https://example.test/303-fallback.jpg';
+		}
+		// Video stubs for #57: emulate private-uploads URLs the sideloader would build.
+		if ( in_array( $id, array( 501, 502, 503 ), true ) ) {
+			return 'https://example.test/wp-content/uploads/day-one-importer-private/clip-' . $id . '.mov';
+		}
+		return false;
 	}
 }
 
 if ( ! function_exists( 'wp_json_encode' ) ) {
 	function wp_json_encode( $data, $flags = 0 ) {
 		return json_encode( $data, $flags );
+	}
+}
+
+if ( ! function_exists( 'parse_blocks' ) ) {
+	/**
+	 * Minimal block parser for pure-helper tests — recognizes top-level block
+	 * comments produced by Day_One_Importer_Content::serialize_block(). It only
+	 * extracts blockName + attrs in order; nested inner blocks are left as the
+	 * raw innerHTML segment. Sufficient for #57 ordering assertions.
+	 *
+	 * @param string $content Serialized block markup.
+	 * @return array<int,array{blockName:string,attrs:array,innerHTML:string}>
+	 */
+	function parse_blocks( $content ) {
+		$blocks = array();
+		if ( ! is_string( $content ) || '' === $content ) {
+			return $blocks;
+		}
+		$offset = 0;
+		while ( $offset < strlen( $content ) ) {
+			if ( ! preg_match( '/<!--\s*wp:([a-zA-Z][a-zA-Z0-9_\/-]*)(\s+(\{.*?\}))?\s*(\/)?-->/s', $content, $m, PREG_OFFSET_CAPTURE, $offset ) ) {
+				break;
+			}
+			$name        = $m[1][0];
+			$attrs_json  = isset( $m[3][0] ) ? $m[3][0] : '';
+			$self_closed = isset( $m[4][0] ) && '/' === $m[4][0];
+			$start       = (int) $m[0][1];
+			$end         = $start + strlen( $m[0][0] );
+			$attrs       = array();
+			if ( '' !== $attrs_json ) {
+				$decoded = json_decode( $attrs_json, true );
+				if ( is_array( $decoded ) ) {
+					$attrs = $decoded;
+				}
+			}
+			if ( $self_closed ) {
+				$blocks[] = array(
+					'blockName' => 'core/' . $name,
+					'attrs'     => $attrs,
+					'innerHTML' => '',
+				);
+				$offset    = $end;
+				continue;
+			}
+			$close       = '<!-- /wp:' . $name . ' -->';
+			$close_at    = strpos( $content, $close, $end );
+			if ( false === $close_at ) {
+				break;
+			}
+			$inner       = substr( $content, $end, $close_at - $end );
+			$blocks[]    = array(
+				'blockName' => 'core/' . $name,
+				'attrs'     => $attrs,
+				'innerHTML' => $inner,
+			);
+			$offset      = $close_at + strlen( $close );
+		}
+		return $blocks;
 	}
 }
 
@@ -1124,7 +1190,10 @@ $ac5_output  = Day_One_Importer_Content::convert_rich_text_to_content(
 assert_true( 1 === substr_count( $ac5_output, '<!-- wp:gallery' ), '#56 AC5 — one item with two embeds yields one gallery block.' );
 assert_true( ! $ac5_results->has_warnings(), '#56 AC5 — resolved multi-embed item emits no warning.' );
 
-// #56 AC6 — video/audio/pdfAttachment embeds emit zero blocks and one per-type warning each.
+// #56 AC6 (updated by #57) — audio/pdfAttachment embeds keep the per-type
+// placeholder warning. Video embeds with unresolved identifiers now emit one
+// warning per missing identifier (R6.3, R5.3 wording — no per-type dedupe;
+// matches the photo precedent).
 $ac6_results = new Day_One_Importer_Results();
 $ac6_output  = Day_One_Importer_Content::convert_rich_text_to_content(
 	array(
@@ -1157,13 +1226,14 @@ $ac6_output  = Day_One_Importer_Content::convert_rich_text_to_content(
 	),
 	$ac6_results
 );
-assert_true( '' === $ac6_output, '#56 AC6 — video/audio/pdfAttachment embeds emit no blocks.' );
+assert_true( '' === $ac6_output, '#56 AC6 — video/audio/pdfAttachment embeds emit no blocks when none resolve.' );
 $ac6_warnings = $ac6_results->get_warnings();
-assert_true( 3 === count( $ac6_warnings ), '#56 AC6 — exactly 3 warnings recorded (one per unsupported type).' );
+assert_true( 3 === count( $ac6_warnings ), '#56 AC6 — exactly 3 warnings recorded (one per unresolved record).' );
 $ac6_warning_blob = implode( "\n", $ac6_warnings );
-assert_true( false !== strpos( $ac6_warning_blob, 'video import is not yet supported' ), '#56 AC6 — video warning text present.' );
-assert_true( false !== strpos( $ac6_warning_blob, 'audio import is not yet supported' ), '#56 AC6 — audio warning text present.' );
-assert_true( false !== strpos( $ac6_warning_blob, 'PDF import is not yet supported' ), '#56 AC6 — PDF warning text present.' );
+assert_true( false !== strpos( $ac6_warning_blob, 'Skipping embedded video in Day One entry: referenced media file is unsupported or missing.' ), '#57 R5.3 — unresolved video uses the privacy-safe warning text.' );
+assert_true( false === strpos( $ac6_warning_blob, 'video import is not yet supported' ), '#57 AC7 — #56 placeholder "video import is not yet supported" warning is no longer emitted.' );
+assert_true( false !== strpos( $ac6_warning_blob, 'audio import is not yet supported' ), '#56 AC6 — audio warning text still present (closes with #58).' );
+assert_true( false !== strpos( $ac6_warning_blob, 'PDF import is not yet supported' ), '#56 AC6 — PDF warning text still present (closes with #59).' );
 assert_true( false === strpos( $ac6_warning_blob, '#57' ), '#56 AC6 — warnings do not leak issue number #57.' );
 assert_true( false === strpos( $ac6_warning_blob, '#58' ), '#56 AC6 — warnings do not leak issue number #58.' );
 assert_true( false === strpos( $ac6_warning_blob, '#59' ), '#56 AC6 — warnings do not leak issue number #59.' );
@@ -1172,7 +1242,8 @@ assert_true( false === strpos( $ac6_warning_blob, 'AC6-V' ), '#56 AC6 — warnin
 assert_true( false === strpos( $ac6_warning_blob, 'AC6-A' ), '#56 AC6 — warnings do not leak embed identifier (audio).' );
 assert_true( false === strpos( $ac6_warning_blob, 'AC6-P' ), '#56 AC6 — warnings do not leak embed identifier (pdf).' );
 
-// #56 AC6 dedupe — two video embeds in one run produce exactly one video warning.
+// #57 AC8 — two unresolved video embeds in one run produce TWO warnings
+// (per-identifier, NOT deduped; matches the photo precedent in #56 AC7).
 $ac6_dedupe_results = new Day_One_Importer_Results();
 Day_One_Importer_Content::convert_rich_text_to_content(
 	array(
@@ -1193,7 +1264,169 @@ Day_One_Importer_Content::convert_rich_text_to_content(
 	),
 	$ac6_dedupe_results
 );
-assert_true( 1 === count( $ac6_dedupe_results->get_warnings() ), '#56 AC6 — two video embeds in one entry yield exactly one video warning (per-type dedupe).' );
+assert_true( 2 === count( $ac6_dedupe_results->get_warnings() ), '#57 AC8 — two unresolved video embeds yield two warnings (one per missing identifier; no per-type dedupe).' );
+
+// --- C4 — emit_media_group video branch (#57 R6 / AC6, AC7, AC9). ---
+
+// Single video resolves to one core/video block.
+$c4_single_results = new Day_One_Importer_Results();
+$c4_single_html    = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'video', 'identifier' => 'V-1' ),
+				),
+			),
+		),
+	),
+	$c4_single_results,
+	array(),
+	array( 'V-1' => 501 )
+);
+$c4_single_blocks = parse_blocks( $c4_single_html );
+assert_true( 1 === count( $c4_single_blocks ) && 'core/video' === $c4_single_blocks[0]['blockName'], '#57 AC6 — single resolved video embed emits one core/video block.' );
+assert_true( isset( $c4_single_blocks[0]['attrs']['id'] ) && 501 === (int) $c4_single_blocks[0]['attrs']['id'], '#57 AC6 — core/video block carries the resolved attachment ID.' );
+assert_true( false !== strpos( $c4_single_html, 'wp-block-video' ), '#57 R6.5 — emitted markup contains the wp-block-video class.' );
+assert_true( false !== strpos( $c4_single_html, 'day-one-importer-private' ), '#57 R6.5 — emitted video src URL points at the private uploads subdir.' );
+assert_true( 0 === count( $c4_single_results->get_warnings() ), '#57 AC7 — resolved video does not trigger the #56 placeholder warning.' );
+assert_true( false === strpos( implode( "\n", $c4_single_results->get_warnings() ), 'video import is not yet supported' ), '#57 AC7 — #56 placeholder warning text is gone.' );
+
+// Two consecutive videos produce two separate core/video blocks (no gallery aggregation).
+$c4_consec_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'video', 'identifier' => 'V-1' ),
+					array( 'type' => 'video', 'identifier' => 'V-2' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array(),
+	array( 'V-1' => 501, 'V-2' => 502 )
+);
+$c4_consec_blocks = parse_blocks( $c4_consec_html );
+assert_true( 2 === count( $c4_consec_blocks ), '#57 R11.4 — two consecutive videos produce exactly two top-level blocks.' );
+assert_true( 'core/video' === $c4_consec_blocks[0]['blockName'] && 'core/video' === $c4_consec_blocks[1]['blockName'], '#57 R11.4 — both consecutive blocks are core/video (no gallery aggregation).' );
+assert_true( 501 === (int) $c4_consec_blocks[0]['attrs']['id'] && 502 === (int) $c4_consec_blocks[1]['attrs']['id'], '#57 R11.4 — consecutive videos preserve scan order in attrs[id].' );
+
+// Mixed photo, video, photo — interleaved emission with photo runs split by video.
+$c4_mixed_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'photo', 'identifier' => 'P-1' ),
+					array( 'type' => 'video', 'identifier' => 'V-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-2' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array( 'P-1' => 101, 'P-2' => 102 ),
+	array( 'V-1' => 501 )
+);
+$c4_mixed_blocks = parse_blocks( $c4_mixed_html );
+$c4_mixed_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $c4_mixed_blocks );
+assert_true( array( 'core/image', 'core/video', 'core/image' ) === $c4_mixed_names, '#57 AC9 — photo,video,photo sequence emits core/image, core/video, core/image in order.' );
+
+// Mixed photo, photo, video, photo — gallery splitting edge case (K8).
+$c4_split_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'photo', 'identifier' => 'P-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-2' ),
+					array( 'type' => 'video', 'identifier' => 'V-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-3' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array( 'P-1' => 101, 'P-2' => 102, 'P-3' => 202 ),
+	array( 'V-1' => 502 )
+);
+$c4_split_blocks = parse_blocks( $c4_split_html );
+$c4_split_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $c4_split_blocks );
+assert_true( array( 'core/gallery', 'core/video', 'core/image' ) === $c4_split_names, '#57 K8 — photo,photo,video,photo splits into gallery,video,image.' );
+
+// Mixed video, photo, video — alternation preserves order.
+$c4_alt_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'video', 'identifier' => 'V-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-1' ),
+					array( 'type' => 'video', 'identifier' => 'V-2' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array( 'P-1' => 101 ),
+	array( 'V-1' => 501, 'V-2' => 502 )
+);
+$c4_alt_blocks = parse_blocks( $c4_alt_html );
+$c4_alt_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $c4_alt_blocks );
+assert_true( array( 'core/video', 'core/image', 'core/video' ) === $c4_alt_names, '#57 R11.4 — video,photo,video sequence emits video,image,video.' );
+
+// Unresolved video identifier (not in $video_map) emits no block and ONE warning per missing identifier.
+$c4_miss_results = new Day_One_Importer_Results();
+$c4_miss_html    = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'video', 'identifier' => 'V-MISS' ),
+				),
+			),
+		),
+	),
+	$c4_miss_results,
+	array(),
+	array() // empty video map
+);
+assert_true( '' === $c4_miss_html, '#57 AC8 — unresolved video emits no block.' );
+$c4_miss_warnings = $c4_miss_results->get_warnings();
+assert_true( 1 === count( $c4_miss_warnings ), '#57 AC8 — unresolved video records exactly one warning.' );
+assert_true( $c4_miss_warnings[0] === 'Skipping embedded video in Day One entry: referenced media file is unsupported or missing.', '#57 R5.3 — warning text is privacy-safe (no identifier).' );
+assert_true( false === strpos( $c4_miss_warnings[0], 'V-MISS' ), '#57 R5.3 — warning does not leak the embed identifier.' );
+
+// wp_kses_post() round-trip on the video block: wp-block-video class survives, parse_blocks still recognizes core/video.
+$c4_kses_html = wp_kses_post( $c4_single_html );
+$c4_kses_blocks = parse_blocks( $c4_kses_html );
+assert_true( 1 === count( $c4_kses_blocks ) && 'core/video' === $c4_kses_blocks[0]['blockName'], '#57 R6.5 — wp_kses_post() round-trip preserves the core/video block.' );
+assert_true( false !== strpos( $c4_kses_html, 'wp-block-video' ), '#57 R6.5 — wp_kses_post() preserves the wp-block-video class.' );
+
+// serialize_video_block defensive guard: an attachment URL outside the private uploads subdir is skipped.
+$c4_guard_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'video', 'identifier' => 'V-OUTSIDE' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array(),
+	array( 'V-OUTSIDE' => 303 ) // stub returns a non-private URL for ID 303.
+);
+assert_true( '' === $c4_guard_html, '#57 R6.5 — emitter refuses to serialize a video block when the URL is not from the private uploads subdir.' );
 
 // #56 AC7 — unresolved photo identifier emits zero blocks and exactly one warning.
 $ac7_results = new Day_One_Importer_Results();
