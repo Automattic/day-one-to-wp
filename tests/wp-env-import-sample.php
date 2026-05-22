@@ -376,6 +376,83 @@ if ( $using_default_zip ) {
 		$entry_0007_attachment_ids = array_map( 'intval', wp_list_pluck( $entry_0007_attachments, 'ID' ) );
 		day_one_importer_wp_env_assert( 1 === count( $entry_0007_attachment_ids ), 'Entry 0007 (richText + photo) has exactly one attached image (photo-append behaviour preserved).' );
 	}
+
+	// R20 / AC9a (hard) — entry 0008 richly-formatted content survives wp_kses_post for the basic wrappers.
+	// AC9b (soft) — <mark style="…"> survival logged on failure (not fatal).
+	$entry_0008_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0008'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0008'] : 0;
+	day_one_importer_wp_env_assert( $entry_0008_post_id > 0, 'Fixture entry 0008 (richText inline formatting) was imported.' );
+	if ( $entry_0008_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0008_content    = (string) get_post_field( 'post_content', $entry_0008_post_id );
+		$entry_0008_blocks     = parse_blocks( $entry_0008_content );
+		$entry_0008_paragraphs = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0008_blocks, 'core/paragraph', $entry_0008_paragraphs );
+		$entry_0008_inner_concat = '';
+		foreach ( $entry_0008_paragraphs as $paragraph ) {
+			$entry_0008_inner_concat .= (string) $paragraph['innerHTML'];
+		}
+
+		// AC9a — basic wrappers MUST survive wp_kses_post (hard assert).
+		day_one_importer_wp_env_assert(
+			false !== strpos( $entry_0008_inner_concat, '<strong>Bold sample run.</strong>' ),
+			'Entry 0008 — <strong> wrapper survives wp_kses_post.'
+		);
+		day_one_importer_wp_env_assert(
+			false !== strpos( $entry_0008_inner_concat, '<em>Italic sample run.</em>' ),
+			'Entry 0008 — <em> wrapper survives wp_kses_post.'
+		);
+		day_one_importer_wp_env_assert(
+			false !== strpos( $entry_0008_inner_concat, '<s>Strikethrough sample run.</s>' ),
+			'Entry 0008 — <s> wrapper survives wp_kses_post.'
+		);
+		day_one_importer_wp_env_assert(
+			false !== strpos( $entry_0008_inner_concat, '<code>Inline code sample.</code>' ),
+			'Entry 0008 — <code> wrapper survives wp_kses_post.'
+		);
+		day_one_importer_wp_env_assert(
+			false !== strpos( $entry_0008_inner_concat, '<a href="https://example.com/fictional-link">Linked sample run.</a>' ),
+			'Entry 0008 — <a href> wrapper survives wp_kses_post.'
+		);
+
+		// R18 canonical multi-attribute combination — hard assert via AC9a basic wrappers.
+		// The outer <mark> is checked separately as a soft assert (AC9b) so a future kses tightening
+		// on <mark> does not fail the whole test.
+		day_one_importer_wp_env_assert(
+			false !== strpos( $entry_0008_inner_concat, '<a href="https://example.com/x">' ),
+			'Entry 0008 — R18 combination: outer <a> wrapper present.'
+		);
+		day_one_importer_wp_env_assert(
+			false !== strpos( $entry_0008_inner_concat, '<strong><em><s><code>hello</code></s></em></strong>' ),
+			'Entry 0008 — R18 combination: inner wrapper stack pinned byte-for-byte.'
+		);
+
+		// AC9b (soft) — <mark style="background-color:#RRGGBB"> survival is logged on failure, not fatal.
+		if ( false === strpos( $entry_0008_inner_concat, '<mark style="background-color:#FFEE99">Highlighted sample run.</mark>' ) ) {
+			fwrite( STDERR, "SOFT-WARN: Entry 0008 — <mark style=\"background-color:#FFEE99\"> did not survive wp_kses_post; logged per AC9b.\n" );
+		}
+		if ( false === strpos( $entry_0008_inner_concat, '<mark style="background-color:#000FFF">' ) ) {
+			fwrite( STDERR, "SOFT-WARN: Entry 0008 — R18 <mark style=\"background-color:#000FFF\"> did not survive wp_kses_post; logged per AC9b.\n" );
+		}
+
+		// R7 negative path — rejected linkURL drops anchor; run text still renders.
+		day_one_importer_wp_env_assert(
+			false === strpos( $entry_0008_inner_concat, 'javascript:alert(1)' ),
+			'Entry 0008 — rejected javascript: URL does not leak into post content.'
+		);
+		day_one_importer_wp_env_assert(
+			false !== strpos( $entry_0008_inner_concat, 'Bad link sample run.' ),
+			'Entry 0008 — rejected-link run text still renders.'
+		);
+
+		// R9 negative path — malformed highlightedColor drops <mark>; run text still renders.
+		day_one_importer_wp_env_assert(
+			false === strpos( $entry_0008_inner_concat, '0xZZZZZZ' ),
+			'Entry 0008 — rejected highlight color does not leak into post content.'
+		);
+		day_one_importer_wp_env_assert(
+			false !== strpos( $entry_0008_inner_concat, 'Bad color sample run.' ),
+			'Entry 0008 — rejected-color run text still renders.'
+		);
+	}
 }
 
 $second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
