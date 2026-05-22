@@ -1,6 +1,6 @@
 # Day One Importer
 
-Day One Importer is a WordPress admin importer for Day One JSON exports. It creates one **private** WordPress post per Day One entry and attempts to preserve dates, journal categories, tags, text, and supported photos.
+Day One Importer is a WordPress admin importer for Day One JSON exports. It creates one **private** WordPress post per Day One entry and attempts to preserve dates, journal categories, tags, text, supported photos, and supported videos.
 
 ## Try in WordPress Playground
 
@@ -29,9 +29,9 @@ Playground runs in your browser and is useful for checking the importer screens 
 
 1. Open Day One and export your journal as **JSON**.
 2. Keep the original ZIP export intact. Do not manually edit the JSON before importing.
-3. The importer expects a ZIP containing one or more journal JSON files with an `entries` array and, when photos are present, a `photos/` directory.
+3. The importer expects a ZIP containing one or more journal JSON files with an `entries` array and, when photos or videos are present, a `photos/` and/or `videos/` directory.
 
-A typical export follows this shape: a journal JSON file plus media files in `photos/`. Do not commit real Day One exports or photos to this repository; they can contain private journal content.
+A typical export follows this shape: a journal JSON file plus media files in `photos/` (and `videos/` when the export contains video moments). Do not commit real Day One exports, photos, or videos to this repository; they can contain private journal content.
 
 ## Import into WordPress
 
@@ -62,7 +62,9 @@ The results/status screen is designed to be privacy-safe: it reports counts, UUI
     - `quote: true` runs collapse into one `core/quote` block with one child paragraph per item. Quote `indentLevel` is intentionally ignored (Day One uses it as typographic spacing); all quote items render as flat siblings inside the same `<blockquote>`.
   Inline formatting wrappers still apply inside headings, list items, and quote paragraphs.
 - Supported photos are imported into the Media Library, attached to the imported post, and placed in the post content. When a Day One entry ships a `richText` payload that lists photos via `embeddedObjects`, each photo block renders at the position its embed appears in the text stream — a single photo becomes a `core/image` block between the surrounding paragraphs, and consecutive embeds collapse into a single `core/gallery` block. Legacy `text`-only entries continue to append photos after the entry text in Day One entry order. If a `richText` entry has imported photos but no inline `embeddedObjects` references for them, the photos still attach to the post and remain visible in the Media Library, but they are not rendered in the body and a privacy-safe warning is recorded.
-- Embedded video, audio, and PDF references inside a `richText` payload are recognized but not yet sideloaded. Each unsupported embed type logs one privacy-safe warning per entry per type (no identifier, UUID, or path is included) and produces no block. Full support is tracked as separate follow-ups (video #57, audio #58, PDF #59).
+- Day One `entry.videos[]` are imported alongside photos. ZIP preflight discovers any top-level `videos/` directory next to the existing `photos/` discovery, so a Day One export that ships both is recognized in a single pass. Each video is sideloaded into the same protected `day-one-importer-private` uploads subfolder used for photos, served through the same nonce- and permission-checked WordPress media endpoint, and attached to the imported post. Importer markers (`_day_one_uuid`, `_day_one_media_identifier`, `_day_one_media_md5`, `_day_one_source = day-one-export`, `_day_one_media_kind = video`, plus video-specific `_day_one_video_duration`, `_day_one_width`, `_day_one_height`, `_day_one_media_date`, and `_day_one_original_filename` when present) are written to the attachment so reruns deduplicate by UUID + identifier (or md5) without creating duplicate attachments. When a `richText` payload lists a video via `embeddedObjects[].type === "video"`, the video renders inline at the position the embed appears in the text stream as a `core/video` block (`<figure class="wp-block-video"><video controls src="…"></video></figure>`). Interleaved photo + video sequences emit blocks in scan order — consecutive photos still collapse into a single `core/image` or `core/gallery`, and each video produces one `core/video` block in between, splitting a run of photos when a video is interposed.
+- The importer's MIME allowlist gate is extended to accept `video/*` (in addition to the existing `image/*` path). A video is sideloaded only when both `wp_check_filetype_and_ext()` reports a `video/*` MIME and that MIME appears in the site's `get_allowed_mime_types()` list. On a default WordPress install Administrator-role users have `video/quicktime` and `video/mp4` enabled, so the typical `.mov` and `.mp4` files from a Day One export are accepted. If a site explicitly removes those MIMEs (via the `upload_mimes` filter or multisite Add to mime types settings), the affected embed is **dropped** with a privacy-safe warning ("Skipping embedded video in Day One entry: referenced media file is unsupported or missing."). No attachment is created, no `core/file` fallback is emitted, and the warning contains no identifier, UUID, filename, md5, or path. To support additional video MIME types on your site, extend the uploader allowlist via the standard WordPress `upload_mimes` filter (or your multisite Add to mime types settings).
+- Embedded audio and PDF references inside a `richText` payload are still recognized but not yet sideloaded. Each unsupported embed type logs one privacy-safe warning per entry per type (no identifier, UUID, or path is included) and produces no block. Full support is tracked as separate follow-ups (audio #58, PDF #59).
 
 ## Batched jobs, idempotency, and resume behavior
 
@@ -78,9 +80,9 @@ This means you can normally click **Retry / Continue** or rerun the same export 
 
 ## Media behavior and privacy
 
-Supported initial image types are JPEG/JPG, PNG, and other image formats that the target WordPress site accepts safely. HEIC, video, audio, PDF, and other attachment types are not guaranteed to import unless WordPress accepts and processes them in that environment.
+Supported initial image types are JPEG/JPG, PNG, and other image formats that the target WordPress site accepts safely. Day One videos (`.mov`, `.mp4`) are imported when the site's MIME allowlist accepts them (the default on most WordPress sites for Administrator-role users); embeds whose MIME the site refuses are dropped with a privacy-safe warning rather than failing the entry. HEIC, audio, PDF, and other attachment types are not guaranteed to import unless WordPress accepts and processes them in that environment.
 
-Photos are attached to the corresponding private post and importer metadata is stored on the attachment to support reuse on reruns.
+Photos and videos are attached to the corresponding private post and importer metadata is stored on the attachment (including the new `_day_one_media_kind` marker that distinguishes photo vs. video attachments) to support reuse on reruns.
 
 New Day One media is stored in a protected `day-one-importer-private` subfolder of the WordPress uploads directory. The importer uses a nonce- and permission-checked WordPress media endpoint instead of raw upload URLs for imported attachments. The endpoint only serves a Day One media file to a logged-in user who can read the associated private post or attachment.
 
@@ -108,7 +110,9 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 ## Limitations
 
 - Day One rich text fidelity is not guaranteed. The importer reads the `richText` payload when present and maps run-level inline formatting (bold, italic, strikethrough, inline code, http(s) links, highlight color) and block-level line attributes (headings 1–6, bulleted/numbered/checkbox lists with nesting, code blocks, blockquotes) to the matching Gutenberg blocks. The highlight `<mark style="background-color:#RRGGBB">` wrapper depends on the site's `wp_kses_post` allowlist accepting `<mark>` with that style attribute; if a host or filter tightens the allowlist, the text still survives and only the highlight color is dropped. Imported checkbox list items are visual-only (Unicode ballot-box glyphs) and cannot be re-toggled in the editor without re-importing. Nested `<blockquote>` rendering for Day One quote `indentLevel` is not emitted (quote items render as flat siblings).
-- Inline-positioned **photos** inside `richText` `embeddedObjects` now render at their original position in the text stream (single embed → `core/image`, consecutive embeds → `core/gallery`). Legacy `text`-only entries still append photos after the entry text. Embedded **video**, **audio**, and **PDF** references are recognized but not yet sideloaded: each unsupported type logs one privacy-safe warning per entry per type and produces no block. Full support is tracked separately (video #57, audio #58, PDF #59).
+- Inline-positioned **photos** inside `richText` `embeddedObjects` render at their original position in the text stream (single embed → `core/image`, consecutive embeds → `core/gallery`). Legacy `text`-only entries still append photos after the entry text.
+- Inline-positioned **videos** inside `richText` `embeddedObjects` are sideloaded and rendered as `core/video` blocks at their original position. Video sideload depends on the site's MIME allowlist accepting the file's `video/*` MIME; embeds whose MIME the site rejects are dropped with a privacy-safe warning rather than emitted as a `core/file` fallback, and the `<video>` element relies on Gutenberg's defaults (no `poster` thumbnail, no transcoding, no `width`/`height` block attributes — the HTML element auto-detects dimensions from the source). Videos play only for users who can read the parent private post, since the `src` is served through the same nonce-checked private endpoint as photos. The "imported photos but no inline embed" privacy-safe warning is photo-specific by design and does not fire for videos (extending it to videos may land as a follow-up).
+- Embedded **audio** and **PDF** references inside `richText` `embeddedObjects` are recognized but not yet sideloaded: each unsupported type logs one privacy-safe warning per entry per type and produces no block. Full support is tracked separately (audio #58, PDF #59).
 - Private media storage depends on the host allowing WordPress to create and protect a dedicated uploads subfolder. Media import fails safely if that directory cannot be prepared.
 - Unsupported or missing media produces warnings but does not stop unrelated entries from importing.
 - Very large exports may still hit host-enforced upload-size or memory limits before a job can be queued, and exceptionally slow hosts may require using **Retry / Continue**. Increase upload/memory limits, rerun to resume, or split exports if needed.
@@ -121,7 +125,7 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 - **ZIP upload fails:** check PHP upload size limits, WordPress upload permissions, and that the file is a Day One JSON export ZIP.
 - **No entries found:** confirm the ZIP contains a journal JSON file with a top-level `entries` array.
 - **Import appears paused:** keep the importer screen open, refresh it, or click **Retry / Continue**. Continuing is safe and resumes unfinished work.
-- **Photos missing:** confirm the export includes a `photos/` directory and that the media type is accepted by WordPress.
+- **Photos or videos missing:** confirm the export includes the relevant `photos/` and/or `videos/` directory and that the media type is accepted by your site's MIME allowlist (`get_allowed_mime_types()` / the `upload_mimes` filter). Video embeds whose MIME the site refuses are dropped with a privacy-safe warning instead of imported as an attachment.
 - **Duplicate import concerns:** click **Retry / Continue** or rerun the same ZIP; completed entries should be skipped because Day One UUID metadata is stored on imported posts and media.
 
 ## Build a plugin ZIP

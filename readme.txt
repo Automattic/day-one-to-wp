@@ -9,11 +9,11 @@ Stable tag: 0.2.10
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Import Day One JSON export ZIPs as private WordPress posts with journal categories, tags, dates, and supported photos.
+Import Day One JSON export ZIPs as private WordPress posts with journal categories, tags, dates, supported photos, and supported videos.
 
 == Description ==
 
-Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, and supported photos.
+Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, supported photos, and supported videos.
 
 The importer is designed for local or private archive migration workflows:
 
@@ -21,7 +21,7 @@ The importer is designed for local or private archive migration workflows:
 * Large exports run as resumable jobs advanced by short browser requests with a WP-Cron fallback, reducing gateway timeout risk.
 * Re-importing the same export skips completed entries using Day One UUID metadata.
 * Interrupted, failed, or older-schema imports can be retried, continued, or refreshed in place without duplicating completed posts or media.
-* Supported photos are imported into the Media Library and attached to their posts.
+* Supported photos and videos are imported into the Media Library and attached to their posts. Videos render inline as `core/video` blocks at their original `richText` position when present.
 * New Day One media is stored in a protected uploads subfolder and served through a nonce- and permission-checked WordPress endpoint.
 * Generated image sub-sizes are skipped during import to reduce timeout risk on large exports.
 * Result screens report counts, UUIDs, dates, filenames, and generic warnings rather than full journal content.
@@ -46,7 +46,7 @@ For development and testing, the repository includes a wholly fictional sample D
 
 = What Day One export format is supported? =
 
-Export your journal from Day One as JSON and keep the original ZIP intact. The importer expects a ZIP containing one or more journal JSON files with an `entries` array and, when photos are present, a `photos` directory.
+Export your journal from Day One as JSON and keep the original ZIP intact. The importer expects a ZIP containing one or more journal JSON files with an `entries` array and, when photos or videos are present, `photos/` and/or `videos/` directories.
 
 = Are imported entries public? =
 
@@ -58,7 +58,7 @@ Yes. The importer stores Day One UUID metadata and skips entries that were alrea
 
 = What media types are imported? =
 
-The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Unsupported or missing media generates warnings without stopping unrelated entries. New imported media is stored in a protected uploads subfolder and served through a nonce- and permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
+The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Day One videos (`.mov`, `.mp4`) are imported when the site's MIME allowlist accepts them (`video/quicktime` and `video/mp4` are enabled by default for Administrator-role users on most WordPress sites). Embedded audio and PDF references are recognized but not yet sideloaded. Unsupported or missing media generates warnings without stopping unrelated entries; video embeds whose MIME the site refuses are dropped with a privacy-safe warning (no `core/file` fallback is emitted). To support additional video MIMEs, extend the uploader allowlist via the standard `upload_mimes` filter. New imported media is stored in a protected uploads subfolder and served through a nonce- and permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
 
 = Does the plugin contact external services? =
 
@@ -67,9 +67,11 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 == Changelog ==
 
 = 0.2.10 =
-* Import Day One `entry.videos[]` from the JSON export as `core/video` blocks at their inline `embeddedObjects[]` positions. Each video is sideloaded into the existing private uploads subfolder, deduped against any matching attachment on the same post via Day One UUID + identifier (or md5), and emitted via the existing inline media routing introduced in 0.2.9. An entry containing interleaved photo and video embeds renders them in scan order, with consecutive photos collapsing into a single `core/image` or `core/gallery` and each video producing one `core/video` block in between. The `core/video` block uses the standard `<figure class="wp-block-video">` markup and serves the file through the nonce-checked private endpoint, so videos remain readable only to users who can read the parent private post.
-* Videos whose MIME type the target site refuses (for example because `video/quicktime` or `video/mp4` is not in `get_allowed_mime_types()`) are dropped with a privacy-safe warning that does not leak identifier, UUID, filename, or md5. Unresolved video identifiers (referenced media file missing from the export, or rejected by the MIME gate) produce one warning per affected embed. To support additional video MIME types, extend the uploader allowlist via the standard WordPress `upload_mimes` filter or your multisite Add to mime types setting.
-* Bump the internal `IMPORT_SCHEMA_VERSION` from `6` to `7` so existing imported posts that contain video embeds are re-rendered when the same export is re-imported. Posts that do not reference any `embeddedObjects[].type === "video"` still re-render but the output is byte-identical to the previous version (modulo the same ID/nonce churn already documented for 0.2.6 and 0.2.9). The reprocessing cost is the same shape as previous schema bumps.
+* Import Day One `entry.videos[]` from the JSON export as `core/video` blocks at their inline `embeddedObjects[]` positions. The streaming parser normalizes a new `videos` field on each entry (with `identifier`, `md5`, `type`, `width`, `height`, `duration`, `orderInEntry`, `date`, and `filename`), and the JSONL manifest round-trips it alongside the existing `photos` field. Each video is sideloaded into the existing private uploads subfolder, deduped against any matching attachment on the same post via Day One UUID + identifier (or md5), and emitted via the existing inline media routing introduced in 0.2.9. An entry containing interleaved photo and video embeds renders them in scan order, with consecutive photos collapsing into a single `core/image` or `core/gallery` and each video producing one `core/video` block in between. The `core/video` block uses the standard `<figure class="wp-block-video">` markup and serves the file through the nonce-checked private endpoint, so videos remain readable only to users who can read the parent private post. New attachment markers (`_day_one_media_kind = video`, `_day_one_video_duration`, `_day_one_width`, `_day_one_height`, plus the shared `_day_one_uuid` / `_day_one_media_identifier` / `_day_one_media_md5` / `_day_one_source` / `_day_one_media_date` / `_day_one_original_filename` keys) are written to every video attachment so reruns deduplicate cleanly.
+* Extend ZIP preflight to discover top-level `videos/` directories the same way `photos/` directories are discovered. Both directory lists are persisted on the import job (`zip_video_dirs`, `video_dirs`) so the async runner can resolve `videos/<md5>.<ext>` paths without re-walking the archive on each batch.
+* Extend the MIME allowlist gate (`Day_One_Importer_Media::validate_media_file()`) to accept `video/*` MIMEs (in addition to the existing `image/*` path). A video is sideloaded only when both `wp_check_filetype_and_ext()` reports a `video/*` MIME and that MIME appears in the site's `get_allowed_mime_types()` list. Videos whose MIME the target site refuses (for example because `video/quicktime` or `video/mp4` is not in `get_allowed_mime_types()`) are dropped with a privacy-safe warning that does not leak identifier, UUID, filename, or md5. **No `core/file` fallback is emitted** for rejected video MIMEs: this is a deliberate departure from the original prompt's "fall back to `core/file` and warn" wording, documented in the spec, because `validate_media_file()` is the canonical codebase-wide MIME gate and `media_handle_sideload()` itself depends on `get_allowed_mime_types()`, so no attachment exists to render a `core/file` block against. Unresolved video identifiers (referenced media file missing from the export, or rejected by the MIME gate) produce one warning per affected `embeddedObjects[]` record. To support additional video MIME types, extend the uploader allowlist via the standard WordPress `upload_mimes` filter or your multisite Add to mime types setting.
+* Bump the internal `IMPORT_SCHEMA_VERSION` from `6` to `7` so existing imported posts that contain video embeds are re-rendered when the same export is re-imported. Posts that do not reference any `embeddedObjects[].type === "video"` still re-render but the output is byte-identical to the previous version (modulo the same ID/nonce churn already documented for 0.2.6 and 0.2.9). The reprocessing cost is the same shape as previous schema bumps; large existing imports pay it once on the next rerun.
+* Scope the 0.2.9 "imported media but no inline embed" privacy-safe warning (`finalize_imported_entry()`'s richText-has-no-photo-embeds branch) to photos only. The warning was a workaround for a Day One quirk where the user's photo lives at the entry root rather than inline; videos do not exhibit the same pattern in observed exports, so the warning is intentionally not extended to videos in this release. Extending it (or adding a parallel video variant) may land as a follow-up if observed exports show a similar shape for videos.
 
 = 0.2.9 =
 * Place Day One `richText` inline photos at their original position in the text stream. When a `richText` payload lists photos via `contents[].embeddedObjects[]`, each `type: photo` embed resolves against the imported attachment for the same identifier and renders inline: a single embed becomes a `core/image` block between the surrounding paragraphs, and two or more consecutive embeds (including embeds separated only by transparent empty items) collapse into a single `core/gallery` block. Legacy `text`-only entries continue to append photos after the entry text in entry order.
@@ -133,7 +135,7 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 == Upgrade Notice ==
 
 = 0.2.10 =
-Imports Day One `entry.videos[]` into the existing private uploads subfolder and renders them as `core/video` blocks at their inline `embeddedObjects[]` positions, including interleaved photo + video sequences. Videos whose MIME the site refuses are dropped with a privacy-safe warning (no identifier leak) — extend `upload_mimes` to allow them. Bumps the internal import schema so re-imports refresh existing posts that contain video embeds.
+Imports Day One `entry.videos[]` into the existing private uploads subfolder and renders them as `core/video` blocks at their inline `embeddedObjects[]` positions, including interleaved photo + video sequences. ZIP preflight now discovers `videos/` directories alongside `photos/`. The MIME gate is extended to `video/*`; videos whose MIME the site refuses are dropped with a privacy-safe warning (no identifier leak and no `core/file` fallback) — extend `upload_mimes` to allow them. The 0.2.9 "imported media but no inline embed" warning remains photo-specific. Bumps the internal import schema (`6` → `7`) so re-imports refresh existing posts that contain video embeds.
 
 = 0.2.9 =
 Places Day One richText inline photos at their original position in the text stream (single embed → `core/image`, consecutive embeds → `core/gallery`) and broadens the legacy-text placeholder regex to strip all nine observed `dayone-moment` variants. Embedded video, audio, and PDF references are recognized but not yet sideloaded — each logs one privacy-safe warning per entry per type until #57/#58/#59 land. `richText` entries that import photos without any inline `embeddedObjects` keep their photos attached to the post but no longer receive an appended gallery, and the runner records a privacy-safe warning so the dropped placement is not silent.
