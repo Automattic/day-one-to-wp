@@ -766,12 +766,19 @@ class Day_One_Importer_Content {
 				}
 
 				if ( 'audio' === $type ) {
-					if ( ! isset( $warned_types['audio'] ) ) {
-						$warned_types['audio'] = true;
-						if ( null !== $results ) {
-							// Tracked by issue #58 (internal traceability only).
-							$results->add_warning( __( 'Skipping embedded audio; audio import is not yet supported.', 'day-one-importer' ) );
-						}
+					// #58 R6.2 — resolve against $audio_map; missing identifier OR MIME-rejected
+					// surfaces here as "not in map" (the media stage already dropped the embed).
+					// Emit one warning per missing identifier (no per-type dedupe; matches the
+					// video precedent).
+					if ( '' !== $identifier && isset( $audio_map[ $identifier ] ) ) {
+						$resolved[] = array(
+							'type'          => 'audio',
+							'attachment_id' => (int) $audio_map[ $identifier ],
+						);
+					} elseif ( null !== $results ) {
+						$results->add_warning(
+							__( 'Skipping embedded audio in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+						);
 					}
 					continue;
 				}
@@ -829,6 +836,11 @@ class Day_One_Importer_Content {
 			if ( 'video' === $record['type'] ) {
 				$flush_photos();
 				$output .= self::serialize_video_block( (int) $record['attachment_id'] );
+				continue;
+			}
+			if ( 'audio' === $record['type'] ) {
+				$flush_photos();
+				$output .= self::serialize_audio_block( (int) $record['attachment_id'] );
 			}
 		}
 		$flush_photos();
@@ -1327,6 +1339,66 @@ class Day_One_Importer_Content {
 		$inner_html = '<figure class="wp-block-video"><video controls src="' . esc_url( $url ) . '"></video></figure>';
 
 		return self::serialize_block( 'video', $attrs, $inner_html );
+	}
+
+	/**
+	 * Serialize a core/audio Gutenberg block for a Day One audio attachment.
+	 *
+	 * Mirrors serialize_video_block() byte-for-byte modulo the block name and
+	 * the audio-specific figcaption sourced from `_day_one_audio_title` post
+	 * meta. See spec R6.5 for the producer contract pinned to the comment
+	 * payload `{"id":<id>}`, the figure wrapper, and the optional figcaption.
+	 * Tests assert semantically via parse_blocks() + substring match, never
+	 * byte-equality.
+	 *
+	 * @param int    $attachment_id Attachment ID.
+	 * @param string $caption       Optional explicit caption (test-only injection).
+	 *                              When empty, falls back to `_day_one_audio_title`.
+	 * @return string Empty string when the attachment URL is unavailable or not
+	 *                served from the Day One private uploads directory.
+	 */
+	private static function serialize_audio_block( $attachment_id, $caption = '' ) {
+		$attachment_id = (int) $attachment_id;
+		if ( ! $attachment_id || ! function_exists( 'wp_get_attachment_url' ) ) {
+			return '';
+		}
+
+		$url = wp_get_attachment_url( $attachment_id );
+		if ( ! is_string( $url ) || '' === $url ) {
+			return '';
+		}
+
+		// Defensive check (#58 R6.5): refuse to emit a block for an attachment
+		// the importer did not create. Same two-tier check as
+		// serialize_video_block: prefer `_day_one_source = day-one-export`
+		// post meta; fall back to URL substring match for pure-helper mode.
+		$is_day_one_attachment = false;
+		if ( function_exists( 'get_post_meta' ) ) {
+			$is_day_one_attachment = ( 'day-one-export' === (string) get_post_meta( $attachment_id, '_day_one_source', true ) );
+		}
+		if ( ! $is_day_one_attachment ) {
+			if ( ! class_exists( 'Day_One_Importer_Media' ) || false === strpos( $url, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ) ) {
+				return '';
+			}
+		}
+
+		// #58 R6.2 — source caption from `_day_one_audio_title` post meta when
+		// the caller did not pass one explicitly. Pure-helper tests can inject
+		// a literal caption; runtime imports rely on the meta written by
+		// Day_One_Importer_Media::apply_audio_marker_metadata().
+		$caption = (string) $caption;
+		if ( '' === $caption && function_exists( 'get_post_meta' ) ) {
+			$caption = (string) get_post_meta( $attachment_id, '_day_one_audio_title', true );
+		}
+
+		$attrs      = array( 'id' => $attachment_id );
+		$inner_html = '<figure class="wp-block-audio"><audio controls src="' . esc_url( $url ) . '"></audio>';
+		if ( '' !== $caption ) {
+			$inner_html .= '<figcaption class="wp-element-caption">' . esc_html( $caption ) . '</figcaption>';
+		}
+		$inner_html .= '</figure>';
+
+		return self::serialize_block( 'audio', $attrs, $inner_html );
 	}
 
 	/**

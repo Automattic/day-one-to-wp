@@ -216,6 +216,12 @@ if ( ! function_exists( 'esc_attr' ) ) {
 	}
 }
 
+if ( ! function_exists( 'esc_html' ) ) {
+	function esc_html( $text ) {
+		return htmlspecialchars( (string) $text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
+	}
+}
+
 if ( ! function_exists( 'wp_get_attachment_image_src' ) ) {
 	function wp_get_attachment_image_src( $id, $size, $icon = false ) {
 		$id = (int) $id;
@@ -259,7 +265,42 @@ if ( ! function_exists( 'wp_get_attachment_url' ) ) {
 		if ( in_array( $id, array( 501, 502, 503 ), true ) ) {
 			return 'https://example.test/wp-content/uploads/day-one-importer-private/clip-' . $id . '.mov';
 		}
+		// Audio stubs for #58: emulate private-uploads URLs the sideloader would build.
+		if ( in_array( $id, array( 601, 602, 603 ), true ) ) {
+			return 'https://example.test/wp-content/uploads/day-one-importer-private/clip-' . $id . '.mp3';
+		}
+		// #58 R6.5 defensive: ID 304 returns a non-private URL so serialize_audio_block refuses to emit.
+		if ( 304 === $id ) {
+			return 'https://example.test/304-fallback.mp3';
+		}
 		return false;
+	}
+}
+
+// #58 R6.2: minimal get_post_meta stub keyed by attachment ID + meta key.
+// IDs 601/603 have a non-empty _day_one_audio_title; ID 602 has an empty title.
+// ID 304 has no _day_one_source marker (used to verify the defensive guard).
+if ( ! function_exists( 'get_post_meta' ) ) {
+	function get_post_meta( $post_id, $key, $single = false ) {
+		$post_id = (int) $post_id;
+		$store   = array(
+			601 => array(
+				'_day_one_source'      => 'day-one-export',
+				'_day_one_audio_title' => 'sample-1s',
+			),
+			602 => array(
+				'_day_one_source'      => 'day-one-export',
+				'_day_one_audio_title' => '',
+			),
+			603 => array(
+				'_day_one_source'      => 'day-one-export',
+				'_day_one_audio_title' => 'mixed-sequence audio',
+			),
+		);
+		if ( isset( $store[ $post_id ][ $key ] ) ) {
+			return $store[ $post_id ][ $key ];
+		}
+		return $single ? '' : array();
 	}
 }
 
@@ -1232,7 +1273,8 @@ assert_true( 3 === count( $ac6_warnings ), '#56 AC6 — exactly 3 warnings recor
 $ac6_warning_blob = implode( "\n", $ac6_warnings );
 assert_true( false !== strpos( $ac6_warning_blob, 'Skipping embedded video in Day One entry: referenced media file is unsupported or missing.' ), '#57 R5.3 — unresolved video uses the privacy-safe warning text.' );
 assert_true( false === strpos( $ac6_warning_blob, 'video import is not yet supported' ), '#57 AC7 — #56 placeholder "video import is not yet supported" warning is no longer emitted.' );
-assert_true( false !== strpos( $ac6_warning_blob, 'audio import is not yet supported' ), '#56 AC6 — audio warning text still present (closes with #58).' );
+assert_true( false !== strpos( $ac6_warning_blob, 'Skipping embedded audio in Day One entry: referenced media file is unsupported or missing.' ), '#58 R5.3 — unresolved audio uses the privacy-safe warning text.' );
+assert_true( false === strpos( $ac6_warning_blob, 'audio import is not yet supported' ), '#58 AC7 — #56 placeholder "audio import is not yet supported" warning is no longer emitted.' );
 assert_true( false !== strpos( $ac6_warning_blob, 'PDF import is not yet supported' ), '#56 AC6 — PDF warning text still present (closes with #59).' );
 assert_true( false === strpos( $ac6_warning_blob, '#57' ), '#56 AC6 — warnings do not leak issue number #57.' );
 assert_true( false === strpos( $ac6_warning_blob, '#58' ), '#56 AC6 — warnings do not leak issue number #58.' );
@@ -3262,5 +3304,217 @@ mkdir( $audio_discover_root . '/photos', 0777, true );
 $audio_found_dirs = Day_One_Importer_Media::find_audio_dirs( $audio_discover_root );
 assert_true( 1 === count( $audio_found_dirs ) && false !== strpos( $audio_found_dirs[0], DIRECTORY_SEPARATOR . 'audios' ), '#58 find_audio_dirs picks up a top-level audios directory.' );
 Day_One_Importer_Cleanup::remove( $audio_discover_root );
+
+// --- #58 C4 — emit_media_group audio branch (R6 / AC6, AC7, AC8, AC9). ---
+
+// Single audio resolves to one core/audio block, with figcaption sourced from _day_one_audio_title.
+$c4_aud_single_results = new Day_One_Importer_Results();
+$c4_aud_single_html    = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'audio', 'identifier' => 'A-1' ),
+				),
+			),
+		),
+	),
+	$c4_aud_single_results,
+	array(),
+	array(),
+	array( 'A-1' => 601 )
+);
+$c4_aud_single_blocks = parse_blocks( $c4_aud_single_html );
+assert_true( 1 === count( $c4_aud_single_blocks ) && 'core/audio' === $c4_aud_single_blocks[0]['blockName'], '#58 AC6 — single resolved audio embed emits one core/audio block.' );
+assert_true( isset( $c4_aud_single_blocks[0]['attrs']['id'] ) && 601 === (int) $c4_aud_single_blocks[0]['attrs']['id'], '#58 AC6 — core/audio block carries the resolved attachment ID.' );
+assert_true( false !== strpos( $c4_aud_single_html, 'wp-block-audio' ), '#58 R6.5 — emitted markup contains the wp-block-audio class.' );
+assert_true( false !== strpos( $c4_aud_single_html, 'day-one-importer-private' ), '#58 R6.5 — emitted audio src URL points at the private uploads subdir.' );
+assert_true( false !== strpos( $c4_aud_single_html, 'wp-element-caption' ), '#58 R6.2 — non-empty _day_one_audio_title emits a wp-element-caption figcaption.' );
+assert_true( false !== strpos( $c4_aud_single_html, 'sample-1s' ), '#58 R6.2 — figcaption contains the title text.' );
+assert_true( 0 === count( $c4_aud_single_results->get_warnings() ), '#58 AC7 — resolved audio does not trigger the #56 placeholder warning.' );
+assert_true( false === strpos( implode( "\n", $c4_aud_single_results->get_warnings() ), 'audio import is not yet supported' ), '#58 AC7 — #56 placeholder warning text is gone.' );
+
+// Empty _day_one_audio_title omits the figcaption.
+$c4_aud_empty_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'audio', 'identifier' => 'A-2' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array(),
+	array(),
+	array( 'A-2' => 602 )
+);
+assert_true( false !== strpos( $c4_aud_empty_html, 'wp-block-audio' ), '#58 R6.2 — empty title still emits the core/audio block.' );
+assert_true( false === strpos( $c4_aud_empty_html, 'wp-element-caption' ), '#58 R6.2 — empty _day_one_audio_title omits the figcaption entirely.' );
+
+// Two consecutive audios produce two separate core/audio blocks (no gallery aggregation).
+$c4_aud_consec_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'audio', 'identifier' => 'A-1' ),
+					array( 'type' => 'audio', 'identifier' => 'A-2' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array(),
+	array(),
+	array( 'A-1' => 601, 'A-2' => 602 )
+);
+$c4_aud_consec_blocks = parse_blocks( $c4_aud_consec_html );
+assert_true( 2 === count( $c4_aud_consec_blocks ), '#58 R11.4 — two consecutive audios produce exactly two top-level blocks.' );
+assert_true( 'core/audio' === $c4_aud_consec_blocks[0]['blockName'] && 'core/audio' === $c4_aud_consec_blocks[1]['blockName'], '#58 R11.4 — both consecutive blocks are core/audio (no gallery aggregation).' );
+assert_true( 601 === (int) $c4_aud_consec_blocks[0]['attrs']['id'] && 602 === (int) $c4_aud_consec_blocks[1]['attrs']['id'], '#58 R11.4 — consecutive audios preserve scan order in attrs[id].' );
+
+// Mixed photo, audio, photo — interleaved emission with photo runs split by audio (K11).
+$c4_aud_mixed_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'photo', 'identifier' => 'P-1' ),
+					array( 'type' => 'audio', 'identifier' => 'A-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-2' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array( 'P-1' => 101, 'P-2' => 102 ),
+	array(),
+	array( 'A-1' => 601 )
+);
+$c4_aud_mixed_blocks = parse_blocks( $c4_aud_mixed_html );
+$c4_aud_mixed_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $c4_aud_mixed_blocks );
+assert_true( array( 'core/image', 'core/audio', 'core/image' ) === $c4_aud_mixed_names, '#58 AC9 — photo,audio,photo sequence emits core/image, core/audio, core/image in order.' );
+
+// Mixed photo, photo, audio, video, photo — gallery splitting edge case (K11).
+$c4_aud_split_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'photo', 'identifier' => 'P-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-2' ),
+					array( 'type' => 'audio', 'identifier' => 'A-1' ),
+					array( 'type' => 'video', 'identifier' => 'V-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-3' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array( 'P-1' => 101, 'P-2' => 102, 'P-3' => 202 ),
+	array( 'V-1' => 502 ),
+	array( 'A-1' => 601 )
+);
+$c4_aud_split_blocks = parse_blocks( $c4_aud_split_html );
+$c4_aud_split_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $c4_aud_split_blocks );
+assert_true( array( 'core/gallery', 'core/audio', 'core/video', 'core/image' ) === $c4_aud_split_names, '#58 K11 — photo,photo,audio,video,photo splits into gallery,audio,video,image.' );
+
+// Mixed audio, photo, video, audio — alternation preserves order.
+$c4_aud_alt_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'audio', 'identifier' => 'A-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-1' ),
+					array( 'type' => 'video', 'identifier' => 'V-1' ),
+					array( 'type' => 'audio', 'identifier' => 'A-2' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array( 'P-1' => 101 ),
+	array( 'V-1' => 501 ),
+	array( 'A-1' => 601, 'A-2' => 602 )
+);
+$c4_aud_alt_blocks = parse_blocks( $c4_aud_alt_html );
+$c4_aud_alt_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $c4_aud_alt_blocks );
+assert_true( array( 'core/audio', 'core/image', 'core/video', 'core/audio' ) === $c4_aud_alt_names, '#58 R11.4 — audio,photo,video,audio sequence emits audio,image,video,audio.' );
+
+// Unresolved audio identifier (not in $audio_map) emits no block and ONE warning per missing identifier.
+$c4_aud_miss_results = new Day_One_Importer_Results();
+$c4_aud_miss_html    = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'audio', 'identifier' => 'A-MISS' ),
+				),
+			),
+		),
+	),
+	$c4_aud_miss_results,
+	array(),
+	array(),
+	array() // empty audio map
+);
+assert_true( '' === $c4_aud_miss_html, '#58 AC8 — unresolved audio emits no block.' );
+$c4_aud_miss_warnings = $c4_aud_miss_results->get_warnings();
+assert_true( 1 === count( $c4_aud_miss_warnings ), '#58 AC8 — unresolved audio records exactly one warning.' );
+assert_true( $c4_aud_miss_warnings[0] === 'Skipping embedded audio in Day One entry: referenced media file is unsupported or missing.', '#58 R5.3 — warning text is privacy-safe (no identifier).' );
+assert_true( false === strpos( $c4_aud_miss_warnings[0], 'A-MISS' ), '#58 R5.3 — warning does not leak the embed identifier.' );
+
+// Two unresolved audios produce TWO warnings (per-identifier, NOT deduped).
+$c4_aud_n_results = new Day_One_Importer_Results();
+Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'audio', 'identifier' => 'A-MISS-A' ),
+					array( 'type' => 'audio', 'identifier' => 'A-MISS-B' ),
+				),
+			),
+		),
+	),
+	$c4_aud_n_results,
+	array(),
+	array(),
+	array()
+);
+assert_true( 2 === count( $c4_aud_n_results->get_warnings() ), '#58 AC8 — two distinct unresolved audios produce two warnings (per-identifier, not deduped).' );
+
+// serialize_audio_block defensive guard: an attachment URL outside the private uploads subdir is skipped.
+$c4_aud_guard_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'audio', 'identifier' => 'A-OUTSIDE' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array(),
+	array(),
+	array( 'A-OUTSIDE' => 304 ) // stub returns a non-private URL for ID 304.
+);
+assert_true( '' === $c4_aud_guard_html, '#58 R6.5 — emitter refuses to serialize an audio block when the URL is not from the private uploads subdir.' );
+
+// wp_kses_post() round-trip on the audio block: wp-block-audio class survives, parse_blocks still recognizes core/audio.
+$c4_aud_kses_html   = wp_kses_post( $c4_aud_single_html );
+$c4_aud_kses_blocks = parse_blocks( $c4_aud_kses_html );
+assert_true( 1 === count( $c4_aud_kses_blocks ) && 'core/audio' === $c4_aud_kses_blocks[0]['blockName'], '#58 R6.5 — wp_kses_post() round-trip preserves the core/audio block.' );
+assert_true( false !== strpos( $c4_aud_kses_html, 'wp-block-audio' ), '#58 R6.5 — wp_kses_post() preserves the wp-block-audio class.' );
 
 echo "All pure helper tests passed.\n";
