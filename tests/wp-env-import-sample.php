@@ -233,7 +233,7 @@ if ( $using_default_zip ) {
 	day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
 }
 day_one_importer_wp_env_assert( $media > 0, 'Imported sample media attachments.' );
-day_one_importer_wp_env_assert( '6' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 6 for richText scaffold (issue #53).' );
+day_one_importer_wp_env_assert( '7' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 7 for video embeds (issue #57).' );
 
 $imported_post_candidates = get_posts(
 	array(
