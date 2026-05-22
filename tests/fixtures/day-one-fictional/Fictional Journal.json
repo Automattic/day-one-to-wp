@@ -276,6 +276,263 @@
       "creationDeviceType": "Fictional Device",
       "creationDeviceModel": "Sample Simulator",
       "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0009",
+      "creationDate": "2031-05-02T09:00:00Z",
+      "modifiedDate": "2031-05-02T09:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": { "line": { "header": 1 } }, "text": "Heading level one" },
+          { "attributes": { "line": { "header": 2 } }, "text": "Heading level two first" },
+          { "attributes": { "line": { "header": 2 } }, "text": "Heading level two second" },
+          { "attributes": { "line": { "header": 3 } }, "text": "Heading level three" },
+          { "attributes": { "line": { "header": 4 } }, "text": "Heading level four" },
+          { "attributes": { "line": { "header": 5 } }, "text": "Heading level five" },
+          { "attributes": { "line": { "header": 6 } }, "text": "Heading level six" },
+          { "attributes": { "line": { "header": 2 } }, "text": "line one\nline two" },
+          { "attributes": { "line": { "header": 0 } }, "text": "Header zero falls through to paragraph." }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "headings"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0010",
+      "creationDate": "2031-05-02T10:00:00Z",
+      "modifiedDate": "2031-05-02T10:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": { "line": { "listStyle": "bulleted", "indentLevel": 1 } }, "text": "Outer bullet alpha" },
+          { "attributes": { "line": { "listStyle": "bulleted", "indentLevel": 2 } }, "text": "Nested bullet beta" },
+          { "attributes": { "line": { "listStyle": "bulleted", "indentLevel": 1 } }, "text": "Outer bullet gamma" }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "lists-bulleted"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0011",
+      "creationDate": "2031-05-02T11:00:00Z",
+      "modifiedDate": "2031-05-02T11:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": { "line": { "listStyle": "numbered", "indentLevel": 1, "listIndex": 5 } }, "text": "Numbered start five" },
+          { "attributes": { "line": { "listStyle": "numbered", "indentLevel": 1, "listIndex": 6 } }, "text": "Numbered continues six" },
+          { "attributes": { "line": { "listStyle": "numbered", "indentLevel": 2, "listIndex": 1 } }, "text": "Nested numbered one" },
+          { "attributes": { "line": { "listStyle": "numbered", "indentLevel": 1, "listIndex": "7" } }, "text": "Numeric-string seven" }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "lists-numbered"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0012",
+      "creationDate": "2031-05-02T12:00:00Z",
+      "modifiedDate": "2031-05-02T12:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": { "line": { "listStyle": "numbered", "indentLevel": 1, "listIndex": 1 } }, "text": "Numbered start one" },
+          { "attributes": { "line": { "listStyle": "numbered", "indentLevel": 1, "listIndex": 2 } }, "text": "Numbered continues two" }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "lists-numbered-default"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0013",
+      "creationDate": "2031-05-02T13:00:00Z",
+      "modifiedDate": "2031-05-02T13:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": { "line": { "listStyle": "checkbox", "indentLevel": 1, "checked": true } }, "text": "Checked box alpha" },
+          { "attributes": { "line": { "listStyle": "checkbox", "indentLevel": 1, "checked": false } }, "text": "Unchecked box beta" },
+          { "attributes": { "line": { "listStyle": "checkbox", "indentLevel": 1 } }, "text": "Absent-checked box gamma" }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "lists-checkbox"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0014",
+      "creationDate": "2031-05-02T14:00:00Z",
+      "modifiedDate": "2031-05-02T14:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": { "line": { "codeBlock": true } }, "text": "a\n" },
+          { "attributes": { "line": { "codeBlock": true } }, "text": "b\n" },
+          { "attributes": { "line": { "codeBlock": true }, "linkURL": "javascript:x", "bold": true, "highlightedColor": "0xZZZZZZ" }, "text": "c\n" }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "code-block"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0015",
+      "creationDate": "2031-05-02T15:00:00Z",
+      "modifiedDate": "2031-05-02T15:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": { "line": { "quote": true, "indentLevel": 1 } }, "text": "Imaginary quote first paragraph." },
+          { "attributes": { "line": { "quote": true, "indentLevel": 2 }, "bold": true }, "text": "Imaginary quote second paragraph." }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "quote"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0016",
+      "creationDate": "2031-05-02T16:00:00Z",
+      "modifiedDate": "2031-05-02T16:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": {}, "text": "Lead paragraph for the mixed-line-types fixture." },
+          { "attributes": { "line": { "header": 1 } }, "text": "Mixed sample heading" },
+          { "attributes": { "line": { "listStyle": "bulleted", "indentLevel": 1 } }, "text": "Bulleted item alpha" },
+          { "attributes": { "line": { "listStyle": "bulleted", "indentLevel": 1 } }, "text": "Bulleted item beta" },
+          { "attributes": { "line": { "listStyle": "numbered", "indentLevel": 1, "listIndex": 1 } }, "text": "Numbered item alpha" },
+          { "attributes": { "line": { "listStyle": "numbered", "indentLevel": 1, "listIndex": 2 } }, "text": "Numbered item beta" },
+          { "attributes": { "line": { "codeBlock": true } }, "text": "first code\n" },
+          { "attributes": { "line": { "codeBlock": true } }, "text": "second code\n" },
+          { "attributes": { "line": { "codeBlock": true } }, "text": "third code\n" },
+          { "attributes": { "line": { "quote": true, "indentLevel": 1 } }, "text": "Quoted first." },
+          { "attributes": { "line": { "quote": true, "indentLevel": 1 } }, "text": "Quoted second." },
+          { "attributes": {}, "text": "Trailing paragraph after the mixed run." }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "mixed"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0017",
+      "creationDate": "2031-05-02T17:00:00Z",
+      "modifiedDate": "2031-05-02T17:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": { "line": { "listStyle": "bulleted", "indentLevel": 1 } }, "text": "Bullet before the drop" },
+          { "attributes": { "line": { "listStyle": "bulleted", "indentLevel": 1 } }, "text": "   " },
+          { "attributes": { "line": { "listStyle": "bulleted", "indentLevel": 1 } }, "text": "Bullet after the drop" }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "transparent-drop"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
     }
   ]
 }
