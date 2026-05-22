@@ -197,6 +197,85 @@
           "height": 2
         }
       ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0008",
+      "creationDate": "2031-05-01T12:00:00Z",
+      "modifiedDate": "2031-05-01T12:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": { "bold": true },
+            "text": "Bold sample run."
+          },
+          {
+            "attributes": { "italic": true },
+            "text": "Italic sample run."
+          },
+          {
+            "attributes": { "strikethrough": true },
+            "text": "Strikethrough sample run."
+          },
+          {
+            "attributes": { "inlineCode": true },
+            "text": "Inline code sample."
+          },
+          {
+            "attributes": { "linkURL": "https://example.com/fictional-link" },
+            "text": "Linked sample run."
+          },
+          {
+            "attributes": { "autolink": true, "linkURL": "https://example.com/auto" },
+            "text": "Autolink sample run."
+          },
+          {
+            "attributes": { "highlightedColor": "0xFFEE99" },
+            "text": "Highlighted sample run."
+          },
+          {
+            "attributes": {
+              "bold": true,
+              "italic": true,
+              "strikethrough": true,
+              "inlineCode": true,
+              "highlightedColor": "0x000FFF",
+              "linkURL": "https://example.com/x"
+            },
+            "text": "hello"
+          },
+          {
+            "attributes": { "linkURL": "javascript:alert(1)" },
+            "text": "Bad link sample run."
+          },
+          {
+            "attributes": { "highlightedColor": "0xZZZZZZ" },
+            "text": "Bad color sample run."
+          },
+          {
+            "attributes": { "autolink": true },
+            "text": "Autolink without URL sample."
+          },
+          {
+            "attributes": {},
+            "text": "Plain unstyled sample run for the legacy-delegation baseline."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "scaffold",
+        "richtext-inline-formatting"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
     }
   ]
 }
