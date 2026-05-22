@@ -985,7 +985,30 @@ class Day_One_Importer_Parser {
 			}
 		}
 
-		return array(
+		$rich_text = null;
+		if ( isset( $raw_entry['richText'] ) ) {
+			$raw_rich = $raw_entry['richText'];
+			if ( is_array( $raw_rich ) ) {
+				$rich_text = $raw_rich;
+			} elseif ( is_string( $raw_rich ) ) {
+				if ( '' !== trim( $raw_rich ) ) {
+					$decoded = json_decode( $raw_rich, true );
+					if ( is_array( $decoded ) ) {
+						$rich_text = $decoded;
+					} else {
+						$results->add_warning(
+							sprintf(
+								/* translators: %s: Day One entry UUID. */
+								__( 'Could not decode richText for UUID %s; falling back to legacy text.', 'day-one-importer' ),
+								$uuid
+							)
+						);
+					}
+				}
+			}
+		}
+
+		$normalized = array(
 			'uuid'                => $uuid,
 			'creationDate'        => isset( $raw_entry['creationDate'] ) && is_scalar( $raw_entry['creationDate'] ) ? (string) $raw_entry['creationDate'] : '',
 			'modifiedDate'        => isset( $raw_entry['modifiedDate'] ) && is_scalar( $raw_entry['modifiedDate'] ) ? (string) $raw_entry['modifiedDate'] : '',
@@ -1000,6 +1023,12 @@ class Day_One_Importer_Parser {
 			'creationDeviceModel' => isset( $raw_entry['creationDeviceModel'] ) && is_scalar( $raw_entry['creationDeviceModel'] ) ? day_one_importer_sanitize_text( $raw_entry['creationDeviceModel'] ) : '',
 			'source_file'         => basename( $source_file ),
 		);
+
+		if ( is_array( $rich_text ) ) {
+			$normalized['richText'] = $rich_text;
+		}
+
+		return $normalized;
 	}
 
 	/**
