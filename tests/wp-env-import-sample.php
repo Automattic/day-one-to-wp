@@ -288,12 +288,16 @@ foreach ( $imported_posts as $post_id ) {
 
 	$attachments    = get_attached_media( 'image', $post_id );
 	$attachment_ids = array_map( 'intval', wp_list_pluck( $attachments, 'ID' ) );
-	if ( 1 === count( $attachment_ids ) ) {
+	// #56 R14 — richText entries with photos but no inline embeds intentionally
+	// produce zero image/gallery blocks (photos stay attached only). Detect this
+	// case and skip the body-shape assertion below.
+	$is_r14_case = ( empty( $image_blocks ) && empty( $gallery_blocks ) );
+	if ( 1 === count( $attachment_ids ) && ! $is_r14_case ) {
 		day_one_importer_wp_env_assert( 1 === count( $image_blocks ), 'Post with one attachment contains exactly one Image block.' );
 		$image_id = isset( $image_blocks[0]['attrs']['id'] ) ? (int) $image_blocks[0]['attrs']['id'] : 0;
 		day_one_importer_wp_env_assert( in_array( $image_id, $attachment_ids, true ), 'Single Image block ID matches the attached media ID.' );
 		day_one_importer_wp_env_assert( false !== strpos( (string) $image_blocks[0]['innerHTML'], 'wp-image-' . $image_id ), 'Single Image block inner HTML contains matching wp-image class.' );
-	} elseif ( count( $attachment_ids ) >= 2 ) {
+	} elseif ( count( $attachment_ids ) >= 2 && ! $is_r14_case ) {
 		day_one_importer_wp_env_assert( ! empty( $gallery_blocks ), 'Post with multiple attachments contains a Gallery block.' );
 
 		$content_attachment_positions = array();
@@ -691,6 +695,154 @@ if ( $using_default_zip ) {
 		day_one_importer_wp_env_collect_blocks_by_name( $entry_0017_blocks, 'core/list-item', $entry_0017_list_items );
 		day_one_importer_wp_env_assert( 1 === count( $entry_0017_lists ), 'Entry 0017 — empty-text item is transparent: same-kind run stays as ONE core/list.' );
 		day_one_importer_wp_env_assert( 2 === count( $entry_0017_list_items ), 'Entry 0017 — empty-text item is dropped: only two core/list-item blocks.' );
+	}
+
+	// --- #56 inline positioning + placeholder regex assertions ---
+
+	// #56 AC11 — byte-parity range. Entries 0001-0006 + 0008-0017 must match
+	// pre-#56 baselines captured by tools/capture-baseline.php. The baseline and
+	// the live import allocate fresh post/attachment IDs and per-session nonces,
+	// so we normalize the volatile substrings (attachment IDs in three render
+	// shapes + the private-media nonce) before comparing. The assertion focuses
+	// on the rendered block structure, not on ID/nonce churn.
+	$day_one_56_normalize = static function ( $html ) {
+		$html = preg_replace( '/(&(?:#038;)?nonce=)[A-Za-z0-9]+/', '$1NONCE', (string) $html );
+		$html = preg_replace( '/("id":)\d+/', '$1ID', $html );
+		$html = preg_replace( '/(attachment_id=)\d+/', '$1ID', $html );
+		$html = preg_replace( '/(wp-image-)\d+/', '$1ID', $html );
+		return $html;
+	};
+	$day_one_56_expected_dir = dirname( __DIR__ ) . '/tests/fixtures/expected';
+	$day_one_56_parity_uuids = array(
+		'FICTIONAL-SAMPLE-ENTRY-0001',
+		'FICTIONAL-SAMPLE-ENTRY-0002',
+		'FICTIONAL-SAMPLE-ENTRY-0003',
+		'FICTIONAL-SAMPLE-ENTRY-0004',
+		'FICTIONAL-SAMPLE-ENTRY-0005',
+		'FICTIONAL-SAMPLE-ENTRY-0006',
+		'FICTIONAL-SAMPLE-ENTRY-0008',
+		'FICTIONAL-SAMPLE-ENTRY-0009',
+		'FICTIONAL-SAMPLE-ENTRY-0010',
+		'FICTIONAL-SAMPLE-ENTRY-0011',
+		'FICTIONAL-SAMPLE-ENTRY-0012',
+		'FICTIONAL-SAMPLE-ENTRY-0013',
+		'FICTIONAL-SAMPLE-ENTRY-0014',
+		'FICTIONAL-SAMPLE-ENTRY-0015',
+		'FICTIONAL-SAMPLE-ENTRY-0016',
+		'FICTIONAL-SAMPLE-ENTRY-0017',
+	);
+	foreach ( $day_one_56_parity_uuids as $uuid ) {
+		$expected_path = $day_one_56_expected_dir . '/post-' . $uuid . '.html';
+		if ( ! is_readable( $expected_path ) ) {
+			fwrite( STDERR, "FAIL: Missing #56 baseline: {$expected_path}\n" );
+			exit( 1 );
+		}
+		$expected      = (string) file_get_contents( $expected_path );
+		$parity_pid    = isset( $day_one_importer_uuid_to_post_id[ $uuid ] ) ? (int) $day_one_importer_uuid_to_post_id[ $uuid ] : 0;
+		day_one_importer_wp_env_assert( $parity_pid > 0, "#56 AC11 — byte-parity entry imported: {$uuid}" );
+		$actual = (string) get_post_field( 'post_content', $parity_pid );
+		day_one_importer_wp_env_assert(
+			$day_one_56_normalize( $expected ) === $day_one_56_normalize( $actual ),
+			"#56 AC11 — post_content byte-identical to baseline (ID/nonce-normalized) for {$uuid}"
+		);
+	}
+
+	// #56 AC11 entry 0018 — inline image between two paragraphs; no trailing gallery.
+	$entry_0018_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0018'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0018'] : 0;
+	day_one_importer_wp_env_assert( $entry_0018_post_id > 0, '#56 AC11 — Fixture entry 0018 (inline embedded photo) was imported.' );
+	if ( $entry_0018_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0018_content    = (string) get_post_field( 'post_content', $entry_0018_post_id );
+		$entry_0018_blocks     = parse_blocks( $entry_0018_content );
+		$entry_0018_paragraphs = array();
+		$entry_0018_images     = array();
+		$entry_0018_galleries  = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0018_blocks, 'core/paragraph', $entry_0018_paragraphs );
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0018_blocks, 'core/image', $entry_0018_images );
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0018_blocks, 'core/gallery', $entry_0018_galleries );
+		day_one_importer_wp_env_assert( 2 === count( $entry_0018_paragraphs ), '#56 AC11 — entry 0018 has exactly two core/paragraph blocks.' );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0018_images ) && 0 === count( $entry_0018_galleries ), '#56 AC11 — entry 0018 has exactly one core/image block and zero galleries (single resolved embed).' );
+
+		// Assert block order: paragraph, image, paragraph at the top level.
+		$entry_0018_top_names = array();
+		foreach ( $entry_0018_blocks as $blk ) {
+			if ( ! empty( $blk['blockName'] ) ) {
+				$entry_0018_top_names[] = $blk['blockName'];
+			}
+		}
+		day_one_importer_wp_env_assert(
+			$entry_0018_top_names === array( 'core/paragraph', 'core/image', 'core/paragraph' ),
+			'#56 AC11 — entry 0018 top-level block order is paragraph, image, paragraph (inline position).'
+		);
+
+		// Assert the LAST top-level block is the trailing paragraph (no append-at-end).
+		$last_block_name = '';
+		for ( $i = count( $entry_0018_blocks ) - 1; $i >= 0; --$i ) {
+			if ( ! empty( $entry_0018_blocks[ $i ]['blockName'] ) ) {
+				$last_block_name = (string) $entry_0018_blocks[ $i ]['blockName'];
+				break;
+			}
+		}
+		day_one_importer_wp_env_assert( 'core/paragraph' === $last_block_name, '#56 AC11 — entry 0018 last block is a paragraph (no trailing append).' );
+
+		// The image's attachment ID must reference an actual attachment parented to entry 0018.
+		// (Per-post md5 dedupe in import_or_reuse_photo() creates one attachment per post for
+		// shared on-disk files; the cross-post identity asserted here is "attachment exists
+		// and is parented to this post", not "same attachment ID as entry 0007".)
+		$entry_0018_image_id = isset( $entry_0018_images[0]['attrs']['id'] ) ? (int) $entry_0018_images[0]['attrs']['id'] : 0;
+		day_one_importer_wp_env_assert( $entry_0018_image_id > 0, '#56 AC11 — entry 0018 image block references a positive attachment ID.' );
+		$entry_0018_attachments    = get_attached_media( 'image', $entry_0018_post_id );
+		$entry_0018_attachment_ids = array_map( 'intval', wp_list_pluck( $entry_0018_attachments, 'ID' ) );
+		day_one_importer_wp_env_assert( in_array( $entry_0018_image_id, $entry_0018_attachment_ids, true ), '#56 AC11 — entry 0018 image attachment is parented to the entry 0018 post.' );
+	}
+
+	// #56 AC11a — entry 0007 R14 case: paragraph only, no image/gallery, one R14 warning.
+	if ( $entry_0007_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0007_content    = (string) get_post_field( 'post_content', $entry_0007_post_id );
+		$entry_0007_blocks     = parse_blocks( $entry_0007_content );
+		$entry_0007_paragraphs = array();
+		$entry_0007_images     = array();
+		$entry_0007_galleries  = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0007_blocks, 'core/paragraph', $entry_0007_paragraphs );
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0007_blocks, 'core/image', $entry_0007_images );
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0007_blocks, 'core/gallery', $entry_0007_galleries );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0007_paragraphs ), '#56 AC11a — entry 0007 has exactly one core/paragraph block.' );
+		day_one_importer_wp_env_assert( 0 === count( $entry_0007_images ), '#56 AC11a — entry 0007 has zero core/image blocks (R14 case).' );
+		day_one_importer_wp_env_assert( 0 === count( $entry_0007_galleries ), '#56 AC11a — entry 0007 has zero core/gallery blocks (R14 case).' );
+
+		$first_warnings = $first->get_warnings();
+		$r14_substr     = 'imported photos but no inline embed';
+		$r14_count      = 0;
+		foreach ( $first_warnings as $warning ) {
+			if ( false !== strpos( (string) $warning, $r14_substr ) ) {
+				++$r14_count;
+			}
+		}
+		day_one_importer_wp_env_assert( 1 === $r14_count, '#56 AC11a — exactly one R14 warning recorded during import for entry 0007.' );
+	}
+
+	// #56 AC12 — entry 0019: legacy placeholders strip from both post_content and post_title.
+	$entry_0019_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0019'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0019'] : 0;
+	day_one_importer_wp_env_assert( $entry_0019_post_id > 0, '#56 AC12 — Fixture entry 0019 (legacy placeholders) was imported.' );
+	if ( $entry_0019_post_id > 0 ) {
+		$entry_0019_content = (string) get_post_field( 'post_content', $entry_0019_post_id );
+		$entry_0019_title   = (string) get_post_field( 'post_title', $entry_0019_post_id );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0019_content, 'Before placeholders.' ), '#56 AC12 — entry 0019 retains the leading sentinel paragraph.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0019_content, 'After placeholders.' ), '#56 AC12 — entry 0019 retains the trailing sentinel paragraph.' );
+		$ac12_forbidden = array(
+			'dayone-moment://',
+			'dayone-moment:/photo/',
+			'dayone-moment:/video/',
+			'dayone-moment:/audio/',
+			'dayone-moment:/pdfAttachment/',
+			'dayone-photo://',
+			'dayone-video://',
+			'dayone-audio://',
+			'dayone-pdf://',
+		);
+		foreach ( $ac12_forbidden as $needle ) {
+			day_one_importer_wp_env_assert( false === strpos( $entry_0019_content, $needle ), "#56 AC12 — entry 0019 post_content strips placeholder substring: {$needle}" );
+			day_one_importer_wp_env_assert( false === strpos( $entry_0019_title, $needle ), "#56 AC12 — entry 0019 post_title strips placeholder substring: {$needle}" );
+		}
 	}
 }
 
