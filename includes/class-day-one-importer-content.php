@@ -135,94 +135,540 @@ class Day_One_Importer_Content {
 			return '';
 		}
 
+		// Single forward pass over contents[]. Items that fail the empty-text drop
+		// (R1.3) are transparent — they do NOT close the open run (R2.1). Runs are
+		// flushed only when the next emitting item resolves to a different kind.
+		$run    = null; // Closed run: kind=>string, items=>array.
 		$output = '';
 		foreach ( $contents as $item ) {
 			if ( ! is_array( $item ) ) {
 				continue;
 			}
-
-			$text = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
-			if ( '' === trim( $text ) ) {
+			if ( self::is_line_item_dropped( $item ) ) {
 				continue;
 			}
 
-			if ( "\n" === substr( $text, -1 ) ) {
-				$text = substr( $text, 0, -1 );
+			$kind = self::classify_line_item( $item );
+			if ( null !== $run && $run['kind'] === $kind ) {
+				$run['items'][] = $item;
+				continue;
 			}
+			if ( null !== $run ) {
+				$output .= self::flush_run( $run, $results );
+			}
+			$run = array(
+				'kind'  => $kind,
+				'items' => array( $item ),
+			);
+		}
+		if ( null !== $run ) {
+			$output .= self::flush_run( $run, $results );
+		}
 
+		return trim( $output );
+	}
+
+	/**
+	 * Determine whether a richText content item should be dropped (R1.3).
+	 *
+	 * An item with no scalar `text` or trim-empty `text` is dropped regardless of
+	 * its attributes. Dropped items are transparent to run-collapsing (R2.1).
+	 *
+	 * @param array<string,mixed> $item richText content item.
+	 * @return bool
+	 */
+	private static function is_line_item_dropped( $item ) {
+		$text = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
+		return '' === trim( $text );
+	}
+
+	/**
+	 * Classify a richText content item into a run kind (R1, R2).
+	 *
+	 * Recognized kinds: paragraph, heading-1..heading-6, list-bulleted,
+	 * list-numbered, list-checkbox, code, quote. Precedence when multiple
+	 * line keys are present on one item (R1.4): codeBlock > quote > header >
+	 * listStyle. Unknown listStyle / out-of-range header fall through to
+	 * paragraph (R3.3, R4.7).
+	 *
+	 * @param array<string,mixed> $item richText content item.
+	 * @return string
+	 */
+	private static function classify_line_item( $item ) {
+		$attributes = isset( $item['attributes'] ) && is_array( $item['attributes'] ) ? $item['attributes'] : array();
+		$line       = isset( $attributes['line'] ) && is_array( $attributes['line'] ) ? $attributes['line'] : array();
+
+		if ( isset( $line['codeBlock'] ) && true === $line['codeBlock'] ) {
+			return 'code';
+		}
+		if ( isset( $line['quote'] ) && true === $line['quote'] ) {
+			return 'quote';
+		}
+		if ( isset( $line['header'] ) && is_int( $line['header'] ) && $line['header'] >= 1 && $line['header'] <= 6 ) {
+			return 'heading-' . (int) $line['header'];
+		}
+		if ( isset( $line['listStyle'] ) && is_string( $line['listStyle'] ) ) {
+			$style = $line['listStyle'];
+			if ( 'bulleted' === $style || 'numbered' === $style || 'checkbox' === $style ) {
+				return 'list-' . $style;
+			}
+		}
+
+		return 'paragraph';
+	}
+
+	/**
+	 * Dispatch a closed run to the matching block emitter (R2.8).
+	 *
+	 * @param array{kind:string,items:array} $run     Closed run.
+	 * @param Day_One_Importer_Results|null  $results Optional warning sink.
+	 * @return string
+	 */
+	private static function flush_run( $run, ?Day_One_Importer_Results $results ) {
+		$kind  = $run['kind'];
+		$items = $run['items'];
+
+		if ( 'paragraph' === $kind ) {
+			return self::emit_paragraph_group( $items, $results );
+		}
+		if ( 'code' === $kind ) {
+			return self::emit_code_group( $items, $results );
+		}
+		if ( 'quote' === $kind ) {
+			return self::emit_quote_group( $items, $results );
+		}
+		if ( 0 === strpos( $kind, 'heading-' ) ) {
+			$level = (int) substr( $kind, strlen( 'heading-' ) );
+			return self::emit_heading_group( $items, $level, $results );
+		}
+		if ( 0 === strpos( $kind, 'list-' ) ) {
+			$list_style = substr( $kind, strlen( 'list-' ) );
+			return self::emit_list_group( $items, $list_style, $results );
+		}
+
+		return self::emit_paragraph_group( $items, $results );
+	}
+
+	/**
+	 * Emit one paragraph block per item (legacy #53/#54 behavior preserved).
+	 *
+	 * Paragraph runs are NOT merged into a single block — each item still
+	 * produces one block, matching the pre-#55 byte output (R7.2, AC12, AC14).
+	 *
+	 * @param array<int,array<string,mixed>> $items   Paragraph items.
+	 * @param Day_One_Importer_Results|null  $results Optional warning sink.
+	 * @return string
+	 */
+	private static function emit_paragraph_group( $items, ?Day_One_Importer_Results $results ) {
+		$output = '';
+		foreach ( $items as $item ) {
 			$attributes = isset( $item['attributes'] ) && is_array( $item['attributes'] ) ? $item['attributes'] : array();
+			$inline     = self::collect_inline_attributes( $attributes, $results );
 
-			// Strict boolean attributes (R12 — only literal true triggers).
-			$is_bold          = isset( $attributes['bold'] ) && true === $attributes['bold'];
-			$is_italic        = isset( $attributes['italic'] ) && true === $attributes['italic'];
-			$is_strikethrough = isset( $attributes['strikethrough'] ) && true === $attributes['strikethrough'];
-			$is_code          = isset( $attributes['inlineCode'] ) && true === $attributes['inlineCode'];
-
-			// linkURL validation (R5 / R7). autolink is observed identically when present (R6).
-			$valid_href = '';
-			if ( isset( $attributes['linkURL'] ) ) {
-				$link_raw = $attributes['linkURL'];
-				if ( is_string( $link_raw ) && '' !== $link_raw && preg_match( '#^https?://#i', $link_raw ) ) {
-					$href_candidate = esc_url( $link_raw );
-					if ( '' !== $href_candidate ) {
-						$valid_href = $href_candidate;
-					}
-				}
-				if ( '' === $valid_href && null !== $results ) {
-					$results->add_warning( __( 'Skipped non-http(s) link inside richText payload.', 'day-one-importer' ) );
-				}
-			}
-
-			// highlightedColor validation (R8 / R9). Warn on every present-but-invalid value;
-			// silent only when the key is absent.
-			$highlight_color_hex = '';
-			if ( array_key_exists( 'highlightedColor', $attributes ) ) {
-				$color_raw = $attributes['highlightedColor'];
-				if ( is_string( $color_raw ) && '' !== $color_raw && 1 === preg_match( '/^0x([0-9A-Fa-f]{6})$/', $color_raw, $color_match ) ) {
-					$highlight_color_hex = '#' . $color_match[1];
-				} elseif ( null !== $results ) {
-					$results->add_warning( __( 'Skipped invalid highlight color inside richText payload.', 'day-one-importer' ) );
-				}
-			}
-
-			$has_supported = $is_bold || $is_italic || $is_strikethrough || $is_code || '' !== $valid_href || '' !== $highlight_color_hex;
-
-			if ( ! $has_supported ) {
+			if ( ! $inline['has_supported'] ) {
 				// R13 delegation — byte-for-byte legacy path.
+				$text = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
+				if ( "\n" === substr( $text, -1 ) ) {
+					$text = substr( $text, 0, -1 );
+				}
 				$output .= self::convert_text_to_content( $text );
 				continue;
 			}
 
-			// R10 option (b) — own paragraph serialization for runs with inline attributes.
-			$lines        = explode( "\n", $text );
-			$escaped_line = array_map( array( 'Day_One_Importer_Content', 'escape_imported_text_fragment' ), $lines );
-			$wrapped      = implode( "<br />\n", $escaped_line );
-
-			// R11 wrapper order — innermost to outermost. Plain `if` chain (not a generic loop)
-			// so the order pin is visually obvious in the diff.
-			if ( $is_code ) {
-				$wrapped = '<code>' . $wrapped . '</code>';
-			}
-			if ( $is_strikethrough ) {
-				$wrapped = '<s>' . $wrapped . '</s>';
-			}
-			if ( $is_italic ) {
-				$wrapped = '<em>' . $wrapped . '</em>';
-			}
-			if ( $is_bold ) {
-				$wrapped = '<strong>' . $wrapped . '</strong>';
-			}
-			if ( '' !== $highlight_color_hex ) {
-				$wrapped = '<mark style="background-color:' . $highlight_color_hex . '">' . $wrapped . '</mark>';
-			}
-			if ( '' !== $valid_href ) {
-				$wrapped = '<a href="' . $valid_href . '">' . $wrapped . '</a>';
-			}
-
+			$wrapped = self::compute_inline_wrapped_text( $item, $results );
 			$output .= self::serialize_block( 'paragraph', array(), '<p>' . $wrapped . '</p>' );
 		}
 
-		return trim( $output );
+		return $output;
+	}
+
+	/**
+	 * Collect and validate inline attributes for a richText item (#54 R5/R7/R8/R9/R12).
+	 *
+	 * Emits warnings via $results when a present-but-invalid value is observed.
+	 * Returns the strict-bool flags, the validated href, and the validated highlight
+	 * color hex so callers can decide between the owning path and the legacy
+	 * delegation (paragraph items only — heading/list/quote items always own).
+	 *
+	 * @param array<string,mixed>           $attributes Item attributes.
+	 * @param Day_One_Importer_Results|null $results    Optional warning sink.
+	 * @return array{is_bold:bool,is_italic:bool,is_strikethrough:bool,is_code:bool,valid_href:string,highlight_color_hex:string,has_supported:bool}
+	 */
+	private static function collect_inline_attributes( $attributes, ?Day_One_Importer_Results $results ) {
+		// Strict boolean attributes (R12 — only literal true triggers).
+		$is_bold          = isset( $attributes['bold'] ) && true === $attributes['bold'];
+		$is_italic        = isset( $attributes['italic'] ) && true === $attributes['italic'];
+		$is_strikethrough = isset( $attributes['strikethrough'] ) && true === $attributes['strikethrough'];
+		$is_code          = isset( $attributes['inlineCode'] ) && true === $attributes['inlineCode'];
+
+		// linkURL validation (R5 / R7). autolink is observed identically when present (R6).
+		$valid_href = '';
+		if ( isset( $attributes['linkURL'] ) ) {
+			$link_raw = $attributes['linkURL'];
+			if ( is_string( $link_raw ) && '' !== $link_raw && preg_match( '#^https?://#i', $link_raw ) ) {
+				$href_candidate = esc_url( $link_raw );
+				if ( '' !== $href_candidate ) {
+					$valid_href = $href_candidate;
+				}
+			}
+			if ( '' === $valid_href && null !== $results ) {
+				$results->add_warning( __( 'Skipped non-http(s) link inside richText payload.', 'day-one-importer' ) );
+			}
+		}
+
+		// highlightedColor validation (R8 / R9). Warn on every present-but-invalid value;
+		// silent only when the key is absent.
+		$highlight_color_hex = '';
+		if ( array_key_exists( 'highlightedColor', $attributes ) ) {
+			$color_raw = $attributes['highlightedColor'];
+			if ( is_string( $color_raw ) && '' !== $color_raw && 1 === preg_match( '/^0x([0-9A-Fa-f]{6})$/', $color_raw, $color_match ) ) {
+				$highlight_color_hex = '#' . $color_match[1];
+			} elseif ( null !== $results ) {
+				$results->add_warning( __( 'Skipped invalid highlight color inside richText payload.', 'day-one-importer' ) );
+			}
+		}
+
+		$has_supported = $is_bold || $is_italic || $is_strikethrough || $is_code || '' !== $valid_href || '' !== $highlight_color_hex;
+
+		return array(
+			'is_bold'             => $is_bold,
+			'is_italic'           => $is_italic,
+			'is_strikethrough'    => $is_strikethrough,
+			'is_code'             => $is_code,
+			'valid_href'          => $valid_href,
+			'highlight_color_hex' => $highlight_color_hex,
+			'has_supported'       => $has_supported,
+		);
+	}
+
+	/**
+	 * Compute the inline-wrapped inner HTML fragment for a richText item.
+	 *
+	 * Returns the inner HTML fragment only — never block comments, never
+	 * `<!-- wp:… -->` wrappers. Callers feed this into the inner of
+	 * `<p>`, `<h{N}>`, `<li>`, or quote `<p>`. The text is escaped first
+	 * via `escape_imported_text_fragment`, intra-text `\n` is rendered as
+	 * `<br />\n`, then the #54 R11 wrapper order is applied:
+	 *
+	 *   1. `<code>`     (inlineCode)
+	 *   2. `<s>`        (strikethrough)
+	 *   3. `<em>`       (italic)
+	 *   4. `<strong>`   (bold)
+	 *   5. `<mark style="background-color:#RRGGBB">` (highlightedColor)
+	 *   6. `<a href="…">` (linkURL / autolink)
+	 *
+	 * This helper is shared by paragraph (#54 owning path), heading, list-item,
+	 * and quote-paragraph emitters. Code blocks deliberately do NOT call this
+	 * helper (R5.3) — they escape text directly with no inline wrappers.
+	 *
+	 * @param array<string,mixed>           $item    richText content item.
+	 * @param Day_One_Importer_Results|null $results Optional warning sink.
+	 * @return string
+	 */
+	private static function compute_inline_wrapped_text( $item, ?Day_One_Importer_Results $results ) {
+		$text = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
+		if ( "\n" === substr( $text, -1 ) ) {
+			$text = substr( $text, 0, -1 );
+		}
+
+		$attributes = isset( $item['attributes'] ) && is_array( $item['attributes'] ) ? $item['attributes'] : array();
+		$inline     = self::collect_inline_attributes( $attributes, $results );
+
+		$lines        = explode( "\n", $text );
+		$escaped_line = array_map( array( 'Day_One_Importer_Content', 'escape_imported_text_fragment' ), $lines );
+		$wrapped      = implode( "<br />\n", $escaped_line );
+
+		// R11 wrapper order — innermost to outermost. Plain `if` chain (not a generic loop)
+		// so the order pin is visually obvious in the diff.
+		if ( $inline['is_code'] ) {
+			$wrapped = '<code>' . $wrapped . '</code>';
+		}
+		if ( $inline['is_strikethrough'] ) {
+			$wrapped = '<s>' . $wrapped . '</s>';
+		}
+		if ( $inline['is_italic'] ) {
+			$wrapped = '<em>' . $wrapped . '</em>';
+		}
+		if ( $inline['is_bold'] ) {
+			$wrapped = '<strong>' . $wrapped . '</strong>';
+		}
+		if ( '' !== $inline['highlight_color_hex'] ) {
+			$wrapped = '<mark style="background-color:' . $inline['highlight_color_hex'] . '">' . $wrapped . '</mark>';
+		}
+		if ( '' !== $inline['valid_href'] ) {
+			$wrapped = '<a href="' . $inline['valid_href'] . '">' . $wrapped . '</a>';
+		}
+
+		return $wrapped;
+	}
+
+	/**
+	 * Emit a heading block per item (R3). Headings never collapse across items —
+	 * each item produces its own `core/heading` block (R2.3). Bypasses
+	 * `convert_text_to_content` entirely (R7.1) — markdown-sigil handling does
+	 * NOT apply inside heading inner text. Inline wrappers from #54 still apply
+	 * (R3.2). Multi-line items render intra-text `\n` as `<br />\n` (R3.4).
+	 *
+	 * @param array<int,array<string,mixed>> $items   Heading items (kind = heading-N).
+	 * @param int                            $level   Heading level (1..6).
+	 * @param Day_One_Importer_Results|null  $results Optional warning sink.
+	 * @return string
+	 */
+	private static function emit_heading_group( $items, $level, ?Day_One_Importer_Results $results ) {
+		$level  = (int) $level;
+		$attrs  = ( 2 === $level ) ? array() : array( 'level' => $level );
+		$output = '';
+		foreach ( $items as $item ) {
+			$inner   = self::compute_inline_wrapped_text( $item, $results );
+			$output .= self::serialize_block( 'heading', $attrs, '<h' . $level . '>' . $inner . '</h' . $level . '>' );
+		}
+
+		return $output;
+	}
+
+	/**
+	 * Emit one `core/list` block for a consecutive list run (R4). Bypasses
+	 * `convert_text_to_content` entirely (R7.1). Inline wrappers from #54
+	 * apply inside `<li>`. Nested `core/list` blocks are spliced INSIDE the
+	 * previous `<li>` (parent-child shape, R4.4). For checkbox lists each
+	 * `<li>` is prefixed with the Unicode ballot-box glyph (R4.6).
+	 *
+	 * @param array<int,array<string,mixed>> $items      List items (one consistent style).
+	 * @param string                         $list_style One of bulleted|numbered|checkbox.
+	 * @param Day_One_Importer_Results|null  $results    Optional warning sink.
+	 * @return string
+	 */
+	private static function emit_list_group( $items, $list_style, ?Day_One_Importer_Results $results ) {
+		if ( empty( $items ) ) {
+			return '';
+		}
+
+		// Stack frame: depth (1-based), block_attrs, outer_open, outer_close,
+		// html (accumulated <!-- wp:list-item --> markup at this depth).
+		$stack = array();
+
+		foreach ( $items as $item ) {
+			$depth       = self::extract_list_indent( $item );
+			$stack_count = count( $stack );
+
+			// Open levels as needed (R4.4 parent-child).
+			while ( $stack_count < $depth ) {
+				$is_nested = $stack_count > 0;
+				$stack[]   = self::open_list_frame( $list_style, $item, $is_nested );
+				++$stack_count;
+			}
+
+			// Close levels back up if depth shrank.
+			while ( $stack_count > $depth ) {
+				$closed = array_pop( $stack );
+				--$stack_count;
+				$nested                  = self::close_list_frame( $closed );
+				$top_i                   = $stack_count - 1;
+				$stack[ $top_i ]['html'] = self::splice_nested_into_last_list_item( $stack[ $top_i ]['html'], $nested );
+			}
+
+			$top_i                    = $stack_count - 1;
+			$stack[ $top_i ]['html'] .= self::render_list_item( $item, $list_style, $results );
+		}
+
+		// Flush remaining frames bottom-up, splicing each into its parent's last list-item.
+		$stack_count = count( $stack );
+		while ( $stack_count > 1 ) {
+			$closed = array_pop( $stack );
+			--$stack_count;
+			$nested                  = self::close_list_frame( $closed );
+			$top_i                   = $stack_count - 1;
+			$stack[ $top_i ]['html'] = self::splice_nested_into_last_list_item( $stack[ $top_i ]['html'], $nested );
+		}
+
+		return self::close_list_frame( array_pop( $stack ) );
+	}
+
+	/**
+	 * Extract a normalized 1-based indentLevel from a list item (R4.4 cast rule).
+	 *
+	 * @param array<string,mixed> $item richText content item.
+	 * @return int
+	 */
+	private static function extract_list_indent( $item ) {
+		$attributes = isset( $item['attributes'] ) && is_array( $item['attributes'] ) ? $item['attributes'] : array();
+		$line       = isset( $attributes['line'] ) && is_array( $attributes['line'] ) ? $attributes['line'] : array();
+		$raw        = isset( $line['indentLevel'] ) ? $line['indentLevel'] : 1;
+		$depth      = (int) $raw;
+		return $depth >= 1 ? $depth : 1;
+	}
+
+	/**
+	 * Open a new list frame for the stack (R4.1, R4.5).
+	 *
+	 * @param string              $list_style bulleted|numbered|checkbox.
+	 * @param array<string,mixed> $first      First item in this frame.
+	 * @param bool                $is_nested  True when opening a nested level (depth > 1).
+	 * @return array{block_attrs:array,outer_open:string,outer_close:string,html:string}
+	 */
+	private static function open_list_frame( $list_style, $first, $is_nested ) {
+		if ( 'bulleted' === $list_style ) {
+			return array(
+				'block_attrs' => array(),
+				'outer_open'  => '<ul>',
+				'outer_close' => '</ul>',
+				'html'        => '',
+			);
+		}
+
+		if ( 'numbered' === $list_style ) {
+			$attrs = array( 'ordered' => true );
+			if ( ! $is_nested ) {
+				$attributes = isset( $first['attributes'] ) && is_array( $first['attributes'] ) ? $first['attributes'] : array();
+				$line       = isset( $attributes['line'] ) && is_array( $attributes['line'] ) ? $attributes['line'] : array();
+				$raw        = isset( $line['listIndex'] ) ? $line['listIndex'] : null;
+				$candidate  = null;
+				if ( is_int( $raw ) ) {
+					$candidate = $raw;
+				} elseif ( is_string( $raw ) && '' !== $raw && ctype_digit( ltrim( $raw, '-' ) ) ) {
+					$candidate = (int) $raw;
+				}
+				if ( null !== $candidate && $candidate >= 2 ) {
+					$attrs['start'] = $candidate;
+				}
+			}
+			return array(
+				'block_attrs' => $attrs,
+				'outer_open'  => '<ol>',
+				'outer_close' => '</ol>',
+				'html'        => '',
+			);
+		}
+
+		// checkbox.
+		return array(
+			'block_attrs' => array( 'className' => 'task-list' ),
+			'outer_open'  => '<ul class="task-list">',
+			'outer_close' => '</ul>',
+			'html'        => '',
+		);
+	}
+
+	/**
+	 * Close a list frame: wrap accumulated list-item HTML inside outer ul/ol
+	 * and serialize as a `core/list` block (R4.1).
+	 *
+	 * @param array{block_attrs:array,outer_open:string,outer_close:string,html:string} $frame Closed frame.
+	 * @return string
+	 */
+	private static function close_list_frame( $frame ) {
+		$inner = $frame['outer_open'] . "\n" . $frame['html'] . $frame['outer_close'];
+		return self::serialize_block( 'list', $frame['block_attrs'], $inner );
+	}
+
+	/**
+	 * Render one list item as a serialized `core/list-item` block (R4.2, R4.6).
+	 *
+	 * For checkbox lists the inner HTML is prefixed with the Unicode ballot-box
+	 * glyph (`&#9745; ` checked / `&#9744; ` unchecked) before any inline wrappers
+	 * (R4.6 — glyph emitted as a numeric character reference, NOT routed through
+	 * the escaper).
+	 *
+	 * @param array<string,mixed>           $item       List item.
+	 * @param string                        $list_style bulleted|numbered|checkbox.
+	 * @param Day_One_Importer_Results|null $results    Optional warning sink.
+	 * @return string
+	 */
+	private static function render_list_item( $item, $list_style, ?Day_One_Importer_Results $results ) {
+		$inner = self::compute_inline_wrapped_text( $item, $results );
+		if ( 'checkbox' === $list_style ) {
+			$attributes = isset( $item['attributes'] ) && is_array( $item['attributes'] ) ? $item['attributes'] : array();
+			$line       = isset( $attributes['line'] ) && is_array( $attributes['line'] ) ? $attributes['line'] : array();
+			$checked    = isset( $line['checked'] ) && true === $line['checked'];
+			$glyph      = $checked ? '&#9745; ' : '&#9744; ';
+			$inner      = $glyph . $inner;
+		}
+
+		return self::serialize_block( 'list-item', array(), '<li>' . $inner . '</li>' );
+	}
+
+	/**
+	 * Splice a nested `<!-- wp:list ... -->` block inside the rightmost
+	 * `<!-- wp:list-item -->` of the parent frame's accumulated HTML (R4.4).
+	 *
+	 * Locates the last `</li>\n<!-- /wp:list-item -->` substring and inserts
+	 * the nested block immediately BEFORE the `</li>`. The nested
+	 * `<!-- wp:list -->...<!-- /wp:list -->` sits between the parent's `<li>`
+	 * and `</li>` — the Gutenberg-native parent-child shape.
+	 *
+	 * @param string $parent_html Accumulated parent-frame HTML (list-item runs).
+	 * @param string $nested_html Closed nested list block markup.
+	 * @return string
+	 */
+	private static function splice_nested_into_last_list_item( $parent_html, $nested_html ) {
+		$needle = "</li>\n<!-- /wp:list-item -->";
+		$pos    = strrpos( $parent_html, $needle );
+		if ( false === $pos ) {
+			// Defensive: no list-item to nest into; append at end.
+			return $parent_html . $nested_html;
+		}
+
+		return substr( $parent_html, 0, $pos ) . $nested_html . substr( $parent_html, $pos );
+	}
+
+	/**
+	 * Emit one `core/code` block for a consecutive code run (R5).
+	 *
+	 * Strict R5.2 join algorithm: per-item, strip exactly one trailing `\n`
+	 * (NOT rtrim — only one), escape via `escape_imported_text_fragment`,
+	 * then join the escaped per-item results with a single `\n` byte.
+	 *
+	 * Inline wrappers from #54 are explicitly NOT applied (R5.3) — `<strong>`
+	 * inside `<pre><code>` is not idiomatic Gutenberg markup. This helper
+	 * does NOT call `compute_inline_wrapped_text` and does NOT route
+	 * inline-attribute warnings (R5.3, F21) — invalid `linkURL` /
+	 * `highlightedColor` on code items record no warning either way.
+	 *
+	 * Bypasses `convert_text_to_content` entirely (R7.1).
+	 *
+	 * @param array<int,array<string,mixed>> $items   Code-block items.
+	 * @param Day_One_Importer_Results|null  $results Unused; accepted for signature uniformity.
+	 * @return string
+	 */
+	private static function emit_code_group( $items, ?Day_One_Importer_Results $results ) {
+		unset( $results ); // R5.3 — no warning emit inside code.
+		$pieces = array();
+		foreach ( $items as $item ) {
+			$text = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
+			if ( "\n" === substr( $text, -1 ) ) {
+				$text = substr( $text, 0, -1 );
+			}
+			$pieces[] = self::escape_imported_text_fragment( $text );
+		}
+		$joined = implode( "\n", $pieces );
+		$inner  = '<pre class="wp-block-code"><code>' . $joined . '</code></pre>';
+
+		return self::serialize_block( 'code', array(), $inner );
+	}
+
+	/**
+	 * Emit one `core/quote` block for a consecutive quote run (R6).
+	 *
+	 * Each quote item becomes one child `core/paragraph` block inside the
+	 * outer `<blockquote class="wp-block-quote">`. Inline wrappers from #54
+	 * apply unchanged inside each child paragraph (R6.2, R7.3). Quote
+	 * `indentLevel` is intentionally ignored — every quote item is a flat
+	 * sibling at the same `<blockquote>` depth (R6.5). No `citation` attr
+	 * is emitted (R6.4). Bypasses `convert_text_to_content` entirely (R7.1).
+	 *
+	 * @param array<int,array<string,mixed>> $items   Quote items.
+	 * @param Day_One_Importer_Results|null  $results Optional warning sink.
+	 * @return string
+	 */
+	private static function emit_quote_group( $items, ?Day_One_Importer_Results $results ) {
+		$inner = '<blockquote class="wp-block-quote">' . "\n";
+		foreach ( $items as $item ) {
+			$wrapped = self::compute_inline_wrapped_text( $item, $results );
+			$inner  .= self::serialize_block( 'paragraph', array(), '<p>' . $wrapped . '</p>' );
+		}
+		$inner .= '</blockquote>';
+
+		return self::serialize_block( 'quote', array(), $inner );
 	}
 
 	/**
