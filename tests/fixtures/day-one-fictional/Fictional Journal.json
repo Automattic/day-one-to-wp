@@ -533,6 +533,61 @@
       "creationDeviceType": "Fictional Device",
       "creationDeviceModel": "Sample Simulator",
       "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0018",
+      "creationDate": "2031-05-02T18:00:00Z",
+      "modifiedDate": "2031-05-02T18:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          { "attributes": {}, "text": "Before the embedded photo." },
+          { "attributes": {}, "embeddedObjects": [ { "type": "photo", "identifier": "FICTIONAL-SAMPLE-PHOTO-0018" } ] },
+          { "attributes": {}, "text": "After the embedded photo." }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "embedded-objects",
+        "inline-positioning"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0018",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-04-11T16:20:00Z",
+          "orderInEntry": 0,
+          "width": 2,
+          "height": 2
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0019",
+      "creationDate": "2031-05-02T19:00:00Z",
+      "modifiedDate": "2031-05-02T19:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Before placeholders.\n\n![](dayone-moment://4223F59BF563410FAACA8EDBF888C3FB)\n![](dayone-moment:/photo/4223F59BF563410FAACA8EDBF888C3FB)\n![](dayone-moment:/video/36AFEC058A8640F98420344B2CCCD145)\n![](dayone-moment:/audio/A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1)\n![](dayone-moment:/pdfAttachment/2540EC0D96C24252AB79706C8BDED592)\n![](dayone-photo://B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2)\n![](dayone-video://C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3)\n![](dayone-audio://D4D4D4D4D4D4D4D4D4D4D4D4D4D4D4D4)\n![](dayone-pdf://E5E5E5E5E5E5E5E5E5E5E5E5E5E5E5E5)\n\nAfter placeholders.",
+      "tags": [
+        "fictional",
+        "legacy-placeholder",
+        "regex"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
     }
   ]
 }
