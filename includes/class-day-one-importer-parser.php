@@ -90,7 +90,7 @@ class Day_One_Importer_Parser {
 			);
 		}
 
-		if ( array_key_exists( 'zip_json_candidates', $job ) || array_key_exists( 'zip_photo_dirs', $job ) || array_key_exists( 'zip_video_dirs', $job ) ) {
+		if ( array_key_exists( 'zip_json_candidates', $job ) || array_key_exists( 'zip_photo_dirs', $job ) || array_key_exists( 'zip_video_dirs', $job ) || array_key_exists( 'zip_audio_dirs', $job ) ) {
 			return $this->discover_archive_candidates_batch( $root_real, $job, $results, $deadline, $checkpoint );
 		}
 
@@ -115,27 +115,33 @@ class Day_One_Importer_Parser {
 			$job['archive_json_candidate_index']      = 0;
 			$job['archive_photo_dir_candidate_index'] = 0;
 			$job['archive_video_dir_candidate_index'] = 0;
+			$job['archive_audio_dir_candidate_index'] = 0;
 			$job['json_files']                        = array();
 			$job['photo_dirs']                        = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? array_values( $job['photo_dirs'] ) : array();
 			$job['video_dirs']                        = isset( $job['video_dirs'] ) && is_array( $job['video_dirs'] ) ? array_values( $job['video_dirs'] ) : array();
+			$job['audio_dirs']                        = isset( $job['audio_dirs'] ) && is_array( $job['audio_dirs'] ) ? array_values( $job['audio_dirs'] ) : array();
 			$job['archive_discovery_initialized']     = true;
 		}
 
 		$json_candidates  = isset( $job['zip_json_candidates'] ) && is_array( $job['zip_json_candidates'] ) ? array_values( $job['zip_json_candidates'] ) : array();
 		$photo_candidates = isset( $job['zip_photo_dirs'] ) && is_array( $job['zip_photo_dirs'] ) ? array_values( $job['zip_photo_dirs'] ) : array();
 		$video_candidates = isset( $job['zip_video_dirs'] ) && is_array( $job['zip_video_dirs'] ) ? array_values( $job['zip_video_dirs'] ) : array();
+		$audio_candidates = isset( $job['zip_audio_dirs'] ) && is_array( $job['zip_audio_dirs'] ) ? array_values( $job['zip_audio_dirs'] ) : array();
 		$files            = isset( $job['json_files'] ) && is_array( $job['json_files'] ) ? array_values( $job['json_files'] ) : array();
 		$photo_dirs       = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? array_values( $job['photo_dirs'] ) : array();
 		$video_dirs       = isset( $job['video_dirs'] ) && is_array( $job['video_dirs'] ) ? array_values( $job['video_dirs'] ) : array();
+		$audio_dirs       = isset( $job['audio_dirs'] ) && is_array( $job['audio_dirs'] ) ? array_values( $job['audio_dirs'] ) : array();
 		$json_i           = isset( $job['archive_json_candidate_index'] ) ? max( 0, (int) $job['archive_json_candidate_index'] ) : 0;
 		$photo_i          = isset( $job['archive_photo_dir_candidate_index'] ) ? max( 0, (int) $job['archive_photo_dir_candidate_index'] ) : 0;
 		$video_i          = isset( $job['archive_video_dir_candidate_index'] ) ? max( 0, (int) $job['archive_video_dir_candidate_index'] ) : 0;
+		$audio_i          = isset( $job['archive_audio_dir_candidate_index'] ) ? max( 0, (int) $job['archive_audio_dir_candidate_index'] ) : 0;
 		$processed        = 0;
 		$limit            = $this->discovery_node_limit();
 
 		$json_candidate_count  = count( $json_candidates );
 		$photo_candidate_count = count( $photo_candidates );
 		$video_candidate_count = count( $video_candidates );
+		$audio_candidate_count = count( $audio_candidates );
 
 		while ( $processed < $limit && $json_i < $json_candidate_count ) {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
@@ -176,12 +182,26 @@ class Day_One_Importer_Parser {
 			$job['archive_video_dir_candidate_index'] = $video_i;
 		}
 
+		while ( $processed < $limit && $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count && $video_i >= $video_candidate_count && $audio_i < $audio_candidate_count ) {
+			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
+				break;
+			}
+			$path = $this->archive_relative_to_real_path( $root_real, (string) $audio_candidates[ $audio_i ], true );
+			if ( $path && is_dir( $path ) && ! in_array( $path, $audio_dirs, true ) ) {
+				$audio_dirs[] = $path;
+			}
+			++$audio_i;
+			++$processed;
+			$job['archive_audio_dir_candidate_index'] = $audio_i;
+		}
+
 		$job['json_files']       = $files;
 		$job['json_files_found'] = count( $files );
 		$job['photo_dirs']       = $photo_dirs;
 		$job['video_dirs']       = $video_dirs;
+		$job['audio_dirs']       = $audio_dirs;
 
-		if ( $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count && $video_i >= $video_candidate_count ) {
+		if ( $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count && $video_i >= $video_candidate_count && $audio_i >= $audio_candidate_count ) {
 			$job['json_discovery_done'] = true;
 			$job['json_file_index']     = 0;
 			$job['json_entry_index']    = 0;
@@ -1014,6 +1034,15 @@ class Day_One_Importer_Parser {
 			}
 		}
 
+		$audios = array();
+		if ( isset( $raw_entry['audios'] ) && is_array( $raw_entry['audios'] ) ) {
+			foreach ( $raw_entry['audios'] as $audio ) {
+				if ( is_array( $audio ) ) {
+					$audios[] = $this->normalize_audio( $audio );
+				}
+			}
+		}
+
 		$rich_text = null;
 		if ( isset( $raw_entry['richText'] ) ) {
 			$raw_rich = $raw_entry['richText'];
@@ -1047,6 +1076,7 @@ class Day_One_Importer_Parser {
 			'journal'             => Day_One_Importer_Content::derive_journal_name( $raw_entry, $source_file ),
 			'photos'              => $photos,
 			'videos'              => $videos,
+			'audios'              => $audios,
 			'starred'             => ! empty( $raw_entry['starred'] ),
 			'isPinned'            => ! empty( $raw_entry['isPinned'] ),
 			'creationDeviceType'  => isset( $raw_entry['creationDeviceType'] ) && is_scalar( $raw_entry['creationDeviceType'] ) ? day_one_importer_sanitize_text( $raw_entry['creationDeviceType'] ) : '',
@@ -1106,6 +1136,44 @@ class Day_One_Importer_Parser {
 			'width'        => isset( $video['width'] ) && is_numeric( $video['width'] ) ? (int) $video['width'] : 0,
 			'height'       => isset( $video['height'] ) && is_numeric( $video['height'] ) ? (int) $video['height'] : 0,
 			'duration'     => $duration,
+		);
+	}
+
+	/**
+	 * Normalize audio metadata.
+	 *
+	 * Mirrors normalize_video() for the shared keys. `format` deviates from
+	 * the photo/video `type` field by one step: a single leading dot is
+	 * stripped before the regex pass (Day One ships either `.mp3` or `aac`).
+	 * `duration` is stored as a canonical PHP string (spec R1.3, R1.4).
+	 *
+	 * @param array<string,mixed> $audio Raw audio.
+	 * @return array<string,mixed>
+	 */
+	private function normalize_audio( $audio ) {
+		$duration = '';
+		if ( isset( $audio['duration'] ) && is_numeric( $audio['duration'] ) ) {
+			$duration = (string) ( floatval( $audio['duration'] ) + 0 );
+		}
+
+		$format = '';
+		if ( isset( $audio['format'] ) && is_scalar( $audio['format'] ) ) {
+			$raw_format = (string) $audio['format'];
+			if ( '' !== $raw_format && '.' === $raw_format[0] ) {
+				$raw_format = substr( $raw_format, 1 );
+			}
+			$format = strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', $raw_format ) );
+		}
+
+		return array(
+			'identifier'   => isset( $audio['identifier'] ) && is_scalar( $audio['identifier'] ) ? day_one_importer_sanitize_text( $audio['identifier'] ) : '',
+			'md5'          => isset( $audio['md5'] ) && is_scalar( $audio['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $audio['md5'] ) ) : '',
+			'format'       => $format,
+			'filename'     => isset( $audio['filename'] ) && is_scalar( $audio['filename'] ) ? basename( day_one_importer_sanitize_text( $audio['filename'] ) ) : '',
+			'date'         => isset( $audio['date'] ) && is_scalar( $audio['date'] ) ? day_one_importer_sanitize_text( $audio['date'] ) : '',
+			'orderInEntry' => isset( $audio['orderInEntry'] ) && is_numeric( $audio['orderInEntry'] ) ? (int) $audio['orderInEntry'] : null,
+			'duration'     => $duration,
+			'title'        => isset( $audio['title'] ) && is_scalar( $audio['title'] ) ? day_one_importer_sanitize_text( $audio['title'] ) : '',
 		);
 	}
 }

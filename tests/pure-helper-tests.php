@@ -3018,4 +3018,159 @@ assert_true( $c3_sig_body === $c3_sig_body_default, 'render_entry_body produces 
 $c3_sig_convert = Day_One_Importer_Content::convert_rich_text_to_content( $c3_sig_entry['richText'], $c3_sig_results, array(), array() );
 assert_true( false !== strpos( $c3_sig_convert, '<p>Hello world.</p>' ), 'convert_rich_text_to_content accepts the new $video_map argument and preserves rendering (#57 R7.6).' );
 
+// --- #58 R1 / R11.4 — Parser normalizes entry.audios[] (issue #58). ---
+
+$audio_results_present = new Day_One_Importer_Results();
+$audio_entry_present   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-AUDIO-PRESENT',
+		'creationDate' => '2024-01-01T00:00:00Z',
+		'audios'       => array(
+			array(
+				'identifier'   => 'AAAAFEC058A8640F98420344B2CCCD145',
+				'md5'          => 'ABCDEF0123456789abcdef0123456789',
+				'format'       => '.mp3',
+				'filename'     => 'clip.mp3',
+				'date'         => '2024-01-01T00:00:00Z',
+				'orderInEntry' => 2,
+				'duration'     => 6.3913124999999997,
+				'title'        => 'sample-6s',
+			),
+		),
+	),
+	'fictional.json',
+	0,
+	$audio_results_present
+);
+assert_true( is_array( $audio_entry_present ) && isset( $audio_entry_present['audios'] ) && is_array( $audio_entry_present['audios'] ), '#58 normalize_entry emits audios array when raw entry has audios[] (R1.1, R11.4).' );
+assert_true( 1 === count( $audio_entry_present['audios'] ), '#58 normalize_entry preserves a single audio record.' );
+assert_true( 'AAAAFEC058A8640F98420344B2CCCD145' === $audio_entry_present['audios'][0]['identifier'], '#58 normalize_audio preserves the identifier value.' );
+assert_true( 'abcdef0123456789abcdef0123456789' === $audio_entry_present['audios'][0]['md5'], '#58 normalize_audio lowercases the md5 hex.' );
+assert_true( 'mp3' === $audio_entry_present['audios'][0]['format'], '#58 normalize_audio strips the leading dot and lowercases format (R1.3).' );
+assert_true( 'clip.mp3' === $audio_entry_present['audios'][0]['filename'], '#58 normalize_audio keeps the basename filename.' );
+assert_true( 2 === $audio_entry_present['audios'][0]['orderInEntry'], '#58 normalize_audio casts orderInEntry to int.' );
+assert_true( is_string( $audio_entry_present['audios'][0]['duration'] ), '#58 normalize_audio stores duration as string (R1.4).' );
+assert_true( abs( floatval( $audio_entry_present['audios'][0]['duration'] ) - 6.3913124999999997 ) < 1e-9, '#58 normalize_audio duration round-trips to within 1e-9 via floatval() (R1.4).' );
+assert_true( 'sample-6s' === $audio_entry_present['audios'][0]['title'], '#58 normalize_audio preserves the sanitized title (R1.2).' );
+
+// Format leading-dot strip + lowercase coverage (R1.3).
+$audio_format_cases = array(
+	'.mp3'  => 'mp3',
+	'aac'   => 'aac',
+	'.LPCM' => 'lpcm',
+	'.M4A'  => 'm4a',
+);
+foreach ( $audio_format_cases as $raw_format => $expected ) {
+	$fmt_results = new Day_One_Importer_Results();
+	$fmt_entry   = $parser->normalize_entry(
+		array(
+			'uuid'         => 'TEST-AUDIO-FMT-' . $expected,
+			'creationDate' => '2024-01-01T00:00:00Z',
+			'audios'       => array(
+				array(
+					'identifier' => 'FMT-' . $expected,
+					'format'     => $raw_format,
+				),
+			),
+		),
+		'fictional.json',
+		0,
+		$fmt_results
+	);
+	assert_true( $expected === $fmt_entry['audios'][0]['format'], '#58 normalize_audio normalizes format "' . $raw_format . '" to "' . $expected . '" (R1.3, R11.4).' );
+}
+
+// Missing/null audios yields empty array.
+$audio_results_missing = new Day_One_Importer_Results();
+$audio_entry_missing   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-AUDIO-MISSING',
+		'creationDate' => '2024-01-01T00:00:00Z',
+	),
+	'fictional.json',
+	1,
+	$audio_results_missing
+);
+assert_true( is_array( $audio_entry_missing ) && isset( $audio_entry_missing['audios'] ) && array() === $audio_entry_missing['audios'], '#58 normalize_entry yields empty audios array when raw entry lacks the field (R1.5).' );
+
+// Malformed entries (non-array members) are skipped silently.
+$audio_results_bad = new Day_One_Importer_Results();
+$audio_entry_bad   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-AUDIO-BAD',
+		'creationDate' => '2024-01-01T00:00:00Z',
+		'audios'       => array(
+			'not-an-array',
+			array( 'identifier' => 'ONLY-ID-AUDIO' ),
+			null,
+		),
+	),
+	'fictional.json',
+	2,
+	$audio_results_bad
+);
+assert_true( is_array( $audio_entry_bad ) && 1 === count( $audio_entry_bad['audios'] ), '#58 normalize_entry skips non-array audio members silently (R11.4).' );
+assert_true( 'ONLY-ID-AUDIO' === $audio_entry_bad['audios'][0]['identifier'], '#58 normalize_audio accepts a minimal record with only identifier set.' );
+assert_true( '' === $audio_entry_bad['audios'][0]['duration'], '#58 normalize_audio records duration="" when raw value is missing.' );
+assert_true( '' === $audio_entry_bad['audios'][0]['title'], '#58 normalize_audio records title="" when raw value is missing.' );
+
+// JSONL manifest round-trip: audios field travels through the manifest unchanged (under floatval tolerance for duration).
+$audio_roundtrip_payload = array(
+	array(
+		'identifier'   => 'ROUNDTRIP-AUD-001',
+		'md5'          => '0123456789abcdef0123456789abcdef',
+		'format'       => 'mp3',
+		'filename'     => 'rt.mp3',
+		'date'         => '2024-01-01T00:00:00Z',
+		'orderInEntry' => 0,
+		'duration'     => 1.5,
+		'title'        => 'rt-title',
+	),
+);
+$audio_roundtrip_dir     = sys_get_temp_dir() . '/day-one-importer-aud-roundtrip-' . uniqid();
+mkdir( $audio_roundtrip_dir, 0777, true );
+file_put_contents(
+	$audio_roundtrip_dir . '/Journal.json',
+	wp_json_encode(
+		array(
+			'metadata' => array( 'version' => 'test' ),
+			'entries'  => array(
+				array(
+					'uuid'         => 'TEST-AUD-ROUNDTRIP',
+					'creationDate' => '2024-01-01T00:00:00Z',
+					'audios'       => $audio_roundtrip_payload,
+				),
+			),
+		)
+	)
+);
+$audio_roundtrip_results = new Day_One_Importer_Results();
+$audio_roundtrip_job     = array(
+	'manifest_path'       => sys_get_temp_dir() . '/day-one-importer-aud-manifest-' . uniqid() . '/entries.jsonl',
+	'zip_json_candidates' => array( 'Journal.json' ),
+	'zip_photo_dirs'      => array( 'photos' ),
+	'zip_video_dirs'      => array( 'videos' ),
+	'zip_audio_dirs'      => array( 'audios' ),
+	'json_files'          => array(),
+	'json_file_index'     => 0,
+	'json_entry_index'    => 0,
+	'entries_total'       => 0,
+	'seen_uuids'          => array(),
+);
+$parser->discover_json_files_batch( $audio_roundtrip_dir, $audio_roundtrip_job, $audio_roundtrip_results, 1.0E+30 );
+$audio_roundtrip_index = $parser->index_export_batch( $audio_roundtrip_dir, $audio_roundtrip_job, $audio_roundtrip_results, 1.0E+30 );
+assert_true( ! empty( $audio_roundtrip_index['done'] ) && 1 === $audio_roundtrip_job['entries_total'], '#58 audios round-trip indexer writes one entry to the manifest.' );
+$audio_roundtrip_entry = $parser->read_manifest_entry( $audio_roundtrip_job['manifest_path'], 0 );
+assert_true( is_array( $audio_roundtrip_entry ) && isset( $audio_roundtrip_entry['audios'] ) && 1 === count( $audio_roundtrip_entry['audios'] ), '#58 audios field round-trips through the JSONL manifest (AC2).' );
+$rt_audio = $audio_roundtrip_entry['audios'][0];
+assert_true( 'ROUNDTRIP-AUD-001' === $rt_audio['identifier'], '#58 audios manifest round-trip preserves identifier.' );
+assert_true( '0123456789abcdef0123456789abcdef' === $rt_audio['md5'], '#58 audios manifest round-trip preserves md5.' );
+assert_true( 'mp3' === $rt_audio['format'], '#58 audios manifest round-trip preserves format.' );
+assert_true( 'rt.mp3' === $rt_audio['filename'], '#58 audios manifest round-trip preserves filename.' );
+assert_true( 0 === $rt_audio['orderInEntry'], '#58 audios manifest round-trip preserves orderInEntry.' );
+assert_true( is_string( $rt_audio['duration'] ) && abs( floatval( $rt_audio['duration'] ) - 1.5 ) < 1e-9, '#58 audios manifest round-trip preserves duration as string within 1e-9 (R2.1, R1.4).' );
+assert_true( 'rt-title' === $rt_audio['title'], '#58 audios manifest round-trip preserves title.' );
+Day_One_Importer_Cleanup::remove( dirname( $audio_roundtrip_job['manifest_path'] ) );
+Day_One_Importer_Cleanup::remove( $audio_roundtrip_dir );
+
 echo "All pure helper tests passed.\n";
