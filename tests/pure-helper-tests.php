@@ -3236,6 +3236,25 @@ $audio_resolved_lpcm = Day_One_Importer_Media::resolve_audio_path(
 assert_true( '' !== $audio_resolved_lpcm && realpath( $audio_lpcm_wav ) === $audio_resolved_lpcm, '#58 resolve_audio_path probes lpcm,wav,m4a for format=lpcm.' );
 Day_One_Importer_Cleanup::remove( $audio_resolve_root );
 
+// --- #58 C3 — signature smoke for render_entry_body / convert_rich_text_to_content with $audio_map (R7.5, R7.6). ---
+
+$c3_aud_entry  = array(
+	'text'     => 'Legacy fallback text.',
+	'richText' => array(
+		'meta'     => array( 'version' => 1 ),
+		'contents' => array(
+			array( 'text' => 'Hello audio world.' ),
+		),
+	),
+);
+$c3_aud_results = new Day_One_Importer_Results();
+$c3_aud_body    = Day_One_Importer_Content::render_entry_body( $c3_aud_entry, $c3_aud_results, array(), array(), array() );
+assert_true( false !== strpos( $c3_aud_body, '<p>Hello audio world.</p>' ), '#58 render_entry_body accepts the new $audio_map argument and preserves richText rendering (R7.5).' );
+$c3_aud_body_default = Day_One_Importer_Content::render_entry_body( $c3_aud_entry, $c3_aud_results, array(), array() );
+assert_true( $c3_aud_body === $c3_aud_body_default, '#58 render_entry_body produces identical output whether $audio_map is omitted (default array) or passed explicitly.' );
+$c3_aud_convert = Day_One_Importer_Content::convert_rich_text_to_content( $c3_aud_entry['richText'], $c3_aud_results, array(), array(), array() );
+assert_true( false !== strpos( $c3_aud_convert, '<p>Hello audio world.</p>' ), '#58 convert_rich_text_to_content accepts the new $audio_map argument and preserves rendering (R7.6).' );
+
 // find_audio_dirs() discovers a top-level audios/ directory (R4.1).
 $audio_discover_root = sys_get_temp_dir() . '/day-one-importer-aud-discover-' . uniqid();
 mkdir( $audio_discover_root . '/audios', 0777, true );
