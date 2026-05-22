@@ -13,6 +13,17 @@
  *      tests/fixtures/day-one-fictional/videos/<lowercase md5>.mov
  * Verify size <= 200 KB (#57 R11.2 / K1). If over, lower the bitrate with -b:v 100k.
  *
+ * Audio fixture regeneration (spec #58 R11.2):
+ *   mkdir -p tests/fixtures/day-one-fictional/audios
+ *   ffmpeg -y -f lavfi -i sine=frequency=440:duration=1:sample_rate=22050 \
+ *     -c:a libmp3lame -b:a 32k -ac 1 \
+ *     tests/fixtures/day-one-fictional/audios/_tmp.mp3
+ *   md5 -q tests/fixtures/day-one-fictional/audios/_tmp.mp3  # macOS; or md5sum on Linux
+ *   mv tests/fixtures/day-one-fictional/audios/_tmp.mp3 \
+ *      tests/fixtures/day-one-fictional/audios/<lowercase md5>.mp3
+ * Verify size <= 50 KB (#58 R11.2 / K1). If over, lower the bitrate further
+ * (-b:a 24k) or drop sample rate to 16000. Output MUST remain .mp3.
+ *
  * @package Day_One_Importer
  */
 
@@ -130,6 +141,40 @@ function day_one_fixture_validate_json_file( $json_file, $source_dir ) {
 				$size = filesize( $video_path );
 				if ( $size > 200 * 1024 ) {
 					day_one_fixture_fail( "Video fixture {$md5}.{$type} exceeds the 200 KB cap ({$size} bytes); see header for regeneration command." );
+				}
+			}
+		}
+
+		if ( ! empty( $entry['audios'] ) ) {
+			if ( ! is_array( $entry['audios'] ) ) {
+				day_one_fixture_fail( "Audios for entry {$entry_index} must be an array." );
+			}
+
+			foreach ( $entry['audios'] as $audio_index => $audio ) {
+				if ( ! is_array( $audio ) ) {
+					day_one_fixture_fail( "Audio {$audio_index} for entry {$entry_index} is not an object." );
+				}
+
+				// #58 R4.5 — audio records use `format`, not `type`.
+				$md5    = isset( $audio['md5'] ) && is_scalar( $audio['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $audio['md5'] ) ) : '';
+				$format = isset( $audio['format'] ) && is_scalar( $audio['format'] ) ? strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', (string) $audio['format'] ) ) : '';
+				if ( '' === $md5 || '' === $format ) {
+					day_one_fixture_fail( "Audio {$audio_index} for entry {$entry_index} needs md5 and format metadata." );
+				}
+
+				$audio_path = $source_dir . '/audios/' . $md5 . '.' . $format;
+				if ( ! is_file( $audio_path ) ) {
+					day_one_fixture_fail( "Audio file missing for metadata {$md5}.{$format}." );
+				}
+
+				$actual_md5 = md5_file( $audio_path );
+				if ( $actual_md5 !== $md5 ) {
+					day_one_fixture_fail( "Audio file MD5 mismatch for {$md5}.{$format}; actual hash is {$actual_md5}." );
+				}
+
+				$size = filesize( $audio_path );
+				if ( $size > 50 * 1024 ) {
+					day_one_fixture_fail( "Audio fixture {$md5}.{$format} exceeds the 50 KB cap ({$size} bytes); see header for regeneration command." );
 				}
 			}
 		}

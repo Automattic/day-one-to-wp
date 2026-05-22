@@ -2603,8 +2603,8 @@ Day_One_Importer_Cleanup::remove( $parser_dir );
 $fixture_dir     = __DIR__ . '/fixtures/day-one-fictional';
 $fixture_results = new Day_One_Importer_Results();
 $fixture_entries = $parser->parse_export( $fixture_dir, $fixture_results );
-assert_true( 21 === count( $fixture_entries ), 'Committed fictional fixture parses twenty-one entries.' );
-assert_true( 21 === $fixture_results->get_count( 'entries_found' ), 'Committed fictional fixture reports twenty-one found entries.' );
+assert_true( 23 === count( $fixture_entries ), 'Committed fictional fixture parses twenty-three entries.' );
+assert_true( 23 === $fixture_results->get_count( 'entries_found' ), 'Committed fictional fixture reports twenty-three found entries.' );
 assert_true( empty( $fixture_results->get_warnings() ), 'Committed fictional fixture parses without warnings.' );
 assert_true( ! empty( $fixture_entries[0]['photos'] ), 'Committed fictional fixture includes photo metadata.' );
 $fixture_photo_path = Day_One_Importer_Media::resolve_photo_path( $fixture_dir, $fixture_entries[0]['photos'][0] );
@@ -2627,7 +2627,7 @@ $checkpoint       = static function () use ( &$checkpoint_count ) {
 	++$checkpoint_count;
 };
 $batch_index = $parser->index_export_batch( $fixture_dir, $batch_job, $batch_results, 1.0E+30, $checkpoint );
-assert_true( ! empty( $batch_index['done'] ) && 21 === $batch_job['entries_total'], 'Batch parser indexes fixture entries into a manifest.' );
+assert_true( ! empty( $batch_index['done'] ) && 23 === $batch_job['entries_total'], 'Batch parser indexes fixture entries into a manifest.' );
 assert_true( $checkpoint_count >= 3, 'Batch parser checkpoints after safe manifest units.' );
 $manifest_entry = $parser->read_manifest_entry( $batch_job['manifest_path'], 0 );
 assert_true( is_array( $manifest_entry ) && 'FICTIONAL-SAMPLE-ENTRY-0001' === $manifest_entry['uuid'], 'Batch parser can read a manifest entry by cursor.' );
@@ -2658,7 +2658,7 @@ do {
 	$bounded_index = $parser->index_export_batch( $fixture_dir, $bounded_job, $bounded_results, 1.0E+30 );
 	++$bounded_batches;
 } while ( empty( $bounded_index['done'] ) && $bounded_batches < 100 );
-assert_true( 21 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
+assert_true( 23 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
 Day_One_Importer_Cleanup::remove( dirname( $bounded_job['manifest_path'] ) );
 $GLOBALS['day_one_importer_test_filters'] = array();
 
@@ -3040,6 +3040,43 @@ $mixed_names  = array_map( static function ( $b ) {
 	return $b['blockName'];
 }, $mixed_blocks );
 assert_true( array( 'core/image', 'core/video', 'core/image' ) === $mixed_names, '#57 AC9 — fictional entry 0021 (interleaved photo,video,photo) renders core/image, core/video, core/image in order.' );
+
+// --- #58 C5 — fictional fixture entries 22 (audio) + 23 (interleaved photo+video+audio) round-trip (R11.4). ---
+
+$fixture_audio_entry         = null;
+$fixture_audio_mixed_entry   = null;
+foreach ( $fixture_entries as $fx ) {
+	if ( 'FICTIONAL-SAMPLE-ENTRY-0022' === ( isset( $fx['uuid'] ) ? $fx['uuid'] : '' ) ) {
+		$fixture_audio_entry = $fx;
+	}
+	if ( 'FICTIONAL-SAMPLE-ENTRY-0023' === ( isset( $fx['uuid'] ) ? $fx['uuid'] : '' ) ) {
+		$fixture_audio_mixed_entry = $fx;
+	}
+}
+assert_true( is_array( $fixture_audio_entry ), '#58 Fixture entry 0022 is present in the parsed fixture (R11.1).' );
+assert_true( is_array( $fixture_audio_mixed_entry ), '#58 Fixture entry 0023 is present in the parsed fixture (R11.1).' );
+assert_true( isset( $fixture_audio_entry['audios'][0]['identifier'] ) && 'A1B2C3D400000000000000000058AU01' === $fixture_audio_entry['audios'][0]['identifier'], '#58 Fixture entry 0022 carries the expected audio identifier.' );
+assert_true( isset( $fixture_audio_entry['audios'][0]['format'] ) && 'mp3' === $fixture_audio_entry['audios'][0]['format'], '#58 Fixture entry 0022 normalized format is "mp3".' );
+assert_true( isset( $fixture_audio_entry['audios'][0]['title'] ) && 'sample-1s' === $fixture_audio_entry['audios'][0]['title'], '#58 Fixture entry 0022 carries the sample-1s title.' );
+assert_true( isset( $fixture_audio_entry['audios'][0]['duration'] ) && abs( floatval( $fixture_audio_entry['audios'][0]['duration'] ) - 1.0 ) < 1e-9, '#58 Fixture entry 0022 round-trips duration through the parser within 1e-9 (R1.4).' );
+
+$fixture_audio_path = Day_One_Importer_Media::resolve_audio_path( $fixture_dir, $fixture_audio_entry['audios'][0] );
+assert_true( '' !== $fixture_audio_path && is_file( $fixture_audio_path ), '#58 Fixture entry 0022 audio resolves on disk via resolve_audio_path().' );
+
+// Entry 23 interleaved photo+video+audio rendering (AC9 pure-helper layer).
+$audio_mixed_results = new Day_One_Importer_Results();
+$audio_mixed_html    = Day_One_Importer_Content::convert_rich_text_to_content(
+	isset( $fixture_audio_mixed_entry['richText'] ) ? $fixture_audio_mixed_entry['richText'] : array(),
+	$audio_mixed_results,
+	array( 'FICTIONAL-SAMPLE-PHOTO-0001' => 101 ),
+	array( '36AFEC058A8640F98420344B2CCCD145' => 501 ),
+	array( 'A1B2C3D400000000000000000058AU01' => 603 )
+);
+$audio_mixed_blocks = parse_blocks( $audio_mixed_html );
+$audio_mixed_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $audio_mixed_blocks );
+assert_true( array( 'core/image', 'core/video', 'core/audio' ) === $audio_mixed_names, '#58 AC9 — fictional entry 0023 (interleaved photo,video,audio) renders core/image, core/video, core/audio in order.' );
 
 // --- C3 — signature smoke for render_entry_body / convert_rich_text_to_content with $video_map (#57 R7.5, R7.6). ---
 

@@ -1064,6 +1064,143 @@
           "duration": 1.0
         }
       ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0022",
+      "creationDate": "2031-05-05T08:00:00Z",
+      "modifiedDate": "2031-05-05T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Inline audio embed.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Before the audio.\n"
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "audio",
+                "identifier": "A1B2C3D400000000000000000058AU01"
+              }
+            ]
+          },
+          {
+            "attributes": {},
+            "text": "After the audio."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "audio",
+        "embed"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [],
+      "videos": [],
+      "audios": [
+        {
+          "identifier": "A1B2C3D400000000000000000058AU01",
+          "md5": "19f9bc2c348dd7d9615641233a845728",
+          "format": "mp3",
+          "filename": "sample-1s.mp3",
+          "date": "2031-05-05T08:00:00Z",
+          "orderInEntry": 0,
+          "duration": 1.0,
+          "title": "sample-1s"
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0023",
+      "creationDate": "2031-05-06T08:00:00Z",
+      "modifiedDate": "2031-05-06T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Interleaved photo, video, audio.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0001"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "video",
+                "identifier": "36AFEC058A8640F98420344B2CCCD145"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "audio",
+                "identifier": "A1B2C3D400000000000000000058AU01"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "audio",
+        "interleaved"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0001",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-05-06T08:00:00Z",
+          "orderInEntry": 0,
+          "width": 64,
+          "height": 64
+        }
+      ],
+      "videos": [
+        {
+          "identifier": "36AFEC058A8640F98420344B2CCCD145",
+          "md5": "9278c8334f6b4af7bbb1a5dd9a6545f6",
+          "type": "mov",
+          "filename": "lantern-clip.mov",
+          "date": "2031-05-06T08:00:00Z",
+          "orderInEntry": 1,
+          "width": 320,
+          "height": 180,
+          "duration": 1.0
+        }
+      ],
+      "audios": [
+        {
+          "identifier": "A1B2C3D400000000000000000058AU01",
+          "md5": "19f9bc2c348dd7d9615641233a845728",
+          "format": "mp3",
+          "filename": "sample-1s.mp3",
+          "date": "2031-05-06T08:00:00Z",
+          "orderInEntry": 2,
+          "duration": 1.0,
+          "title": "mixed-sequence audio"
+        }
+      ]
     }
   ]
 }
