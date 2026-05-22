@@ -2732,4 +2732,23 @@ $found_dirs = Day_One_Importer_Media::find_video_dirs( $discover_root );
 assert_true( 1 === count( $found_dirs ) && false !== strpos( $found_dirs[0], DIRECTORY_SEPARATOR . 'videos' ), 'find_video_dirs picks up a top-level videos directory.' );
 Day_One_Importer_Cleanup::remove( $discover_root );
 
+// --- C3 — signature smoke for render_entry_body / convert_rich_text_to_content with $video_map (#57 R7.5, R7.6). ---
+
+$c3_sig_entry  = array(
+	'text'     => 'Legacy fallback text.',
+	'richText' => array(
+		'meta'     => array( 'version' => 1 ),
+		'contents' => array(
+			array( 'text' => 'Hello world.' ),
+		),
+	),
+);
+$c3_sig_results = new Day_One_Importer_Results();
+$c3_sig_body    = Day_One_Importer_Content::render_entry_body( $c3_sig_entry, $c3_sig_results, array(), array() );
+assert_true( false !== strpos( $c3_sig_body, '<p>Hello world.</p>' ), 'render_entry_body accepts the new $video_map argument and preserves richText rendering (#57 R7.5).' );
+$c3_sig_body_default = Day_One_Importer_Content::render_entry_body( $c3_sig_entry, $c3_sig_results, array() );
+assert_true( $c3_sig_body === $c3_sig_body_default, 'render_entry_body produces identical output whether $video_map is omitted (default array) or passed explicitly.' );
+$c3_sig_convert = Day_One_Importer_Content::convert_rich_text_to_content( $c3_sig_entry['richText'], $c3_sig_results, array(), array() );
+assert_true( false !== strpos( $c3_sig_convert, '<p>Hello world.</p>' ), 'convert_rich_text_to_content accepts the new $video_map argument and preserves rendering (#57 R7.6).' );
+
 echo "All pure helper tests passed.\n";

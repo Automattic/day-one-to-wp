@@ -119,9 +119,10 @@ class Day_One_Importer_Content {
 	 * @param mixed                         $rich_text Decoded richText array or JSON-encoded string.
 	 * @param Day_One_Importer_Results|null $results   Optional warning sink for inline-attribute rejection paths (R7, R9).
 	 * @param array<string,int>             $photo_map identifier → attachment_id map (#56 R12); forwarded to the media emitter.
+	 * @param array<string,int>             $video_map identifier → attachment_id map for videos (#57 R7.6).
 	 * @return string
 	 */
-	public static function convert_rich_text_to_content( $rich_text, ?Day_One_Importer_Results $results = null, array $photo_map = array() ) {
+	public static function convert_rich_text_to_content( $rich_text, ?Day_One_Importer_Results $results = null, array $photo_map = array(), array $video_map = array() ) {
 		if ( is_string( $rich_text ) ) {
 			$decoded   = json_decode( $rich_text, true );
 			$rich_text = is_array( $decoded ) ? $decoded : null;
@@ -155,7 +156,7 @@ class Day_One_Importer_Content {
 				continue;
 			}
 			if ( null !== $run ) {
-				$output .= self::flush_run( $run, $photo_map, $results );
+				$output .= self::flush_run( $run, $photo_map, $video_map, $results );
 			}
 			$run = array(
 				'kind'  => $kind,
@@ -163,7 +164,7 @@ class Day_One_Importer_Content {
 			);
 		}
 		if ( null !== $run ) {
-			$output .= self::flush_run( $run, $photo_map, $results );
+			$output .= self::flush_run( $run, $photo_map, $video_map, $results );
 		}
 
 		return trim( $output );
@@ -240,15 +241,16 @@ class Day_One_Importer_Content {
 	 *
 	 * @param array{kind:string,items:array} $run       Closed run.
 	 * @param array<string,int>              $photo_map identifier → attachment_id map (#56 R12).
+	 * @param array<string,int>              $video_map identifier → attachment_id map for videos (#57 R7.6).
 	 * @param Day_One_Importer_Results|null  $results   Optional warning sink.
 	 * @return string
 	 */
-	private static function flush_run( $run, array $photo_map, ?Day_One_Importer_Results $results ) {
+	private static function flush_run( $run, array $photo_map, array $video_map, ?Day_One_Importer_Results $results ) {
 		$kind  = $run['kind'];
 		$items = $run['items'];
 
 		if ( 'media' === $kind ) {
-			return self::emit_media_group( $items, $photo_map, $results );
+			return self::emit_media_group( $items, $photo_map, $video_map, $results );
 		}
 		if ( 'paragraph' === $kind ) {
 			return self::emit_paragraph_group( $items, $results );
@@ -711,10 +713,12 @@ class Day_One_Importer_Content {
 	 *
 	 * @param array<int,array<string,mixed>> $items     Media-run items.
 	 * @param array<string,int>              $photo_map identifier → attachment_id map (runner-built; may be empty).
+	 * @param array<string,int>              $video_map identifier → attachment_id map for videos (#57 R6.1).
 	 * @param Day_One_Importer_Results|null  $results   Optional warning sink.
 	 * @return string
 	 */
-	private static function emit_media_group( array $items, array $photo_map, ?Day_One_Importer_Results $results ) {
+	private static function emit_media_group( array $items, array $photo_map, array $video_map, ?Day_One_Importer_Results $results ) {
+		unset( $video_map ); // Wired in C4 (#57).
 		$resolved_ids = array();
 		$warned_types = array(); // Per-entry-per-type dedupe for unsupported media (#56 R8 / Risk 5).
 
@@ -817,11 +821,12 @@ class Day_One_Importer_Content {
 	 * @param mixed                         $entry     Normalized entry array.
 	 * @param Day_One_Importer_Results|null $results   Optional warning sink threaded into the richText renderer.
 	 * @param array<string,int>             $photo_map identifier → attachment_id map (#56 R12).
+	 * @param array<string,int>             $video_map identifier → attachment_id map for videos (#57 R7.6).
 	 * @return string
 	 */
-	public static function render_entry_body( $entry, ?Day_One_Importer_Results $results = null, array $photo_map = array() ) {
+	public static function render_entry_body( $entry, ?Day_One_Importer_Results $results = null, array $photo_map = array(), array $video_map = array() ) {
 		if ( self::entry_uses_rich_text_path( $entry ) ) {
-			return self::convert_rich_text_to_content( $entry['richText'], $results, $photo_map );
+			return self::convert_rich_text_to_content( $entry['richText'], $results, $photo_map, $video_map );
 		}
 
 		$text = ( is_array( $entry ) && isset( $entry['text'] ) ) ? $entry['text'] : '';

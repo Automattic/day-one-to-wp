@@ -139,9 +139,13 @@ class Day_One_Importer_Runner {
 		$job = array(
 			'current_media_index'          => 0,
 			'current_media_total'          => 0,
+			'current_video_media_index'    => 0,
+			'current_video_total'          => 0,
 			'current_attachment_ids'       => array(),
 			'current_photo_identifier_map' => array(),
+			'current_video_identifier_map' => array(),
 			'current_entry_media_counted'  => false,
+			'current_entry_video_counted'  => false,
 			'current_entry_media_complete' => false,
 		);
 
@@ -150,7 +154,7 @@ class Day_One_Importer_Runner {
 			day_one_importer_prepare_long_running_import();
 		}
 
-		$this->finalize_imported_entry( $entry, (int) $prepared['post_id'], $job['current_attachment_ids'], $job['current_photo_identifier_map'], $results );
+		$this->finalize_imported_entry( $entry, (int) $prepared['post_id'], $job['current_attachment_ids'], $job['current_photo_identifier_map'], $results, $job['current_video_identifier_map'] );
 	}
 
 	/**
@@ -323,66 +327,121 @@ class Day_One_Importer_Runner {
 		$total                      = count( $photos );
 		$job['current_media_total'] = $total;
 
-		if ( 0 === $total ) {
-			$job['current_entry_media_complete'] = true;
-			return true;
-		}
+		$videos                     = isset( $entry['videos'] ) && is_array( $entry['videos'] ) ? $entry['videos'] : array();
+		$videos                     = Day_One_Importer_Media::sort_videos( $videos );
+		$video_total                = count( $videos );
+		$job['current_video_total'] = $video_total;
 
-		if ( empty( $job['current_entry_media_counted'] ) ) {
-			$results->increment( 'media_found', $total );
-			$job['current_entry_media_counted'] = true;
-			if ( is_callable( $checkpoint ) ) {
-				call_user_func_array( $checkpoint, array( &$job, $results ) );
-			}
-		}
+		$photo_dirs = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? $job['photo_dirs'] : null;
+		$video_dirs = isset( $job['video_dirs'] ) && is_array( $job['video_dirs'] ) ? $job['video_dirs'] : null;
+		$media      = new Day_One_Importer_Media( $extract_dir, $results, $photo_dirs, $video_dirs );
+		$limit      = class_exists( 'Day_One_Importer_Job_State' ) ? Day_One_Importer_Job_State::batch_media_limit() : max( 1, $total + $video_total );
 
-		$index          = isset( $job['current_media_index'] ) ? max( 0, (int) $job['current_media_index'] ) : 0;
-		$ids            = isset( $job['current_attachment_ids'] ) && is_array( $job['current_attachment_ids'] ) ? array_values( array_map( 'intval', $job['current_attachment_ids'] ) ) : array();
-		$identifier_map = isset( $job['current_photo_identifier_map'] ) && is_array( $job['current_photo_identifier_map'] ) ? $job['current_photo_identifier_map'] : array();
-		$limit          = class_exists( 'Day_One_Importer_Job_State' ) ? Day_One_Importer_Job_State::batch_media_limit() : $total;
-		$done           = 0;
-		$photo_dirs     = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? $job['photo_dirs'] : null;
-		$media          = new Day_One_Importer_Media( $extract_dir, $results, $photo_dirs );
+		$ids                  = isset( $job['current_attachment_ids'] ) && is_array( $job['current_attachment_ids'] ) ? array_values( array_map( 'intval', $job['current_attachment_ids'] ) ) : array();
+		$identifier_map       = isset( $job['current_photo_identifier_map'] ) && is_array( $job['current_photo_identifier_map'] ) ? $job['current_photo_identifier_map'] : array();
+		$video_identifier_map = isset( $job['current_video_identifier_map'] ) && is_array( $job['current_video_identifier_map'] ) ? $job['current_video_identifier_map'] : array();
 
-		while ( $index < $total && $done < $limit ) {
-			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
-				break;
-			}
-
-			day_one_importer_prepare_long_running_import();
-			$attachment_id = $media->import_or_reuse_photo( $photos[ $index ], $entry, $post_id );
-			if ( $attachment_id && ! in_array( (int) $attachment_id, $ids, true ) ) {
-				$ids[] = (int) $attachment_id;
-			}
-			// #56 R12 — pair the photo's identifier with its attachment ID so the
-			// richText emitter can resolve embeddedObjects[].identifier later.
-			// Photos with empty identifiers are silently absent from the map.
-			if ( $attachment_id ) {
-				$identifier = isset( $photos[ $index ]['identifier'] ) && is_scalar( $photos[ $index ]['identifier'] ) ? (string) $photos[ $index ]['identifier'] : '';
-				if ( '' !== $identifier ) {
-					$identifier_map[ $identifier ] = (int) $attachment_id;
+		// --- Photo loop. ---
+		if ( $total > 0 ) {
+			if ( empty( $job['current_entry_media_counted'] ) ) {
+				$results->increment( 'media_found', $total );
+				$job['current_entry_media_counted'] = true;
+				if ( is_callable( $checkpoint ) ) {
+					call_user_func_array( $checkpoint, array( &$job, $results ) );
 				}
 			}
 
-			++$index;
-			++$done;
+			$index = isset( $job['current_media_index'] ) ? max( 0, (int) $job['current_media_index'] ) : 0;
+			$done  = 0;
+
+			while ( $index < $total && $done < $limit ) {
+				if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
+					break;
+				}
+
+				day_one_importer_prepare_long_running_import();
+				$attachment_id = $media->import_or_reuse_photo( $photos[ $index ], $entry, $post_id );
+				if ( $attachment_id && ! in_array( (int) $attachment_id, $ids, true ) ) {
+					$ids[] = (int) $attachment_id;
+				}
+				// #56 R12 — pair the photo's identifier with its attachment ID so the
+				// richText emitter can resolve embeddedObjects[].identifier later.
+				// Photos with empty identifiers are silently absent from the map.
+				if ( $attachment_id ) {
+					$identifier = isset( $photos[ $index ]['identifier'] ) && is_scalar( $photos[ $index ]['identifier'] ) ? (string) $photos[ $index ]['identifier'] : '';
+					if ( '' !== $identifier ) {
+						$identifier_map[ $identifier ] = (int) $attachment_id;
+					}
+				}
+
+				++$index;
+				++$done;
+				$job['current_media_index']          = $index;
+				$job['current_attachment_ids']       = $ids;
+				$job['current_photo_identifier_map'] = $identifier_map;
+				if ( is_callable( $checkpoint ) ) {
+					call_user_func_array( $checkpoint, array( &$job, $results ) );
+				}
+			}
+
 			$job['current_media_index']          = $index;
 			$job['current_attachment_ids']       = $ids;
 			$job['current_photo_identifier_map'] = $identifier_map;
-			if ( is_callable( $checkpoint ) ) {
-				call_user_func_array( $checkpoint, array( &$job, $results ) );
+			if ( $index < $total ) {
+				return false;
 			}
 		}
 
-		$job['current_media_index']          = $index;
-		$job['current_attachment_ids']       = $ids;
-		$job['current_photo_identifier_map'] = $identifier_map;
-		if ( $index >= $total ) {
-			$job['current_entry_media_complete'] = true;
-			return true;
+		// --- Video loop (#57 R7.4). ---
+		if ( $video_total > 0 ) {
+			if ( empty( $job['current_entry_video_counted'] ) ) {
+				$results->increment( 'media_found', $video_total );
+				$job['current_entry_video_counted'] = true;
+				if ( is_callable( $checkpoint ) ) {
+					call_user_func_array( $checkpoint, array( &$job, $results ) );
+				}
+			}
+
+			$video_index = isset( $job['current_video_media_index'] ) ? max( 0, (int) $job['current_video_media_index'] ) : 0;
+			$video_done  = 0;
+
+			while ( $video_index < $video_total && $video_done < $limit ) {
+				if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
+					break;
+				}
+
+				day_one_importer_prepare_long_running_import();
+				$attachment_id = $media->import_or_reuse_video( $videos[ $video_index ], $entry, $post_id );
+				if ( $attachment_id && ! in_array( (int) $attachment_id, $ids, true ) ) {
+					$ids[] = (int) $attachment_id;
+				}
+				if ( $attachment_id ) {
+					$identifier = isset( $videos[ $video_index ]['identifier'] ) && is_scalar( $videos[ $video_index ]['identifier'] ) ? (string) $videos[ $video_index ]['identifier'] : '';
+					if ( '' !== $identifier ) {
+						$video_identifier_map[ $identifier ] = (int) $attachment_id;
+					}
+				}
+
+				++$video_index;
+				++$video_done;
+				$job['current_video_media_index']    = $video_index;
+				$job['current_attachment_ids']       = $ids;
+				$job['current_video_identifier_map'] = $video_identifier_map;
+				if ( is_callable( $checkpoint ) ) {
+					call_user_func_array( $checkpoint, array( &$job, $results ) );
+				}
+			}
+
+			$job['current_video_media_index']    = $video_index;
+			$job['current_attachment_ids']       = $ids;
+			$job['current_video_identifier_map'] = $video_identifier_map;
+			if ( $video_index < $video_total ) {
+				return false;
+			}
 		}
 
-		return false;
+		$job['current_entry_media_complete'] = true;
+		return true;
 	}
 
 	/**
@@ -397,12 +456,13 @@ class Day_One_Importer_Runner {
 	 * @param int[]                    $attachment_ids Attachment IDs.
 	 * @param array<string,int>        $photo_map      identifier → attachment_id map (#56 R12).
 	 * @param Day_One_Importer_Results $results        Results.
+	 * @param array<string,int>        $video_map      identifier → attachment_id map for videos (#57 R7.5).
 	 * @return bool True when finalization completed and post was marked complete.
 	 */
-	public function finalize_imported_entry( $entry, $post_id, $attachment_ids, array $photo_map, Day_One_Importer_Results $results ) {
+	public function finalize_imported_entry( $entry, $post_id, $attachment_ids, array $photo_map, Day_One_Importer_Results $results, array $video_map = array() ) {
 		$uuid           = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
 		$uses_rich_text = Day_One_Importer_Content::entry_uses_rich_text_path( $entry );
-		$content        = Day_One_Importer_Content::render_entry_body( $entry, $results, $photo_map );
+		$content        = Day_One_Importer_Content::render_entry_body( $entry, $results, $photo_map, $video_map );
 
 		// #56 R10/R11 — append-at-end ONLY for the legacy markdown path.
 		if ( ! $uses_rich_text && ! empty( $attachment_ids ) ) {
