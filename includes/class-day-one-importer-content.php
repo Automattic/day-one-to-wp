@@ -150,6 +150,60 @@ class Day_One_Importer_Content {
 	}
 
 	/**
+	 * Render the body of a normalized entry using the appropriate path.
+	 *
+	 * Dispatch helper called by both runner invocation sites. When the
+	 * entry carries a usable richText payload, route through the richText
+	 * renderer; otherwise fall back to the legacy markdown path so that
+	 * legacy entries produce byte-identical content.
+	 *
+	 * @param mixed $entry Normalized entry array.
+	 * @return string
+	 */
+	public static function render_entry_body( $entry ) {
+		if ( is_array( $entry ) && isset( $entry['richText'] ) && is_array( $entry['richText'] ) ) {
+			return self::convert_rich_text_to_content( $entry['richText'] );
+		}
+
+		$text = ( is_array( $entry ) && isset( $entry['text'] ) ) ? $entry['text'] : '';
+		return self::convert_text_to_content( $text );
+	}
+
+	/**
+	 * Derive a title from a normalized entry, with richText fallback.
+	 *
+	 * When `text` is non-empty, the legacy derive_title() behavior is
+	 * preserved unchanged. When `text` is empty/missing but richText is
+	 * present, the first non-empty plain run inside richText.contents[]
+	 * is used to feed the same derive_title() logic. Otherwise the
+	 * existing date-fallback title is used.
+	 *
+	 * @param mixed  $entry    Normalized entry array.
+	 * @param string $date_gmt Date in GMT format.
+	 * @return string
+	 */
+	public static function derive_title_from_entry( $entry, $date_gmt = '' ) {
+		$text = ( is_array( $entry ) && isset( $entry['text'] ) && is_scalar( $entry['text'] ) ) ? (string) $entry['text'] : '';
+		if ( '' !== trim( $text ) ) {
+			return self::derive_title( $text, $date_gmt );
+		}
+
+		if ( is_array( $entry ) && isset( $entry['richText']['contents'] ) && is_array( $entry['richText']['contents'] ) ) {
+			foreach ( $entry['richText']['contents'] as $item ) {
+				if ( ! is_array( $item ) ) {
+					continue;
+				}
+				$run = isset( $item['text'] ) && is_scalar( $item['text'] ) ? (string) $item['text'] : '';
+				if ( '' !== trim( $run ) ) {
+					return self::derive_title( $run, $date_gmt );
+				}
+			}
+		}
+
+		return self::derive_title( '', $date_gmt );
+	}
+
+	/**
 	 * Derive a safe title from text and date.
 	 *
 	 * @param mixed  $text Raw text.
