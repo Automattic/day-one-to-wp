@@ -1001,6 +1001,272 @@ assert_true( 0 === substr_count( $ac2a_precedence, '<!-- wp:image' ), '#56 AC2a 
 assert_true( 0 === substr_count( $ac2a_precedence, '<!-- wp:gallery' ), '#56 AC2a — text+embed item emits no gallery block.' );
 assert_true( ! $ac2a_results_precedence->has_warnings(), '#56 AC2a — text+embed item does NOT add an unresolved-photo warning.' );
 
+// #56 AC3 — single resolved photo embed produces one image block between paragraphs.
+// Pure-helper stubs at the top of this file resolve attachment IDs 101 / 102 / 202 / 303;
+// AC3-AC5 reuse those IDs so build_attachment_image_record() returns a non-null record.
+$ac3_results = new Day_One_Importer_Results();
+$ac3_output  = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'text' => 'Before' ),
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC3-PHOTO',
+					),
+				),
+			),
+			array( 'text' => 'After' ),
+		),
+	),
+	$ac3_results,
+	array( 'AC3-PHOTO' => 101 )
+);
+assert_true( 1 === substr_count( $ac3_output, '<!-- wp:image' ), '#56 AC3 — single resolved photo yields exactly one wp:image block.' );
+assert_true( 2 === substr_count( $ac3_output, '<!-- wp:paragraph' ), '#56 AC3 — surrounding paragraphs render unchanged.' );
+assert_true( strpos( $ac3_output, 'Before' ) < strpos( $ac3_output, '<!-- wp:image' ), '#56 AC3 — image block comes after the leading paragraph.' );
+assert_true( strpos( $ac3_output, '<!-- wp:image' ) < strpos( $ac3_output, 'After' ), '#56 AC3 — image block comes before the trailing paragraph.' );
+assert_true( false !== strpos( $ac3_output, '"id":101' ), '#56 AC3 — image block carries the resolved attachment ID.' );
+assert_true( ! $ac3_results->has_warnings(), '#56 AC3 — resolved photo emits no warning.' );
+
+// #56 AC4 — two consecutive single-embed items collapse into one gallery block.
+$ac4_results = new Day_One_Importer_Results();
+$ac4_output  = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC4-A',
+					),
+				),
+			),
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC4-B',
+					),
+				),
+			),
+		),
+	),
+	$ac4_results,
+	array(
+		'AC4-A' => 101,
+		'AC4-B' => 102,
+	)
+);
+assert_true( 1 === substr_count( $ac4_output, '<!-- wp:gallery' ), '#56 AC4 — two consecutive embed items yield exactly one gallery block.' );
+assert_true( ! $ac4_results->has_warnings(), '#56 AC4 — resolved photos in a gallery emit no warning.' );
+
+// #56 AC4a — transparent drop between two media items keeps them in one run.
+$ac4a_results = new Day_One_Importer_Results();
+$ac4a_output  = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC4A-A',
+					),
+				),
+			),
+			// Fully-dropped item: empty text, no embeds — transparent in run loop.
+			array( 'text' => '' ),
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC4A-B',
+					),
+				),
+			),
+		),
+	),
+	$ac4a_results,
+	array(
+		'AC4A-A' => 101,
+		'AC4A-B' => 202,
+	)
+);
+assert_true( 1 === substr_count( $ac4a_output, '<!-- wp:gallery' ), '#56 AC4a — dropped item between two media items keeps them in ONE gallery run.' );
+assert_true( ! $ac4a_results->has_warnings(), '#56 AC4a — transparent-drop run emits no warning.' );
+
+// #56 AC5 — one item carrying two embeds collapses into one gallery block.
+$ac5_results = new Day_One_Importer_Results();
+$ac5_output  = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC5-A',
+					),
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC5-B',
+					),
+				),
+			),
+		),
+	),
+	$ac5_results,
+	array(
+		'AC5-A' => 101,
+		'AC5-B' => 102,
+	)
+);
+assert_true( 1 === substr_count( $ac5_output, '<!-- wp:gallery' ), '#56 AC5 — one item with two embeds yields one gallery block.' );
+assert_true( ! $ac5_results->has_warnings(), '#56 AC5 — resolved multi-embed item emits no warning.' );
+
+// #56 AC6 — video/audio/pdfAttachment embeds emit zero blocks and one per-type warning each.
+$ac6_results = new Day_One_Importer_Results();
+$ac6_output  = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'video',
+						'identifier' => 'AC6-V',
+					),
+				),
+			),
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'audio',
+						'identifier' => 'AC6-A',
+					),
+				),
+			),
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'pdfAttachment',
+						'identifier' => 'AC6-P',
+					),
+				),
+			),
+		),
+	),
+	$ac6_results
+);
+assert_true( '' === $ac6_output, '#56 AC6 — video/audio/pdfAttachment embeds emit no blocks.' );
+$ac6_warnings = $ac6_results->get_warnings();
+assert_true( 3 === count( $ac6_warnings ), '#56 AC6 — exactly 3 warnings recorded (one per unsupported type).' );
+$ac6_warning_blob = implode( "\n", $ac6_warnings );
+assert_true( false !== strpos( $ac6_warning_blob, 'video import is not yet supported' ), '#56 AC6 — video warning text present.' );
+assert_true( false !== strpos( $ac6_warning_blob, 'audio import is not yet supported' ), '#56 AC6 — audio warning text present.' );
+assert_true( false !== strpos( $ac6_warning_blob, 'PDF import is not yet supported' ), '#56 AC6 — PDF warning text present.' );
+assert_true( false === strpos( $ac6_warning_blob, '#57' ), '#56 AC6 — warnings do not leak issue number #57.' );
+assert_true( false === strpos( $ac6_warning_blob, '#58' ), '#56 AC6 — warnings do not leak issue number #58.' );
+assert_true( false === strpos( $ac6_warning_blob, '#59' ), '#56 AC6 — warnings do not leak issue number #59.' );
+assert_true( false === strpos( $ac6_warning_blob, 'issue' ), '#56 AC6 — warnings do not contain the word "issue".' );
+assert_true( false === strpos( $ac6_warning_blob, 'AC6-V' ), '#56 AC6 — warnings do not leak embed identifier (video).' );
+assert_true( false === strpos( $ac6_warning_blob, 'AC6-A' ), '#56 AC6 — warnings do not leak embed identifier (audio).' );
+assert_true( false === strpos( $ac6_warning_blob, 'AC6-P' ), '#56 AC6 — warnings do not leak embed identifier (pdf).' );
+
+// #56 AC6 dedupe — two video embeds in one run produce exactly one video warning.
+$ac6_dedupe_results = new Day_One_Importer_Results();
+Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'video',
+						'identifier' => 'AC6-V1',
+					),
+					array(
+						'type'       => 'video',
+						'identifier' => 'AC6-V2',
+					),
+				),
+			),
+		),
+	),
+	$ac6_dedupe_results
+);
+assert_true( 1 === count( $ac6_dedupe_results->get_warnings() ), '#56 AC6 — two video embeds in one entry yield exactly one video warning (per-type dedupe).' );
+
+// #56 AC7 — unresolved photo identifier emits zero blocks and exactly one warning.
+$ac7_results = new Day_One_Importer_Results();
+$ac7_output  = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC7-MISSING',
+					),
+				),
+			),
+		),
+	),
+	$ac7_results,
+	array() // empty map — every photo is unresolved.
+);
+assert_true( '' === $ac7_output, '#56 AC7 — unresolved photo emits no blocks.' );
+$ac7_warnings = $ac7_results->get_warnings();
+assert_true( 1 === count( $ac7_warnings ), '#56 AC7 — exactly one warning recorded.' );
+assert_true( false === strpos( $ac7_warnings[0], 'AC7-MISSING' ), '#56 AC7 — warning does not leak the unresolved identifier.' );
+
+// #56 AC7 cardinality — two distinct unresolved identifiers produce TWO warnings (per-identifier, NOT deduped).
+$ac7_card_results = new Day_One_Importer_Results();
+Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC7-MISS-A',
+					),
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC7-MISS-B',
+					),
+				),
+			),
+		),
+	),
+	$ac7_card_results,
+	array()
+);
+assert_true( 2 === count( $ac7_card_results->get_warnings() ), '#56 AC7 — two distinct missing identifiers produce two warnings (per-identifier, not deduped).' );
+
+// #56 AC9 — entry-shaped finalize call with empty map yields warning + no block, no PHP notice.
+error_clear_last();
+$ac9_results = new Day_One_Importer_Results();
+$ac9_entry   = array(
+	'uuid'     => 'AC9-ENTRY',
+	'richText' => array(
+		'meta'     => array( 'version' => 1 ),
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array(
+						'type'       => 'photo',
+						'identifier' => 'AC9-PHOTO',
+					),
+				),
+			),
+		),
+	),
+);
+$ac9_output = Day_One_Importer_Content::render_entry_body( $ac9_entry, $ac9_results, array() );
+assert_true( '' === $ac9_output, '#56 AC9 — render_entry_body with empty map yields empty body.' );
+assert_true( $ac9_results->has_warnings(), '#56 AC9 — render_entry_body with unresolved embed records a warning.' );
+$ac9_last_error = error_get_last();
+assert_true( null === $ac9_last_error || ! in_array( (int) $ac9_last_error['type'], array( E_ERROR, E_WARNING, E_NOTICE, E_USER_ERROR, E_USER_WARNING, E_USER_NOTICE ), true ), '#56 AC9 — render_entry_body call did not raise a PHP error/warning/notice.' );
+
 // R11.6 (R19.1 inversion) — italic attribute wraps text in <em> inside the paragraph block.
 $rt_italic = Day_One_Importer_Content::convert_rich_text_to_content(
 	array(
