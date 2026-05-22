@@ -2666,4 +2666,70 @@ assert_true( is_string( $rt_video['duration'] ) && abs( floatval( $rt_video['dur
 Day_One_Importer_Cleanup::remove( dirname( $video_roundtrip_job['manifest_path'] ) );
 Day_One_Importer_Cleanup::remove( $video_roundtrip_dir );
 
+// --- C2 — Media helpers for videos (issue #57). ---
+
+// sort_videos() preserves order by orderInEntry then original index (R11.4).
+$sort_input = array(
+	array( 'identifier' => 'A', 'orderInEntry' => 2 ),
+	array( 'identifier' => 'B', 'orderInEntry' => 0 ),
+	array( 'identifier' => 'C', 'orderInEntry' => null ),
+	array( 'identifier' => 'D', 'orderInEntry' => 0 ),
+);
+$sort_output = Day_One_Importer_Media::sort_videos( $sort_input );
+assert_true(
+	'B' === $sort_output[0]['identifier']
+	&& 'D' === $sort_output[1]['identifier']
+	&& 'A' === $sort_output[2]['identifier']
+	&& 'C' === $sort_output[3]['identifier'],
+	'sort_videos orders by orderInEntry then original index (null sinks to end).'
+);
+
+// resolve_video_path() probes mov,mp4,m4v for type=mov (R11.4 light coverage).
+$resolve_root = sys_get_temp_dir() . '/day-one-importer-vid-resolve-' . uniqid();
+mkdir( $resolve_root . '/videos', 0777, true );
+$resolve_md5    = '11112222333344445555666677778888';
+$resolve_target = $resolve_root . '/videos/' . $resolve_md5 . '.mp4';
+file_put_contents( $resolve_target, 'placeholder' );
+// type=mov: mov,mp4,m4v — should find the .mp4 fallback.
+$resolved = Day_One_Importer_Media::resolve_video_path(
+	$resolve_root,
+	array(
+		'md5'      => $resolve_md5,
+		'type'     => 'mov',
+		'filename' => '',
+	)
+);
+assert_true( '' !== $resolved && realpath( $resolve_target ) === $resolved, 'resolve_video_path falls back through mov,mp4,m4v for type=mov (R4.1).' );
+// Verify mov is preferred over mp4 when both exist.
+$resolve_mov = $resolve_root . '/videos/' . $resolve_md5 . '.mov';
+file_put_contents( $resolve_mov, 'placeholder' );
+$resolved_mov = Day_One_Importer_Media::resolve_video_path(
+	$resolve_root,
+	array(
+		'md5'      => $resolve_md5,
+		'type'     => 'mov',
+		'filename' => '',
+	)
+);
+assert_true( '' !== $resolved_mov && realpath( $resolve_mov ) === $resolved_mov, 'resolve_video_path prefers the requested type (mov) over fallbacks (mp4).' );
+// type=mp4: mp4,mov,m4v — should prefer the .mp4 even with .mov present.
+$resolved_mp4 = Day_One_Importer_Media::resolve_video_path(
+	$resolve_root,
+	array(
+		'md5'      => $resolve_md5,
+		'type'     => 'mp4',
+		'filename' => '',
+	)
+);
+assert_true( '' !== $resolved_mp4 && realpath( $resolve_target ) === $resolved_mp4, 'resolve_video_path prefers the requested type (mp4) when type=mp4.' );
+Day_One_Importer_Cleanup::remove( $resolve_root );
+
+// find_video_dirs() discovers a top-level videos/ directory (R4.1).
+$discover_root = sys_get_temp_dir() . '/day-one-importer-vid-discover-' . uniqid();
+mkdir( $discover_root . '/videos', 0777, true );
+mkdir( $discover_root . '/photos', 0777, true );
+$found_dirs = Day_One_Importer_Media::find_video_dirs( $discover_root );
+assert_true( 1 === count( $found_dirs ) && false !== strpos( $found_dirs[0], DIRECTORY_SEPARATOR . 'videos' ), 'find_video_dirs picks up a top-level videos directory.' );
+Day_One_Importer_Cleanup::remove( $discover_root );
+
 echo "All pure helper tests passed.\n";

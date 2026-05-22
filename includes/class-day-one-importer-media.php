@@ -49,16 +49,25 @@ class Day_One_Importer_Media {
 	private $photo_dirs = null;
 
 	/**
+	 * Cached video directories for async jobs, or null to discover synchronously.
+	 *
+	 * @var string[]|null
+	 */
+	private $video_dirs = null;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param string                   $root Extraction root.
 	 * @param Day_One_Importer_Results $results Results.
 	 * @param string[]|null            $photo_dirs Cached photo directories, or null to discover.
+	 * @param string[]|null            $video_dirs Cached video directories, or null to discover.
 	 */
-	public function __construct( $root, Day_One_Importer_Results $results, $photo_dirs = null ) {
+	public function __construct( $root, Day_One_Importer_Results $results, $photo_dirs = null, $video_dirs = null ) {
 		$this->root       = $root;
 		$this->results    = $results;
 		$this->photo_dirs = is_array( $photo_dirs ) ? array_values( array_filter( array_map( 'strval', $photo_dirs ) ) ) : null;
+		$this->video_dirs = is_array( $video_dirs ) ? array_values( array_filter( array_map( 'strval', $video_dirs ) ) ) : null;
 	}
 
 	/**
@@ -86,6 +95,68 @@ class Day_One_Importer_Media {
 		}
 
 		return $attachment_ids;
+	}
+
+	/**
+	 * Import all videos for an entry.
+	 *
+	 * Mirrors import_entry_photos(). Used by tests and as a convenience wrapper;
+	 * the runner's per-entry batch loop calls import_or_reuse_video() directly so
+	 * it can checkpoint between videos.
+	 *
+	 * @param array<string,mixed> $entry Entry.
+	 * @param int                 $post_id Post ID.
+	 * @return array<int,array{identifier:string,attachment_id:int}> Records in scan order.
+	 */
+	public function import_entry_videos( $entry, $post_id ) {
+		$videos = isset( $entry['videos'] ) && is_array( $entry['videos'] ) ? $entry['videos'] : array();
+		if ( empty( $videos ) ) {
+			return array();
+		}
+
+		$this->results->increment( 'media_found', count( $videos ) );
+		$videos = self::sort_videos( $videos );
+
+		$records = array();
+		foreach ( $videos as $video ) {
+			$attachment_id = $this->import_or_reuse_video( $video, $entry, $post_id );
+			if ( $attachment_id ) {
+				$records[] = array(
+					'identifier'    => isset( $video['identifier'] ) ? (string) $video['identifier'] : '',
+					'attachment_id' => (int) $attachment_id,
+				);
+			}
+		}
+
+		return $records;
+	}
+
+	/**
+	 * Sort videos by orderInEntry then original index. Mirrors sort_photos().
+	 *
+	 * @param array<int,array<string,mixed>> $videos Videos.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function sort_videos( $videos ) {
+		foreach ( $videos as $index => &$video ) {
+			$video['_original_index'] = $index;
+		}
+		unset( $video );
+
+		usort(
+			$videos,
+			static function ( $a, $b ) {
+				$a_order = isset( $a['orderInEntry'] ) && null !== $a['orderInEntry'] ? (int) $a['orderInEntry'] : PHP_INT_MAX;
+				$b_order = isset( $b['orderInEntry'] ) && null !== $b['orderInEntry'] ? (int) $b['orderInEntry'] : PHP_INT_MAX;
+				if ( $a_order === $b_order ) {
+					return (int) $a['_original_index'] <=> (int) $b['_original_index'];
+				}
+
+				return $a_order <=> $b_order;
+			}
+		);
+
+		return $videos;
 	}
 
 	/**
@@ -186,6 +257,71 @@ class Day_One_Importer_Media {
 		}
 
 		$this->apply_photo_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $photo );
+		$this->results->increment( 'media_imported' );
+		return $attachment_id;
+	}
+
+	/**
+	 * Import or reuse one video.
+	 *
+	 * Mirrors import_or_reuse_photo(). On MIME rejection (validate_media_file()
+	 * sentinel), the embed is dropped with a privacy-safe warning per spec R5.2.
+	 *
+	 * @param array<string,mixed> $video Video metadata.
+	 * @param array<string,mixed> $entry Entry.
+	 * @param int                 $post_id Post ID.
+	 * @return int Attachment ID, or 0.
+	 */
+	public function import_or_reuse_video( $video, $entry, $post_id ) {
+		$uuid       = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
+		$identifier = isset( $video['identifier'] ) ? (string) $video['identifier'] : '';
+		$md5        = isset( $video['md5'] ) ? (string) $video['md5'] : '';
+
+		$existing = $this->find_existing_attachment( $post_id, $uuid, $identifier, $md5 );
+		if ( $existing ) {
+			$this->results->increment( 'media_reused' );
+			return $existing;
+		}
+
+		$source = self::resolve_video_path( $this->root, $video, $this->video_dirs );
+		if ( ! $source ) {
+			$this->results->increment( 'media_missing' );
+			$this->results->add_warning(
+				__( 'Skipping embedded video in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+			);
+			return 0;
+		}
+
+		$partial = $this->find_partial_attachment_by_source( $post_id, $uuid, $video, $source );
+		if ( $partial ) {
+			$this->apply_video_marker_metadata( $partial, $uuid, $identifier, $md5, $video );
+			$this->results->increment( 'media_reused' );
+			return $partial;
+		}
+
+		$valid = $this->validate_media_file( $source, 'video' );
+		if ( true !== $valid ) {
+			if ( 'unsupported' === $valid ) {
+				$this->results->increment( 'media_unsupported' );
+			} else {
+				$this->results->increment( 'media_failed' );
+			}
+			$this->results->add_warning(
+				__( 'Skipping embedded video in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+			);
+			return 0;
+		}
+
+		$attachment_id = $this->sideload_media( $source, $video, $entry, $post_id );
+		if ( ! $attachment_id ) {
+			$this->results->increment( 'media_failed' );
+			$this->results->add_warning(
+				__( 'Skipping embedded video in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+			);
+			return 0;
+		}
+
+		$this->apply_video_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $video );
 		$this->results->increment( 'media_imported' );
 		return $attachment_id;
 	}
@@ -296,6 +432,138 @@ class Day_One_Importer_Media {
 	}
 
 	/**
+	 * Resolve a Day One video to an exported file path. Mirrors resolve_photo_path().
+	 *
+	 * @param string              $root Extraction root.
+	 * @param array<string,mixed> $video Video metadata.
+	 * @param string[]|null       $video_dirs Cached video directories, or null to discover.
+	 * @return string Empty if unresolved.
+	 */
+	public static function resolve_video_path( $root, $video, $video_dirs = null ) {
+		$root_real = realpath( $root );
+		if ( false === $root_real ) {
+			return '';
+		}
+
+		if ( null !== $video_dirs ) {
+			$video_dirs = self::sanitize_video_dirs( $root_real, $video_dirs );
+		} else {
+			$video_dirs = self::find_video_dirs( $root_real );
+		}
+		if ( empty( $video_dirs ) ) {
+			return '';
+		}
+
+		$candidates = array();
+		$md5        = isset( $video['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $video['md5'] ) ) : '';
+		$type       = isset( $video['type'] ) ? strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', (string) $video['type'] ) ) : '';
+		$filename   = isset( $video['filename'] ) ? basename( (string) $video['filename'] ) : '';
+
+		if ( $md5 ) {
+			$extensions = self::candidate_extensions_video( $type );
+			foreach ( $extensions as $extension ) {
+				$candidates[] = $md5 . '.' . $extension;
+			}
+		}
+
+		if ( $filename ) {
+			$candidates[] = $filename;
+		}
+
+		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+		foreach ( $video_dirs as $dir ) {
+			foreach ( array_unique( $candidates ) as $candidate ) {
+				$path = $dir . DIRECTORY_SEPARATOR . $candidate;
+				if ( is_file( $path ) ) {
+					$real = realpath( $path );
+					if ( $real && ( $real === $root_real || 0 === strpos( $real, $root_prefix ) ) ) {
+						return $real;
+					}
+				}
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Sanitize cached video directories against the extraction root.
+	 *
+	 * @param string   $root_real Real extraction root.
+	 * @param string[] $video_dirs Cached directories.
+	 * @return string[]
+	 */
+	private static function sanitize_video_dirs( $root_real, $video_dirs ) {
+		$dirs        = array();
+		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+		foreach ( (array) $video_dirs as $dir ) {
+			$real = realpath( (string) $dir );
+			if ( false === $real || ! is_dir( $real ) ) {
+				continue;
+			}
+			if ( $real === $root_real || 0 === strpos( $real, $root_prefix ) ) {
+				$dirs[] = $real;
+			}
+		}
+
+		return array_values( array_unique( $dirs ) );
+	}
+
+	/**
+	 * Find videos directories in an export. Mirrors find_photo_dirs().
+	 *
+	 * @param string $root Root.
+	 * @return string[]
+	 */
+	public static function find_video_dirs( $root ) {
+		$dirs = array();
+		if ( ! is_dir( $root ) ) {
+			return $dirs;
+		}
+
+		$iterator = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator( $root, FilesystemIterator::SKIP_DOTS ),
+			RecursiveIteratorIterator::SELF_FIRST
+		);
+
+		foreach ( $iterator as $item ) {
+			if ( $item->isDir() && 'videos' === strtolower( $item->getFilename() ) ) {
+				$dirs[] = $item->getPathname();
+			}
+		}
+
+		sort( $dirs );
+		return $dirs;
+	}
+
+	/**
+	 * Candidate extensions for a Day One video type.
+	 *
+	 * @param string $type Type.
+	 * @return string[]
+	 */
+	private static function candidate_extensions_video( $type ) {
+		$extensions = array();
+		if ( $type ) {
+			$extensions[] = $type;
+		}
+
+		switch ( $type ) {
+			case 'mov':
+				$extensions[] = 'mp4';
+				$extensions[] = 'm4v';
+				break;
+			case 'mp4':
+				$extensions[] = 'mov';
+				$extensions[] = 'm4v';
+				break;
+		}
+
+		$extensions = array_merge( $extensions, array( 'mov', 'mp4', 'm4v' ) );
+		return array_values( array_unique( array_filter( $extensions ) ) );
+	}
+
+	/**
 	 * Candidate extensions for a Day One media type.
 	 *
 	 * @param string $type Type.
@@ -326,19 +594,29 @@ class Day_One_Importer_Media {
 	}
 
 	/**
-	 * Validate media is a WordPress-accepted image type.
+	 * Validate media is a WordPress-accepted type for the requested kind.
+	 *
+	 * For kind 'photo' (default) the MIME must start with `image/`; for kind
+	 * 'video' it must start with `video/`. In both cases the MIME must also be
+	 * present in get_allowed_mime_types(), otherwise sideload would refuse it.
 	 *
 	 * @param string $path Path.
-	 * @return true|string True or reason.
+	 * @param string $kind 'photo' (default) or 'video'.
+	 * @return true|string True or reason ('unreadable'|'unsupported'|'mime-not-allowed').
 	 */
-	private function validate_media_file( $path ) {
+	private function validate_media_file( $path, $kind = 'photo' ) {
 		if ( ! is_readable( $path ) || filesize( $path ) <= 0 ) {
 			return 'unreadable';
 		}
 
 		$type = wp_check_filetype_and_ext( $path, basename( $path ) );
 		$mime = isset( $type['type'] ) ? (string) $type['type'] : '';
-		if ( ! $mime || 0 !== strpos( $mime, 'image/' ) ) {
+
+		if ( 'video' === $kind ) {
+			if ( ! $mime || 0 !== strpos( $mime, 'video/' ) ) {
+				return 'unsupported';
+			}
+		} elseif ( ! $mime || 0 !== strpos( $mime, 'image/' ) ) {
 			return 'unsupported';
 		}
 
@@ -480,6 +758,49 @@ class Day_One_Importer_Media {
 		}
 		if ( ! empty( $photo['height'] ) ) {
 			update_post_meta( $attachment_id, '_day_one_height', absint( $photo['height'] ) );
+		}
+	}
+
+	/**
+	 * Apply Day One marker metadata for a video attachment.
+	 *
+	 * Mirrors apply_photo_marker_metadata() for the shared keys. Adds:
+	 *  - `_day_one_media_kind = 'video'` (always)
+	 *  - `_day_one_video_duration` (string) only when the canonical numeric value
+	 *    is greater than zero. See spec R1.4 + R4.1.
+	 *
+	 * @param int                 $attachment_id Attachment ID.
+	 * @param string              $uuid Entry UUID.
+	 * @param string              $identifier Media identifier.
+	 * @param string              $md5 Media MD5.
+	 * @param array<string,mixed> $video Video metadata.
+	 * @return void
+	 */
+	private function apply_video_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $video ) {
+		$attachment_id = (int) $attachment_id;
+		if ( ! $attachment_id ) {
+			return;
+		}
+
+		update_post_meta( $attachment_id, '_day_one_media_identifier', $identifier );
+		update_post_meta( $attachment_id, '_day_one_media_md5', $md5 );
+		update_post_meta( $attachment_id, '_day_one_uuid', $uuid );
+		update_post_meta( $attachment_id, '_day_one_source', 'day-one-export' );
+		update_post_meta( $attachment_id, '_day_one_media_kind', 'video' );
+		if ( ! empty( $video['date'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_media_date', day_one_importer_sanitize_text( $video['date'] ) );
+		}
+		if ( ! empty( $video['filename'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_original_filename', day_one_importer_sanitize_text( $video['filename'] ) );
+		}
+		if ( ! empty( $video['width'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_width', absint( $video['width'] ) );
+		}
+		if ( ! empty( $video['height'] ) ) {
+			update_post_meta( $attachment_id, '_day_one_height', absint( $video['height'] ) );
+		}
+		if ( isset( $video['duration'] ) && floatval( $video['duration'] ) > 0 ) {
+			update_post_meta( $attachment_id, '_day_one_video_duration', (string) $video['duration'] );
 		}
 	}
 
