@@ -210,6 +210,10 @@ class Day_One_Importer_Job_Processor {
 			$existing              = isset( $job['zip_photo_dirs'] ) && is_array( $job['zip_photo_dirs'] ) ? $job['zip_photo_dirs'] : array();
 			$job['zip_photo_dirs'] = array_values( array_unique( array_merge( $existing, $batch['photo_dirs'] ) ) );
 		}
+		if ( ! empty( $batch['video_dirs'] ) && is_array( $batch['video_dirs'] ) ) {
+			$existing              = isset( $job['zip_video_dirs'] ) && is_array( $job['zip_video_dirs'] ) ? $job['zip_video_dirs'] : array();
+			$job['zip_video_dirs'] = array_values( array_unique( array_merge( $existing, $batch['video_dirs'] ) ) );
+		}
 		if ( ! empty( $batch['error'] ) ) {
 			$this->fail_job( $job, $results, (string) $batch['error'] );
 			return false;

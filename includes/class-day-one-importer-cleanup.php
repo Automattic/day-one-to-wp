@@ -464,6 +464,7 @@ class Day_One_Importer_Cleanup {
 			'error'           => '',
 			'json_candidates' => array(),
 			'photo_dirs'      => array(),
+			'video_dirs'      => array(),
 		);
 
 		if ( ! class_exists( 'ZipArchive' ) ) {
@@ -522,6 +523,9 @@ class Day_One_Importer_Cleanup {
 			if ( ! empty( $metadata['photo_dir'] ) ) {
 				$result['photo_dirs'][] = $metadata['photo_dir'];
 			}
+			if ( ! empty( $metadata['video_dir'] ) ) {
+				$result['video_dirs'][] = $metadata['video_dir'];
+			}
 
 			++$index;
 			++$processed;
@@ -531,6 +535,7 @@ class Day_One_Importer_Cleanup {
 		$result['done']            = $index >= $total;
 		$result['json_candidates'] = array_values( array_unique( $result['json_candidates'] ) );
 		$result['photo_dirs']      = array_values( array_unique( $result['photo_dirs'] ) );
+		$result['video_dirs']      = array_values( array_unique( $result['video_dirs'] ) );
 		$zip->close();
 
 		return $result;
@@ -540,13 +545,14 @@ class Day_One_Importer_Cleanup {
 	 * Extract import-relevant metadata from a safe archive member path.
 	 *
 	 * @param string $name Archive member name.
-	 * @return array{json:string,photo_dir:string}
+	 * @return array{json:string,photo_dir:string,video_dir:string}
 	 */
 	private static function archive_member_import_metadata( $name ) {
 		$normalized = trim( str_replace( '\\', '/', (string) $name ), '/' );
 		$metadata   = array(
 			'json'      => '',
 			'photo_dir' => '',
+			'video_dir' => '',
 		);
 		if ( '' === $normalized ) {
 			return $metadata;
@@ -560,6 +566,10 @@ class Day_One_Importer_Cleanup {
 		foreach ( $parts as $index => $part ) {
 			if ( 'photos' === strtolower( $part ) ) {
 				$metadata['photo_dir'] = implode( '/', array_slice( $parts, 0, $index + 1 ) );
+				break;
+			}
+			if ( 'videos' === strtolower( $part ) ) {
+				$metadata['video_dir'] = implode( '/', array_slice( $parts, 0, $index + 1 ) );
 				break;
 			}
 		}

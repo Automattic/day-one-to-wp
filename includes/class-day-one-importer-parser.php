@@ -90,7 +90,7 @@ class Day_One_Importer_Parser {
 			);
 		}
 
-		if ( array_key_exists( 'zip_json_candidates', $job ) || array_key_exists( 'zip_photo_dirs', $job ) ) {
+		if ( array_key_exists( 'zip_json_candidates', $job ) || array_key_exists( 'zip_photo_dirs', $job ) || array_key_exists( 'zip_video_dirs', $job ) ) {
 			return $this->discover_archive_candidates_batch( $root_real, $job, $results, $deadline, $checkpoint );
 		}
 
@@ -114,22 +114,28 @@ class Day_One_Importer_Parser {
 		if ( empty( $job['archive_discovery_initialized'] ) ) {
 			$job['archive_json_candidate_index']      = 0;
 			$job['archive_photo_dir_candidate_index'] = 0;
+			$job['archive_video_dir_candidate_index'] = 0;
 			$job['json_files']                        = array();
 			$job['photo_dirs']                        = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? array_values( $job['photo_dirs'] ) : array();
+			$job['video_dirs']                        = isset( $job['video_dirs'] ) && is_array( $job['video_dirs'] ) ? array_values( $job['video_dirs'] ) : array();
 			$job['archive_discovery_initialized']     = true;
 		}
 
 		$json_candidates  = isset( $job['zip_json_candidates'] ) && is_array( $job['zip_json_candidates'] ) ? array_values( $job['zip_json_candidates'] ) : array();
 		$photo_candidates = isset( $job['zip_photo_dirs'] ) && is_array( $job['zip_photo_dirs'] ) ? array_values( $job['zip_photo_dirs'] ) : array();
+		$video_candidates = isset( $job['zip_video_dirs'] ) && is_array( $job['zip_video_dirs'] ) ? array_values( $job['zip_video_dirs'] ) : array();
 		$files            = isset( $job['json_files'] ) && is_array( $job['json_files'] ) ? array_values( $job['json_files'] ) : array();
 		$photo_dirs       = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? array_values( $job['photo_dirs'] ) : array();
+		$video_dirs       = isset( $job['video_dirs'] ) && is_array( $job['video_dirs'] ) ? array_values( $job['video_dirs'] ) : array();
 		$json_i           = isset( $job['archive_json_candidate_index'] ) ? max( 0, (int) $job['archive_json_candidate_index'] ) : 0;
 		$photo_i          = isset( $job['archive_photo_dir_candidate_index'] ) ? max( 0, (int) $job['archive_photo_dir_candidate_index'] ) : 0;
+		$video_i          = isset( $job['archive_video_dir_candidate_index'] ) ? max( 0, (int) $job['archive_video_dir_candidate_index'] ) : 0;
 		$processed        = 0;
 		$limit            = $this->discovery_node_limit();
 
 		$json_candidate_count  = count( $json_candidates );
 		$photo_candidate_count = count( $photo_candidates );
+		$video_candidate_count = count( $video_candidates );
 
 		while ( $processed < $limit && $json_i < $json_candidate_count ) {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
@@ -157,11 +163,25 @@ class Day_One_Importer_Parser {
 			$job['archive_photo_dir_candidate_index'] = $photo_i;
 		}
 
+		while ( $processed < $limit && $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count && $video_i < $video_candidate_count ) {
+			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
+				break;
+			}
+			$path = $this->archive_relative_to_real_path( $root_real, (string) $video_candidates[ $video_i ], true );
+			if ( $path && is_dir( $path ) && ! in_array( $path, $video_dirs, true ) ) {
+				$video_dirs[] = $path;
+			}
+			++$video_i;
+			++$processed;
+			$job['archive_video_dir_candidate_index'] = $video_i;
+		}
+
 		$job['json_files']       = $files;
 		$job['json_files_found'] = count( $files );
 		$job['photo_dirs']       = $photo_dirs;
+		$job['video_dirs']       = $video_dirs;
 
-		if ( $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count ) {
+		if ( $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count && $video_i >= $video_candidate_count ) {
 			$job['json_discovery_done'] = true;
 			$job['json_file_index']     = 0;
 			$job['json_entry_index']    = 0;
@@ -985,6 +1005,15 @@ class Day_One_Importer_Parser {
 			}
 		}
 
+		$videos = array();
+		if ( isset( $raw_entry['videos'] ) && is_array( $raw_entry['videos'] ) ) {
+			foreach ( $raw_entry['videos'] as $video ) {
+				if ( is_array( $video ) ) {
+					$videos[] = $this->normalize_video( $video );
+				}
+			}
+		}
+
 		$rich_text = null;
 		if ( isset( $raw_entry['richText'] ) ) {
 			$raw_rich = $raw_entry['richText'];
@@ -1017,6 +1046,7 @@ class Day_One_Importer_Parser {
 			'tags'                => isset( $raw_entry['tags'] ) && is_array( $raw_entry['tags'] ) ? $raw_entry['tags'] : array(),
 			'journal'             => Day_One_Importer_Content::derive_journal_name( $raw_entry, $source_file ),
 			'photos'              => $photos,
+			'videos'              => $videos,
 			'starred'             => ! empty( $raw_entry['starred'] ),
 			'isPinned'            => ! empty( $raw_entry['isPinned'] ),
 			'creationDeviceType'  => isset( $raw_entry['creationDeviceType'] ) && is_scalar( $raw_entry['creationDeviceType'] ) ? day_one_importer_sanitize_text( $raw_entry['creationDeviceType'] ) : '',
@@ -1047,6 +1077,35 @@ class Day_One_Importer_Parser {
 			'orderInEntry' => isset( $photo['orderInEntry'] ) && is_numeric( $photo['orderInEntry'] ) ? (int) $photo['orderInEntry'] : null,
 			'width'        => isset( $photo['width'] ) && is_numeric( $photo['width'] ) ? (int) $photo['width'] : 0,
 			'height'       => isset( $photo['height'] ) && is_numeric( $photo['height'] ) ? (int) $photo['height'] : 0,
+		);
+	}
+
+	/**
+	 * Normalize video metadata.
+	 *
+	 * Mirrors normalize_photo() for the shared keys. `duration` is stored as the
+	 * canonical PHP string form of the originally decoded JSON number (see spec
+	 * R1.4 — string storage avoids float drift on JSONL round-trips).
+	 *
+	 * @param array<string,mixed> $video Raw video.
+	 * @return array<string,mixed>
+	 */
+	private function normalize_video( $video ) {
+		$duration = '';
+		if ( isset( $video['duration'] ) && is_numeric( $video['duration'] ) ) {
+			$duration = (string) ( floatval( $video['duration'] ) + 0 );
+		}
+
+		return array(
+			'identifier'   => isset( $video['identifier'] ) && is_scalar( $video['identifier'] ) ? day_one_importer_sanitize_text( $video['identifier'] ) : '',
+			'md5'          => isset( $video['md5'] ) && is_scalar( $video['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $video['md5'] ) ) : '',
+			'type'         => isset( $video['type'] ) && is_scalar( $video['type'] ) ? strtolower( preg_replace( '/[^a-zA-Z0-9]/', '', (string) $video['type'] ) ) : '',
+			'filename'     => isset( $video['filename'] ) && is_scalar( $video['filename'] ) ? basename( day_one_importer_sanitize_text( $video['filename'] ) ) : '',
+			'date'         => isset( $video['date'] ) && is_scalar( $video['date'] ) ? day_one_importer_sanitize_text( $video['date'] ) : '',
+			'orderInEntry' => isset( $video['orderInEntry'] ) && is_numeric( $video['orderInEntry'] ) ? (int) $video['orderInEntry'] : null,
+			'width'        => isset( $video['width'] ) && is_numeric( $video['width'] ) ? (int) $video['width'] : 0,
+			'height'       => isset( $video['height'] ) && is_numeric( $video['height'] ) ? (int) $video['height'] : 0,
+			'duration'     => $duration,
 		);
 	}
 }

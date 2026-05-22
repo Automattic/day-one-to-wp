@@ -2537,4 +2537,133 @@ assert_true( ! isset( $rt_old_entry['richText'] ), 'Old-shape manifest entry has
 assert_true( Day_One_Importer_Content::render_entry_body( $rt_old_entry ) === Day_One_Importer_Content::convert_text_to_content( $rt_old_entry['text'] ), 'render_entry_body on old-shape manifest entry equals convert_text_to_content( $entry["text"] ) (A12).' );
 Day_One_Importer_Cleanup::remove( $rt_old_manifest_dir );
 
+// --- R1 / R11.4 — Parser normalizes entry.videos[] (issue #57). ---
+
+$video_results_present = new Day_One_Importer_Results();
+$video_entry_present   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-VIDEO-PRESENT',
+		'creationDate' => '2024-01-01T00:00:00Z',
+		'videos'       => array(
+			array(
+				'identifier'   => '36AFEC058A8640F98420344B2CCCD145',
+				'md5'          => 'ABCDEF0123456789abcdef0123456789',
+				'type'         => 'MOV',
+				'filename'     => 'clip.mov',
+				'date'         => '2024-01-01T00:00:00Z',
+				'orderInEntry' => 2,
+				'width'        => 320,
+				'height'       => 180,
+				'duration'     => 3.6333333333333333,
+			),
+		),
+	),
+	'fictional.json',
+	0,
+	$video_results_present
+);
+assert_true( is_array( $video_entry_present ) && isset( $video_entry_present['videos'] ) && is_array( $video_entry_present['videos'] ), 'normalize_entry emits videos array when raw entry has videos[] (R1.1, R11.4).' );
+assert_true( 1 === count( $video_entry_present['videos'] ), 'normalize_entry preserves a single video record.' );
+assert_true( '36AFEC058A8640F98420344B2CCCD145' === $video_entry_present['videos'][0]['identifier'], 'normalize_video preserves the identifier value.' );
+assert_true( 'abcdef0123456789abcdef0123456789' === $video_entry_present['videos'][0]['md5'], 'normalize_video lowercases the md5 hex.' );
+assert_true( 'mov' === $video_entry_present['videos'][0]['type'], 'normalize_video lowercases the type.' );
+assert_true( 'clip.mov' === $video_entry_present['videos'][0]['filename'], 'normalize_video keeps the basename filename.' );
+assert_true( 2 === $video_entry_present['videos'][0]['orderInEntry'], 'normalize_video casts orderInEntry to int.' );
+assert_true( 320 === $video_entry_present['videos'][0]['width'], 'normalize_video casts width to int.' );
+assert_true( 180 === $video_entry_present['videos'][0]['height'], 'normalize_video casts height to int.' );
+assert_true( is_string( $video_entry_present['videos'][0]['duration'] ), 'normalize_video stores duration as string (R1.4).' );
+assert_true( abs( floatval( $video_entry_present['videos'][0]['duration'] ) - 3.6333333333333333 ) < 1e-9, 'normalize_video duration round-trips to within 1e-9 via floatval() (R1.4).' );
+
+// Missing/null videos yields empty array.
+$video_results_missing = new Day_One_Importer_Results();
+$video_entry_missing   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-VIDEO-MISSING',
+		'creationDate' => '2024-01-01T00:00:00Z',
+	),
+	'fictional.json',
+	1,
+	$video_results_missing
+);
+assert_true( is_array( $video_entry_missing ) && isset( $video_entry_missing['videos'] ) && array() === $video_entry_missing['videos'], 'normalize_entry yields empty videos array when raw entry lacks the field (R1.3).' );
+
+// Malformed entries (non-array members) are skipped silently.
+$video_results_bad = new Day_One_Importer_Results();
+$video_entry_bad   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-VIDEO-BAD',
+		'creationDate' => '2024-01-01T00:00:00Z',
+		'videos'       => array(
+			'not-an-array',
+			array( 'identifier' => 'ONLY-ID' ),
+			null,
+		),
+	),
+	'fictional.json',
+	2,
+	$video_results_bad
+);
+assert_true( is_array( $video_entry_bad ) && 1 === count( $video_entry_bad['videos'] ), 'normalize_entry skips non-array video members silently (R11.4).' );
+assert_true( 'ONLY-ID' === $video_entry_bad['videos'][0]['identifier'], 'normalize_video accepts a minimal record with only identifier set.' );
+assert_true( '' === $video_entry_bad['videos'][0]['duration'], 'normalize_video records duration="" when raw value is missing.' );
+
+// JSONL manifest round-trip: videos field travels through the manifest unchanged (under floatval tolerance for duration).
+$video_roundtrip_payload = array(
+	array(
+		'identifier'   => 'ROUNDTRIP-VID-001',
+		'md5'          => '0123456789abcdef0123456789abcdef',
+		'type'         => 'mov',
+		'filename'     => 'rt.mov',
+		'date'         => '2024-01-01T00:00:00Z',
+		'orderInEntry' => 0,
+		'width'        => 320,
+		'height'       => 180,
+		'duration'     => 1.5,
+	),
+);
+$video_roundtrip_dir     = sys_get_temp_dir() . '/day-one-importer-vid-roundtrip-' . uniqid();
+mkdir( $video_roundtrip_dir, 0777, true );
+file_put_contents(
+	$video_roundtrip_dir . '/Journal.json',
+	wp_json_encode(
+		array(
+			'metadata' => array( 'version' => 'test' ),
+			'entries'  => array(
+				array(
+					'uuid'         => 'TEST-VID-ROUNDTRIP',
+					'creationDate' => '2024-01-01T00:00:00Z',
+					'videos'       => $video_roundtrip_payload,
+				),
+			),
+		)
+	)
+);
+$video_roundtrip_results = new Day_One_Importer_Results();
+$video_roundtrip_job     = array(
+	'manifest_path'       => sys_get_temp_dir() . '/day-one-importer-vid-manifest-' . uniqid() . '/entries.jsonl',
+	'zip_json_candidates' => array( 'Journal.json' ),
+	'zip_photo_dirs'      => array( 'photos' ),
+	'zip_video_dirs'      => array( 'videos' ),
+	'json_files'          => array(),
+	'json_file_index'     => 0,
+	'json_entry_index'    => 0,
+	'entries_total'       => 0,
+	'seen_uuids'          => array(),
+);
+$parser->discover_json_files_batch( $video_roundtrip_dir, $video_roundtrip_job, $video_roundtrip_results, 1.0E+30 );
+$video_roundtrip_index = $parser->index_export_batch( $video_roundtrip_dir, $video_roundtrip_job, $video_roundtrip_results, 1.0E+30 );
+assert_true( ! empty( $video_roundtrip_index['done'] ) && 1 === $video_roundtrip_job['entries_total'], 'videos round-trip indexer writes one entry to the manifest.' );
+$video_roundtrip_entry = $parser->read_manifest_entry( $video_roundtrip_job['manifest_path'], 0 );
+assert_true( is_array( $video_roundtrip_entry ) && isset( $video_roundtrip_entry['videos'] ) && 1 === count( $video_roundtrip_entry['videos'] ), 'videos field round-trips through the JSONL manifest.' );
+$rt_video = $video_roundtrip_entry['videos'][0];
+assert_true( 'ROUNDTRIP-VID-001' === $rt_video['identifier'], 'videos manifest round-trip preserves identifier.' );
+assert_true( '0123456789abcdef0123456789abcdef' === $rt_video['md5'], 'videos manifest round-trip preserves md5.' );
+assert_true( 'mov' === $rt_video['type'], 'videos manifest round-trip preserves type.' );
+assert_true( 'rt.mov' === $rt_video['filename'], 'videos manifest round-trip preserves filename.' );
+assert_true( 0 === $rt_video['orderInEntry'], 'videos manifest round-trip preserves orderInEntry.' );
+assert_true( 320 === $rt_video['width'] && 180 === $rt_video['height'], 'videos manifest round-trip preserves width/height.' );
+assert_true( is_string( $rt_video['duration'] ) && abs( floatval( $rt_video['duration'] ) - 1.5 ) < 1e-9, 'videos manifest round-trip preserves duration as string within 1e-9 (R2.1, R1.4).' );
+Day_One_Importer_Cleanup::remove( dirname( $video_roundtrip_job['manifest_path'] ) );
+Day_One_Importer_Cleanup::remove( $video_roundtrip_dir );
+
 echo "All pure helper tests passed.\n";
