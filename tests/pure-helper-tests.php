@@ -1276,6 +1276,475 @@ $rt_dispatch_entry   = array(
 Day_One_Importer_Content::render_entry_body( $rt_dispatch_entry, $rt_dispatch_results );
 assert_true( ! empty( $rt_dispatch_results->get_warnings() ), 'R12.16 — render_entry_body threads $results into the richText branch (warning observed).' );
 
+// --- R13.x — richText line-attribute mapping (issue #55) ---
+// One assertion per AC in spec.md; helpers exercise the new single-forward-pass
+// + group emitter path. Existing R11.x / R12.x assertions remain unchanged.
+
+// R13.1 — header: 2 produces a core/heading block without a level attribute (Gutenberg default).
+$rt_h2 = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'header' => 2 ) ),
+				'text'       => 'Imaginary heading two',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_h2, '<!-- wp:heading -->' ), 'R13.1 — header: 2 emits a core/heading block (no level attr).' );
+assert_true( false !== strpos( $rt_h2, '<h2>Imaginary heading two</h2>' ), 'R13.1 — header: 2 inner is <h2>...</h2>.' );
+
+// R13.2 — header levels 1, 3, 4, 5, 6 emit explicit "level" attr (only level 2 is the default).
+foreach ( array( 1, 3, 4, 5, 6 ) as $rt_h_lvl ) {
+	$rt_h_out = Day_One_Importer_Content::convert_rich_text_to_content(
+		array(
+			'contents' => array(
+				array(
+					'attributes' => array( 'line' => array( 'header' => $rt_h_lvl ) ),
+					'text'       => 'Imaginary heading ' . $rt_h_lvl,
+				),
+			),
+		)
+	);
+	assert_true( false !== strpos( $rt_h_out, '<!-- wp:heading {"level":' . $rt_h_lvl . '} -->' ), sprintf( 'R13.2 — header level %d emits explicit level attr.', $rt_h_lvl ) );
+	assert_true( false !== strpos( $rt_h_out, '<h' . $rt_h_lvl . '>Imaginary heading ' . $rt_h_lvl . '</h' . $rt_h_lvl . '>' ), sprintf( 'R13.2 — header level %d emits <h%d>.', $rt_h_lvl, $rt_h_lvl ) );
+}
+
+// R13.3 — two adjacent header: 2 items emit two separate core/heading blocks (R2.3 — no inter-heading collapse).
+$rt_h2_pair = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'header' => 2 ) ),
+				'text'       => 'First',
+			),
+			array(
+				'attributes' => array( 'line' => array( 'header' => 2 ) ),
+				'text'       => 'Second',
+			),
+		),
+	)
+);
+assert_true( 2 === substr_count( $rt_h2_pair, '<!-- wp:heading -->' ), 'R13.3 — two adjacent header: 2 items emit two separate core/heading blocks.' );
+
+// R13.4 — multi-line heading item renders intra-text \n as <br /> inside the same <h2>.
+$rt_h2_multiline = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'header' => 2 ) ),
+				'text'       => "line one\nline two",
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_h2_multiline, "<h2>line one<br />\nline two</h2>" ), 'R13.4 — multi-line header item renders \n as <br /> inside one <h2>.' );
+
+// R13.5 — out-of-range / non-int header values fall through to the paragraph path (R3.3).
+foreach ( array( 0, 7, '2', 2.5, true, null ) as $rt_h_bad ) {
+	$rt_h_bad_out = Day_One_Importer_Content::convert_rich_text_to_content(
+		array(
+			'contents' => array(
+				array(
+					'attributes' => array( 'line' => array( 'header' => $rt_h_bad ) ),
+					'text'       => 'Fallback heading text',
+				),
+			),
+		)
+	);
+	assert_true( false === strpos( $rt_h_bad_out, '<!-- wp:heading' ), sprintf( 'R13.5 — header=%s falls through to paragraph (no heading block).', var_export( $rt_h_bad, true ) ) );
+	assert_true( false !== strpos( $rt_h_bad_out, 'Fallback heading text' ), sprintf( 'R13.5 — header=%s — paragraph fallback still renders text.', var_export( $rt_h_bad, true ) ) );
+}
+
+// R13.6 — bulleted run at indentLevel: 1 emits one core/list block with one core/list-item per item.
+$rt_bullet_run = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ),
+				'text'       => 'alpha',
+			),
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ),
+				'text'       => 'beta',
+			),
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ),
+				'text'       => 'gamma',
+			),
+		),
+	)
+);
+assert_true( 1 === substr_count( $rt_bullet_run, '<!-- wp:list -->' ), 'R13.6 — bulleted run emits one core/list block.' );
+assert_true( 3 === substr_count( $rt_bullet_run, '<!-- wp:list-item -->' ), 'R13.6 — bulleted run emits one core/list-item per item.' );
+
+// R13.7 — bulleted nesting: nested list lives inside the previous list-item (parent-child shape).
+$rt_bullet_nested = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ),
+				'text'       => 'outer one',
+			),
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 2 ) ),
+				'text'       => 'inner one',
+			),
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ),
+				'text'       => 'outer two',
+			),
+		),
+	)
+);
+// Nested core/list sits between an outer <li> and </li>.
+assert_true( false !== strpos( $rt_bullet_nested, "<li>outer one<!-- wp:list -->" ), 'R13.7 — nested bulleted list opens inside the previous outer <li>.' );
+assert_true( false !== strpos( $rt_bullet_nested, "<!-- /wp:list -->\n</li>" ), 'R13.7 — nested bulleted list closes before the parent </li>.' );
+
+// R13.8 — numbered list with first listIndex: 1 emits no "start" attr (AC5).
+$rt_num_default = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'numbered', 'indentLevel' => 1, 'listIndex' => 1 ) ),
+				'text'       => 'one',
+			),
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'numbered', 'indentLevel' => 1, 'listIndex' => 2 ) ),
+				'text'       => 'two',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_num_default, '<!-- wp:list {"ordered":true} -->' ), 'R13.8 — numbered list with first listIndex 1 has ordered:true and no start.' );
+assert_true( false === strpos( $rt_num_default, '"start"' ), 'R13.8 — numbered list with first listIndex 1 does NOT emit start attr.' );
+
+// R13.9 — numbered list with first listIndex: 5 emits "start":5; numeric-string "5" also casts to 5.
+$rt_num_start5_int = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'numbered', 'indentLevel' => 1, 'listIndex' => 5 ) ),
+				'text'       => 'five',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_num_start5_int, '<!-- wp:list {"ordered":true,"start":5} -->' ), 'R13.9 — integer listIndex 5 emits start:5.' );
+
+$rt_num_start5_str = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'numbered', 'indentLevel' => 1, 'listIndex' => '5' ) ),
+				'text'       => 'five',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_num_start5_str, '<!-- wp:list {"ordered":true,"start":5} -->' ), 'R13.9 — numeric-string listIndex "5" also emits start:5.' );
+
+// R13.10 — listIndex variants that must NOT emit start: "-3", 0, 1.5, array().
+foreach (
+	array(
+		array( 'listIndex' => '-3' ),
+		array( 'listIndex' => 0 ),
+		array( 'listIndex' => 1.5 ),
+		array( 'listIndex' => array() ),
+	) as $rt_li_variant
+) {
+	$rt_li_out = Day_One_Importer_Content::convert_rich_text_to_content(
+		array(
+			'contents' => array(
+				array(
+					'attributes' => array(
+						'line' => array_merge( array( 'listStyle' => 'numbered', 'indentLevel' => 1 ), $rt_li_variant ),
+					),
+					'text'       => 'item',
+				),
+			),
+		)
+	);
+	assert_true( false === strpos( $rt_li_out, '"start"' ), sprintf( 'R13.10 — listIndex=%s emits no start attr.', var_export( $rt_li_variant['listIndex'], true ) ) );
+}
+
+// R13.11 — nested numbered list does NOT emit start even if its first child listIndex > 1 (R4.5, AC7).
+$rt_num_nested_start = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'numbered', 'indentLevel' => 1, 'listIndex' => 1 ) ),
+				'text'       => 'outer one',
+			),
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'numbered', 'indentLevel' => 2, 'listIndex' => 5 ) ),
+				'text'       => 'nested five',
+			),
+		),
+	)
+);
+// Outer list (first occurrence) is ordered:true with no start; nested list (second wp:list opener) also has no start.
+$rt_num_nested_openers = substr_count( $rt_num_nested_start, '<!-- wp:list {"ordered":true} -->' );
+assert_true( 2 === $rt_num_nested_openers, 'R13.11 — both outer and nested numbered lists emit ordered:true with NO start.' );
+assert_true( false === strpos( $rt_num_nested_start, '"start"' ), 'R13.11 — nested numbered list emits no start attr.' );
+
+// R13.12 — checkbox list emits className=task-list and outer <ul class="task-list">.
+$rt_checkbox = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'checkbox', 'indentLevel' => 1, 'checked' => true ) ),
+				'text'       => 'first',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_checkbox, '<!-- wp:list {"className":"task-list"} -->' ), 'R13.12 — checkbox list emits className=task-list.' );
+assert_true( false !== strpos( $rt_checkbox, '<ul class="task-list">' ), 'R13.12 — checkbox list outer ul carries the task-list class.' );
+
+// R13.13 — checked: true list-item begins with exact 8-byte sequence "&#9745; ".
+assert_true( false !== strpos( $rt_checkbox, '<li>&#9745; first</li>' ), 'R13.13 — checked: true list-item is prefixed with &#9745; + ASCII space.' );
+
+// R13.14 — checked: false / absent / non-bool checked produces "&#9744; ".
+$rt_checkbox_unchecked = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'checkbox', 'indentLevel' => 1, 'checked' => false ) ),
+				'text'       => 'false',
+			),
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'checkbox', 'indentLevel' => 1 ) ),
+				'text'       => 'absent',
+			),
+			array(
+				'attributes' => array( 'line' => array( 'listStyle' => 'checkbox', 'indentLevel' => 1, 'checked' => 'true' ) ),
+				'text'       => 'string-true',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_checkbox_unchecked, '<li>&#9744; false</li>' ), 'R13.14 — checked: false list-item prefixed with &#9744; + ASCII space.' );
+assert_true( false !== strpos( $rt_checkbox_unchecked, '<li>&#9744; absent</li>' ), 'R13.14 — checked absent list-item prefixed with &#9744; + ASCII space.' );
+assert_true( false !== strpos( $rt_checkbox_unchecked, '<li>&#9744; string-true</li>' ), 'R13.14 — checked="true" (string) list-item is prefixed with &#9744; (strict bool rule).' );
+assert_true( false === strpos( $rt_checkbox_unchecked, '&#9745;' ), 'R13.14 — no checked-glyph leaks into the unchecked list-items.' );
+
+// R13.15 — 3-item code run produces inner <code>a\nb\nc</code> with no trailing \n.
+$rt_code_run = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'attributes' => array( 'line' => array( 'codeBlock' => true ) ), 'text' => "a\n" ),
+			array( 'attributes' => array( 'line' => array( 'codeBlock' => true ) ), 'text' => "b\n" ),
+			array( 'attributes' => array( 'line' => array( 'codeBlock' => true ) ), 'text' => "c\n" ),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_code_run, "<code>a\nb\nc</code>" ), 'R13.15 — 3-item code run joins as a\nb\nc with no trailing newline.' );
+assert_true( 1 === substr_count( $rt_code_run, '<!-- wp:code -->' ), 'R13.15 — 3-item code run produces exactly one core/code block.' );
+
+// R13.16 — invalid linkURL / highlightedColor on a code item emit NO warning AND no anchor / no mark.
+$rt_code_warn_results = new Day_One_Importer_Results();
+$rt_code_warn         = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array(
+					'line'             => array( 'codeBlock' => true ),
+					'linkURL'          => 'javascript:x',
+					'highlightedColor' => '0xZZZZZZ',
+				),
+				'text'       => "alert\n",
+			),
+		),
+	),
+	$rt_code_warn_results
+);
+assert_true( false === strpos( $rt_code_warn, '<a ' ), 'R13.16 — invalid linkURL on a code item does NOT emit <a>.' );
+assert_true( false === strpos( $rt_code_warn, '<mark' ), 'R13.16 — invalid highlightedColor on a code item does NOT emit <mark>.' );
+assert_true( empty( $rt_code_warn_results->get_warnings() ), 'R13.16 — code items do NOT record warnings for invalid inline attrs (R5.3 / F21).' );
+
+// R13.17 — bold: true on a code item does NOT emit <strong> inside <code>.
+$rt_code_bold = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array(
+					'line' => array( 'codeBlock' => true ),
+					'bold' => true,
+				),
+				'text'       => "loud\n",
+			),
+		),
+	)
+);
+assert_true( false === strpos( $rt_code_bold, '<strong>' ), 'R13.17 — bold: true on code item does NOT emit <strong> inside <code> (R5.3).' );
+
+// R13.18 — two consecutive quote items produce one core/quote with two child core/paragraph blocks.
+$rt_quote_pair = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'attributes' => array( 'line' => array( 'quote' => true, 'indentLevel' => 1 ) ), 'text' => 'one' ),
+			array( 'attributes' => array( 'line' => array( 'quote' => true, 'indentLevel' => 1 ) ), 'text' => 'two' ),
+		),
+	)
+);
+assert_true( 1 === substr_count( $rt_quote_pair, '<!-- wp:quote -->' ), 'R13.18 — two consecutive quote items produce one core/quote block.' );
+assert_true( 2 === substr_count( $rt_quote_pair, '<!-- wp:paragraph -->' ), 'R13.18 — quote block contains two child core/paragraph blocks.' );
+assert_true( 1 === substr_count( $rt_quote_pair, '<blockquote' ), 'R13.18 — quote block emits exactly one <blockquote>.' );
+
+// R13.19 — quote indentLevel is ignored (R6.5): both items render as siblings inside one blockquote.
+$rt_quote_indent = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'attributes' => array( 'line' => array( 'quote' => true, 'indentLevel' => 1 ) ), 'text' => 'shallow' ),
+			array( 'attributes' => array( 'line' => array( 'quote' => true, 'indentLevel' => 2 ) ), 'text' => 'deeper' ),
+		),
+	)
+);
+assert_true( 1 === substr_count( $rt_quote_indent, '<blockquote' ), 'R13.19 — quote items at different indentLevel still produce ONE <blockquote>.' );
+assert_true( 2 === substr_count( $rt_quote_indent, '<!-- wp:paragraph -->' ), 'R13.19 — quote items at different indentLevel both render as sibling <p> children.' );
+
+// R13.20 — inline wrappers survive inside quote child paragraphs (R6.2).
+$rt_quote_bold = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'quote' => true, 'indentLevel' => 1 ), 'bold' => true ),
+				'text'       => 'loud',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_quote_bold, '<p><strong>loud</strong></p>' ), 'R13.20 — quote item with bold renders <p><strong>...</strong></p>.' );
+
+// R13.21 — transparent-drop inside a same-kind run: bullet, empty, bullet -> one list with TWO list-items (R2.1, AC11).
+$rt_drop_run = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ), 'text' => 'A' ),
+			array( 'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ), 'text' => '   ' ),
+			array( 'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ), 'text' => 'B' ),
+		),
+	)
+);
+assert_true( 1 === substr_count( $rt_drop_run, '<!-- wp:list -->' ), 'R13.21 — empty-text item is transparent: same-kind run stays as one list.' );
+assert_true( 2 === substr_count( $rt_drop_run, '<!-- wp:list-item -->' ), 'R13.21 — empty-text item is dropped: only two list-items emitted.' );
+
+// R13.22 — kind switch across an empty-text drop closes the run and opens a new one.
+$rt_kind_switch = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ), 'text' => 'A' ),
+			array( 'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ), 'text' => '   ' ),
+			array( 'attributes' => array( 'line' => array( 'listStyle' => 'numbered', 'indentLevel' => 1, 'listIndex' => 1 ) ), 'text' => 'B' ),
+		),
+	)
+);
+assert_true( 1 === substr_count( $rt_kind_switch, '<!-- wp:list -->' ), 'R13.22 — one bulleted core/list block emitted before kind switch.' );
+assert_true( 1 === substr_count( $rt_kind_switch, '<!-- wp:list {"ordered":true} -->' ), 'R13.22 — one numbered core/list block emitted after kind switch.' );
+
+// R13.23 — plain-paragraph runs (no line key) keep byte-equivalent legacy delegation output.
+// We compare against convert_text_to_content directly to pin the byte-for-byte contract (AC12).
+$rt_para_legacy = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'attributes' => array(), 'text' => "First paragraph.\n" ),
+			array( 'attributes' => array(), 'text' => 'Second paragraph.' ),
+		),
+	)
+);
+$rt_para_expected = Day_One_Importer_Content::convert_text_to_content( 'First paragraph.' ) . Day_One_Importer_Content::convert_text_to_content( 'Second paragraph.' );
+assert_true( trim( $rt_para_legacy ) === trim( $rt_para_expected ), 'R13.23 — paragraph runs delegate to convert_text_to_content byte-for-byte.' );
+
+// R13.25 — R1.4 precedence: codeBlock > quote when both are true on one item.
+$rt_prec_code_quote = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'codeBlock' => true, 'quote' => true ) ),
+				'text'       => "winner\n",
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_prec_code_quote, '<!-- wp:code -->' ), 'R13.25 — precedence: codeBlock + quote item flows to core/code.' );
+assert_true( false === strpos( $rt_prec_code_quote, '<!-- wp:quote' ), 'R13.25 — precedence: codeBlock wins; no core/quote emitted.' );
+
+// R13.26 — R1.4 precedence: header > listStyle when both are set on one item.
+$rt_prec_heading_list = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'header' => 2, 'listStyle' => 'bulleted' ) ),
+				'text'       => 'winner',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_prec_heading_list, '<!-- wp:heading -->' ), 'R13.26 — precedence: header + listStyle item flows to core/heading.' );
+assert_true( false === strpos( $rt_prec_heading_list, '<!-- wp:list' ), 'R13.26 — precedence: header wins over listStyle; no core/list emitted.' );
+
+// R13.27 — heading items bypass convert_text_to_content: a literal `#` inside text is NOT re-interpreted as markdown.
+$rt_hash_inside_heading = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'header' => 2 ) ),
+				'text'       => '# Pretend pound',
+			),
+		),
+	)
+);
+assert_true( false !== strpos( $rt_hash_inside_heading, '<h2># Pretend pound</h2>' ), 'R13.27 — literal `#` inside a heading item is preserved verbatim (no markdown reinterpretation).' );
+
+// R13.28 — derive_title_from_entry: first non-empty richText item's text becomes the title, even when codeBlock (R9.2, AC17).
+$rt_title_code = Day_One_Importer_Content::derive_title_from_entry(
+	array(
+		'text'     => '',
+		'richText' => array(
+			'contents' => array(
+				array(
+					'attributes' => array( 'line' => array( 'codeBlock' => true ) ),
+					'text'       => "\$ ls -la",
+				),
+			),
+		),
+	),
+	'2031-05-02 14:00:00'
+);
+assert_true( '$ ls -la' === $rt_title_code, 'R13.28 — derive_title_from_entry uses first non-empty richText run even when codeBlock (accepted surprise R9.2).' );
+
+// R13.29 — whitespace-only text on a line-typed item is dropped (R1.3).
+$rt_h2_blank = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'attributes' => array( 'line' => array( 'header' => 2 ) ),
+				'text'       => '   ',
+			),
+		),
+	)
+);
+assert_true( false === strpos( $rt_h2_blank, '<!-- wp:heading' ), 'R13.29 — whitespace-only header item is dropped (no heading block).' );
+assert_true( '' === $rt_h2_blank, 'R13.29 — whitespace-only line-typed item produces empty output.' );
+
+// R13.30 — calling convert_rich_text_to_content with null $results does not emit PHP warnings on any kind.
+$rt_null_results_all_kinds = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array( 'attributes' => array( 'line' => array( 'header' => 1 ) ), 'text' => 'h' ),
+			array( 'attributes' => array( 'line' => array( 'listStyle' => 'bulleted', 'indentLevel' => 1 ) ), 'text' => 'b' ),
+			array( 'attributes' => array( 'line' => array( 'codeBlock' => true ) ), 'text' => "c\n" ),
+			array( 'attributes' => array( 'line' => array( 'quote' => true, 'indentLevel' => 1 ) ), 'text' => 'q' ),
+		),
+		// No $results argument.
+	)
+);
+assert_true( false !== strpos( $rt_null_results_all_kinds, '<!-- wp:heading' ), 'R13.30 — null $results: heading still emitted.' );
+assert_true( false !== strpos( $rt_null_results_all_kinds, '<!-- wp:list' ), 'R13.30 — null $results: list still emitted.' );
+assert_true( false !== strpos( $rt_null_results_all_kinds, '<!-- wp:code' ), 'R13.30 — null $results: code still emitted.' );
+assert_true( false !== strpos( $rt_null_results_all_kinds, '<!-- wp:quote' ), 'R13.30 — null $results: quote still emitted.' );
+
 // Step 4.16 — markdown-leakage acceptance: a `#`-prefixed run delegates to convert_text_to_content and renders as a heading block.
 // This documents the intentional R5.10 delegation behavior; strict line-attribute handling is deferred to issue #55.
 $rt_markdown_leak = Day_One_Importer_Content::convert_rich_text_to_content(
