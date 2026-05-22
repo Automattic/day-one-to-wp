@@ -53,6 +53,7 @@ The results/status screen is designed to be privacy-safe: it reports counts, UUI
 - Day One tags are assigned as WordPress post tags.
 - Each Day One journal is assigned as a WordPress post category, using the journal JSON filename when the export does not provide an explicit journal name.
 - Day One text is imported conservatively as safe HTML. Raw HTML is escaped and shortcode-like text such as `[gallery]` is neutralized so it remains visible text rather than executing.
+- When a Day One entry ships a `richText` payload (newer exports), the importer reads it and emits one paragraph block per text run. Inline formatting (bold, italic, links, etc.), line attributes (headings, lists, quotes, code blocks), and inline-positioned media are intentionally not interpreted yet; runs render as plain paragraphs and richer block coverage is tracked separately. Legacy entries that ship only the plain `text` field continue to import exactly as before.
 - Supported photos are imported into the Media Library, attached to the imported post, and appended to the post content in Day One entry order when possible.
 
 ## Batched jobs, idempotency, and resume behavior
@@ -98,7 +99,7 @@ Day One Importer is licensed under GPL-2.0-or-later. See `LICENSE` for details.
 
 ## Limitations
 
-- Day One rich text fidelity is not guaranteed; the importer uses the primary text field conservatively.
+- Day One rich text fidelity is not guaranteed. The importer reads the `richText` payload when present and produces paragraph blocks per text run; inline formatting and block-level structures (headings, lists, quotes, code blocks) are not yet preserved and are tracked as separate follow-ups.
 - Images are appended after entry text rather than placed at exact original inline positions.
 - Private media storage depends on the host allowing WordPress to create and protect a dedicated uploads subfolder. Media import fails safely if that directory cannot be prepared.
 - Unsupported or missing media produces warnings but does not stop unrelated entries from importing.
