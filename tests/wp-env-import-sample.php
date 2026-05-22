@@ -292,12 +292,18 @@ foreach ( $imported_posts as $post_id ) {
 	// produce zero image/gallery blocks (photos stay attached only). Detect this
 	// case and skip the body-shape assertion below.
 	$is_r14_case = ( empty( $image_blocks ) && empty( $gallery_blocks ) );
-	if ( 1 === count( $attachment_ids ) && ! $is_r14_case ) {
+	// #57 — entry 0021 reuses the same photo identifier twice (once on each
+	// side of an interleaved video embed), so it has 1 attached image but emits
+	// 2 core/image blocks. The bespoke ordering check below this loop covers
+	// entry 0021's body shape; skip the generic 1:1 assertion here.
+	$post_uuid_meta = (string) get_post_meta( $post_id, '_day_one_uuid', true );
+	$is_interleaved_video_case = ( 'FICTIONAL-SAMPLE-ENTRY-0021' === $post_uuid_meta );
+	if ( 1 === count( $attachment_ids ) && ! $is_r14_case && ! $is_interleaved_video_case ) {
 		day_one_importer_wp_env_assert( 1 === count( $image_blocks ), 'Post with one attachment contains exactly one Image block.' );
 		$image_id = isset( $image_blocks[0]['attrs']['id'] ) ? (int) $image_blocks[0]['attrs']['id'] : 0;
 		day_one_importer_wp_env_assert( in_array( $image_id, $attachment_ids, true ), 'Single Image block ID matches the attached media ID.' );
 		day_one_importer_wp_env_assert( false !== strpos( (string) $image_blocks[0]['innerHTML'], 'wp-image-' . $image_id ), 'Single Image block inner HTML contains matching wp-image class.' );
-	} elseif ( count( $attachment_ids ) >= 2 && ! $is_r14_case ) {
+	} elseif ( count( $attachment_ids ) >= 2 && ! $is_r14_case && ! $is_interleaved_video_case ) {
 		day_one_importer_wp_env_assert( ! empty( $gallery_blocks ), 'Post with multiple attachments contains a Gallery block.' );
 
 		$content_attachment_positions = array();
@@ -844,6 +850,60 @@ if ( $using_default_zip ) {
 			day_one_importer_wp_env_assert( false === strpos( $entry_0019_title, $needle ), "#56 AC12 — entry 0019 post_title strips placeholder substring: {$needle}" );
 		}
 	}
+
+	// --- #57 — video embed assertions (entries 0020 + 0021). ---
+
+	$day_one_importer_57_video_attachment_id = 0;
+	$entry_0020_post_id                      = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0020'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0020'] : 0;
+	day_one_importer_wp_env_assert( $entry_0020_post_id > 0, '#57 AC6 — fictional entry 0020 (video embed) was imported.' );
+	if ( $entry_0020_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0020_content = (string) get_post_field( 'post_content', $entry_0020_post_id );
+		$entry_0020_blocks  = parse_blocks( $entry_0020_content );
+		$entry_0020_videos  = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0020_blocks, 'core/video', $entry_0020_videos );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0020_videos ), '#57 AC6 / AC16 — entry 0020 contains exactly one core/video block.' );
+
+		$entry_0020_video_id = isset( $entry_0020_videos[0]['attrs']['id'] ) ? (int) $entry_0020_videos[0]['attrs']['id'] : 0;
+		day_one_importer_wp_env_assert( $entry_0020_video_id > 0, '#57 AC6 — entry 0020 video block carries a positive attachment ID.' );
+		$day_one_importer_57_video_attachment_id = $entry_0020_video_id;
+
+		// #57 AC16 — attachment parent linkage + private uploads URL + media_kind marker.
+		day_one_importer_wp_env_assert( (int) get_post( $entry_0020_video_id )->post_parent === $entry_0020_post_id, '#57 AC16 — entry 0020 video attachment is parented to its post.' );
+		day_one_importer_wp_env_assert( 'video' === (string) get_post_meta( $entry_0020_video_id, '_day_one_media_kind', true ), '#57 AC4 — entry 0020 video attachment carries _day_one_media_kind = "video".' );
+		$entry_0020_video_url = (string) wp_get_attachment_url( $entry_0020_video_id );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0020_video_url, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ), '#57 AC16 — entry 0020 video URL points at the private uploads subdir.' );
+		// #57 R1.4 — duration metadata round-trips through floatval() to within 1e-9 of 1.0.
+		$entry_0020_duration_meta = (string) get_post_meta( $entry_0020_video_id, '_day_one_video_duration', true );
+		day_one_importer_wp_env_assert( '' !== $entry_0020_duration_meta && abs( floatval( $entry_0020_duration_meta ) - 1.0 ) < 1e-9, '#57 R1.4 / AC4 — entry 0020 _day_one_video_duration round-trips within 1e-9 (string storage).' );
+	}
+
+	// #57 AC16 — media_imported on the first pass includes the video attachment.
+	day_one_importer_wp_env_assert( $media >= 2, '#57 AC16 — first-pass media_imported includes at least the photo and video attachments from the fixture.' );
+
+	// #57 AC7 — the obsolete #56 placeholder warning is gone.
+	$first_warnings = is_object( $first ) && method_exists( $first, 'get_warnings' ) ? (array) $first->get_warnings() : array();
+	foreach ( $first_warnings as $warning ) {
+		day_one_importer_wp_env_assert( false === strpos( (string) $warning, 'video import is not yet supported' ), '#57 AC7 — the #56 placeholder "video import is not yet supported" warning is no longer emitted.' );
+	}
+
+	// #57 AC9 / AC16 — entry 0021 emits core/image, core/video, core/image in inline order.
+	$entry_0021_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0021'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0021'] : 0;
+	day_one_importer_wp_env_assert( $entry_0021_post_id > 0, '#57 AC9 — fictional entry 0021 (interleaved photo,video,photo) was imported.' );
+	if ( $entry_0021_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0021_content   = (string) get_post_field( 'post_content', $entry_0021_post_id );
+		$entry_0021_blocks    = parse_blocks( $entry_0021_content );
+		$entry_0021_top_names = array();
+		foreach ( $entry_0021_blocks as $entry_0021_block ) {
+			$entry_0021_block_name = isset( $entry_0021_block['blockName'] ) ? (string) $entry_0021_block['blockName'] : '';
+			if ( '' !== $entry_0021_block_name ) {
+				$entry_0021_top_names[] = $entry_0021_block_name;
+			}
+		}
+		day_one_importer_wp_env_assert( array( 'core/image', 'core/video', 'core/image' ) === $entry_0021_top_names, '#57 AC9 / AC16 — entry 0021 emits core/image, core/video, core/image in inline order.' );
+	}
+
+	// Stash for rerun-identity check below.
+	$GLOBALS['day_one_importer_57_video_attachment_id'] = $day_one_importer_57_video_attachment_id;
 }
 
 $second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
@@ -851,6 +911,27 @@ $second        = $second_async['results'];
 $second_counts = $second->get_counts();
 $skipped       = isset( $second_counts['posts_skipped'] ) ? (int) $second_counts['posts_skipped'] : 0;
 day_one_importer_wp_env_assert( $skipped === $created, 'Second import skipped existing completed posts.' );
+
+// #57 AC10 / AC16 — rerun identity: the entry-20 video attachment ID is stable
+// across the first import and this rerun (no duplicate attachment created).
+if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_57_video_attachment_id'] ) ) {
+	$expected_video_id = (int) $GLOBALS['day_one_importer_57_video_attachment_id'];
+	$post_id_lookup    = 0;
+	foreach ( $imported_posts as $maybe_pid ) {
+		if ( 'FICTIONAL-SAMPLE-ENTRY-0020' === (string) get_post_meta( (int) $maybe_pid, '_day_one_uuid', true ) ) {
+			$post_id_lookup = (int) $maybe_pid;
+			break;
+		}
+	}
+	day_one_importer_wp_env_assert( $post_id_lookup > 0, '#57 AC10 — entry 0020 post is still discoverable after the rerun.' );
+	if ( $post_id_lookup > 0 && function_exists( 'parse_blocks' ) ) {
+		$rerun_blocks       = parse_blocks( (string) get_post_field( 'post_content', $post_id_lookup ) );
+		$rerun_video_blocks = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $rerun_blocks, 'core/video', $rerun_video_blocks );
+		$rerun_video_id = ! empty( $rerun_video_blocks ) && isset( $rerun_video_blocks[0]['attrs']['id'] ) ? (int) $rerun_video_blocks[0]['attrs']['id'] : 0;
+		day_one_importer_wp_env_assert( $rerun_video_id === $expected_video_id, '#57 AC10 / AC16 — entry 0020 video attachment ID is identical across the first import and the rerun (no duplicate attachment).' );
+	}
+}
 
 $legacy_post_id = (int) reset( $imported_posts );
 update_post_meta( $legacy_post_id, '_day_one_import_version', '1' );
