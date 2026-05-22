@@ -66,6 +66,14 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 
 == Changelog ==
 
+= 0.2.8 =
+* Map Day One `richText` `attributes.line` block-level structures to native Gutenberg blocks. `header` values 1–6 render as `core/heading` blocks at the matching level (intra-text newlines render as `<br />`; adjacent headings stay as separate blocks; values outside 1–6 fall through to the paragraph path). `listStyle: bulleted` and `listStyle: numbered` render as `core/list` blocks with `core/list-item` children, honoring the first item's `listIndex` as the ordered-list `start` attribute when it is an integer (or numeric string) `>= 2`, and nesting deeper `indentLevel` items as parent-child nested `core/list` blocks inside the parent list item.
+* Render `listStyle: checkbox` runs as `core/list` blocks with the `task-list` className. Each item is prefixed with a Unicode ballot-box glyph: `&#9745;` (☑) for `checked: true`, `&#9744;` (☐) otherwise, followed by a single space. The checkbox is purely visual because Day One captures the checked state at export time and `core/list-item` does not accept `<input>` content; the glyph approach survives both `wp_kses_post` and the Gutenberg block validator.
+* Collapse consecutive `codeBlock: true` runs into a single `core/code` block, joining per-item text with single `\n` separators (no trailing newline). Inline-formatting wrappers are intentionally not applied inside `<code>`, so `linkURL` or `highlightedColor` on a code item is ignored without recording a warning.
+* Collapse consecutive `quote: true` runs into a single `core/quote` block with one child paragraph per item. Inline-formatting wrappers still apply inside headings, list items, and quote paragraphs. Quote `indentLevel` is intentionally ignored: all quote items render as flat siblings inside the same `<blockquote>` (Day One uses quote indent as typographic spacing rather than semantic nesting).
+* Empty-text items between two items of the same kind are treated as transparent drops: the surrounding run is not closed, so a single empty richText item inside a list, code block, or quote does not split it into multiple blocks.
+* `IMPORT_SCHEMA_VERSION` is unchanged in this release; the persisted manifest shape is unchanged because line attributes are read from the already-persisted richText payload.
+
 = 0.2.7 =
 * Render Day One `richText` run-level inline attributes when present: `bold`, `italic`, `strikethrough`, and `inlineCode` map to `<strong>`, `<em>`, `<s>`, and `<code>`; `linkURL` (with optional `autolink`) maps to `<a href="…">`; and `highlightedColor` (Day One's `0xRRGGBB` form) maps to `<mark style="background-color:#RRGGBB">`. Run text is escaped before wrappers are applied, so existing shortcode/HTML neutralization is preserved.
 * Validate `linkURL` strictly: only http(s) URLs that survive `esc_url()` produce an anchor. Non-http(s) or otherwise-invalid links are dropped (the run text still renders) and a privacy-safe warning is recorded that does not include the rejected URL value verbatim.
@@ -110,6 +118,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.8 =
+Maps Day One richText line attributes to native Gutenberg blocks: headings 1–6, bulleted/numbered lists (with `start` and nested levels), checkbox lists (Unicode ballot-box glyphs; visual-only because `core/list-item` rejects `<input>`), code blocks (consecutive runs collapsed; no inline wrappers), and blockquotes (flat siblings; `indentLevel` ignored). Inline wrappers still apply inside headings, list items, and quote paragraphs.
 
 = 0.2.7 =
 Adds richText inline formatting: bold, italic, strikethrough, inline code, http(s) links, and highlight color are now rendered when present in `richText` payloads. Non-http(s) links and malformed highlight colors are dropped with privacy-safe warnings; `<mark style="background-color:#RRGGBB">` survives only if the site's `wp_kses_post` allowlist accepts it.
