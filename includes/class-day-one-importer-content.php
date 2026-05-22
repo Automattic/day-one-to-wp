@@ -1301,11 +1301,22 @@ class Day_One_Importer_Content {
 			return '';
 		}
 
-		// Defensive check: refuse to emit a block whose URL is not from the
-		// Day One private uploads subdir (R6.5). Should not happen in practice
-		// because the sideloader routes through filter_private_upload_dir.
-		if ( class_exists( 'Day_One_Importer_Media' ) && false === strpos( $url, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ) ) {
-			return '';
+		// Defensive check (#57 R6.5): refuse to emit a block for an attachment
+		// the importer did not create. The runtime wp_get_attachment_url filter
+		// rewrites Day One media to an admin-ajax endpoint, so the filtered URL
+		// does not contain the private uploads subdir literal — we accept it
+		// only when the attachment carries the `_day_one_source = day-one-export`
+		// marker. In pure-helper mode (no get_post_meta stub), we fall back to
+		// checking that the URL literal contains the private uploads subdir so
+		// the producer contract can still be exercised in tests.
+		$is_day_one_attachment = false;
+		if ( function_exists( 'get_post_meta' ) ) {
+			$is_day_one_attachment = ( 'day-one-export' === (string) get_post_meta( $attachment_id, '_day_one_source', true ) );
+		}
+		if ( ! $is_day_one_attachment ) {
+			if ( ! class_exists( 'Day_One_Importer_Media' ) || false === strpos( $url, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ) ) {
+				return '';
+			}
 		}
 
 		$attrs      = array( 'id' => $attachment_id );

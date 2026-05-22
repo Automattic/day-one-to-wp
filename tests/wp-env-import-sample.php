@@ -870,8 +870,14 @@ if ( $using_default_zip ) {
 		// #57 AC16 — attachment parent linkage + private uploads URL + media_kind marker.
 		day_one_importer_wp_env_assert( (int) get_post( $entry_0020_video_id )->post_parent === $entry_0020_post_id, '#57 AC16 — entry 0020 video attachment is parented to its post.' );
 		day_one_importer_wp_env_assert( 'video' === (string) get_post_meta( $entry_0020_video_id, '_day_one_media_kind', true ), '#57 AC4 — entry 0020 video attachment carries _day_one_media_kind = "video".' );
-		$entry_0020_video_url = (string) wp_get_attachment_url( $entry_0020_video_id );
-		day_one_importer_wp_env_assert( false !== strpos( $entry_0020_video_url, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ), '#57 AC16 — entry 0020 video URL points at the private uploads subdir.' );
+		// The runtime wp_get_attachment_url filter rewrites Day One media to an
+		// admin-ajax endpoint, so we verify the on-disk path lives under the
+		// private uploads subdir directly (AC16) and that the filtered URL goes
+		// through the authenticated endpoint.
+		$entry_0020_video_url  = (string) wp_get_attachment_url( $entry_0020_video_id );
+		$entry_0020_video_file = (string) get_attached_file( $entry_0020_video_id );
+		day_one_importer_wp_env_assert( '' !== $entry_0020_video_file && false !== strpos( $entry_0020_video_file, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ), '#57 AC16 — entry 0020 video file lives under the private uploads subdir on disk.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0020_video_url, 'action=' . Day_One_Importer_Media::PRIVATE_MEDIA_ACTION ), '#57 AC16 — entry 0020 video URL routes through the authenticated private-media endpoint.' );
 		// #57 R1.4 — duration metadata round-trips through floatval() to within 1e-9 of 1.0.
 		$entry_0020_duration_meta = (string) get_post_meta( $entry_0020_video_id, '_day_one_video_duration', true );
 		day_one_importer_wp_env_assert( '' !== $entry_0020_duration_meta && abs( floatval( $entry_0020_duration_meta ) - 1.0 ) < 1e-9, '#57 R1.4 / AC4 — entry 0020 _day_one_video_duration round-trips within 1e-9 (string storage).' );

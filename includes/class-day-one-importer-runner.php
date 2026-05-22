@@ -473,9 +473,15 @@ class Day_One_Importer_Runner {
 		// attach the photos to the post (already done by the media batch) and
 		// emit one warning per entry. Renderer is NOT invoked twice — the body
 		// rendered above already excludes a trailing gallery.
+		// #57 R9.1 — the R14 warning is photo-specific by design. Gate on the
+		// entry's photo records (not the combined attachment_ids list, which now
+		// also includes video attachment IDs) so video-only entries do not
+		// trigger this warning.
+		$entry_has_photos = is_array( $entry ) && ! empty( $entry['photos'] ) && is_array( $entry['photos'] );
 		if (
 			$uses_rich_text
-			&& ! empty( $attachment_ids )
+			&& $entry_has_photos
+			&& ! empty( $photo_map )
 			&& Day_One_Importer_Content::richtext_has_no_photo_embeds( isset( $entry['richText'] ) ? $entry['richText'] : array() )
 		) {
 			$results->add_warning(
