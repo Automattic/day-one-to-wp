@@ -204,8 +204,8 @@ class Day_One_Importer_Runner {
 			);
 		}
 
-		$content = Day_One_Importer_Content::convert_text_to_content( isset( $entry['text'] ) ? $entry['text'] : '' );
-		$title   = Day_One_Importer_Content::derive_title( isset( $entry['text'] ) ? $entry['text'] : '', $creation['gmt'] );
+		$content = Day_One_Importer_Content::render_entry_body( $entry );
+		$title   = Day_One_Importer_Content::derive_title_from_entry( $entry, $creation['gmt'] );
 
 		$owner_user_id = absint( $owner_user_id );
 		if ( ! $owner_user_id && function_exists( 'get_current_user_id' ) ) {
@@ -368,7 +368,7 @@ class Day_One_Importer_Runner {
 	public function finalize_imported_entry( $entry, $post_id, $attachment_ids, Day_One_Importer_Results $results ) {
 		$uuid = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
 		if ( ! empty( $attachment_ids ) ) {
-			$content            = Day_One_Importer_Content::convert_text_to_content( isset( $entry['text'] ) ? $entry['text'] : '' );
+			$content            = Day_One_Importer_Content::render_entry_body( $entry );
 			$content_with_media = Day_One_Importer_Content::append_image_section( $content, $attachment_ids );
 			$updated            = wp_update_post(
 				array(
