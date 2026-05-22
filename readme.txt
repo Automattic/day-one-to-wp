@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.6
+Stable tag: 0.2.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,12 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 
 == Changelog ==
 
+= 0.2.7 =
+* Render Day One `richText` run-level inline attributes when present: `bold`, `italic`, `strikethrough`, and `inlineCode` map to `<strong>`, `<em>`, `<s>`, and `<code>`; `linkURL` (with optional `autolink`) maps to `<a href="…">`; and `highlightedColor` (Day One's `0xRRGGBB` form) maps to `<mark style="background-color:#RRGGBB">`. Run text is escaped before wrappers are applied, so existing shortcode/HTML neutralization is preserved.
+* Validate `linkURL` strictly: only http(s) URLs that survive `esc_url()` produce an anchor. Non-http(s) or otherwise-invalid links are dropped (the run text still renders) and a privacy-safe warning is recorded that does not include the rejected URL value verbatim.
+* Validate `highlightedColor` strictly against the `0xRRGGBB` pattern (case-insensitive `0x` prefix, exactly six hex digits). Malformed values are dropped (the run text still renders) and a privacy-safe warning is recorded that does not include the rejected color value verbatim.
+* Note: the `<mark style="background-color:#RRGGBB">` wrapper depends on the target site's `wp_kses_post` allowlist accepting `<mark>` with that style attribute. On the plugin's supported WordPress range this passes unchanged; if a host or filter tightens the allowlist, only the highlight color is dropped silently and the run's text still survives. The `IMPORT_SCHEMA_VERSION` is unchanged in this release, so re-importing the same export does not refresh existing posts solely for inline formatting.
+
 = 0.2.6 =
 * Read Day One `richText` payloads when present (both JSON-encoded string and pre-decoded object forms) and route each text run through the existing Day One text-to-block conversion (typically a paragraph block; runs that begin with a markdown sigil such as `# `, `- `, or `*` still produce the matching heading or list block, matching legacy `text`-only rendering). Legacy `text`-only entries import unchanged. Inline formatting (bold/italic/links/etc.), explicit richText line attributes (proper code blocks, blockquotes, checklists, nested lists, header levels), and inline-positioned media are intentionally not interpreted from richText in this release; they are tracked as separate follow-ups.
 * Bump the internal `IMPORT_SCHEMA_VERSION` so existing imported posts are re-rendered when the same export is re-imported. For legacy `text`-only entries the re-rendered output is byte-identical to the previous version; entries that ship `richText` switch from a single legacy markdown-rendered body to one block per richText run (preserving the same per-run escape and markdown semantics).
@@ -104,6 +110,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.7 =
+Adds richText inline formatting: bold, italic, strikethrough, inline code, http(s) links, and highlight color are now rendered when present in `richText` payloads. Non-http(s) links and malformed highlight colors are dropped with privacy-safe warnings; `<mark style="background-color:#RRGGBB">` survives only if the site's `wp_kses_post` allowlist accepts it.
 
 = 0.2.6 =
 Adds initial Day One `richText` parsing (one block per text run, delegating to the legacy markdown helper), bumps the import schema version so re-imports refresh existing posts, and falls back to legacy `text` with a privacy-safe warning if a `richText` payload cannot be decoded.
