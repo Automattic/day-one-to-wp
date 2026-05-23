@@ -390,7 +390,10 @@ class Day_One_Importer_Parser {
 	 * @return array<string,mixed>
 	 */
 	private function stream_json_file_batch( $file, &$job, Day_One_Importer_Results $results, $deadline, $limit, $manifest, &$seen, $checkpoint ) {
-		$handle = @fopen( $file, 'rb' );
+		// Native fopen() is required to stream multi-MB Day One JSON exports without
+		// buffering the entire file in memory. WP_Filesystem has no chunked-read API.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		$handle = fopen( $file, 'rb' );
 		if ( ! $handle ) {
 			return array(
 				'file_done' => true,
@@ -423,6 +426,7 @@ class Day_One_Importer_Parser {
 				break;
 			}
 
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread
 			$chunk = fread( $handle, 65536 );
 			if ( false === $chunk || '' === $chunk ) {
 				break;
@@ -474,6 +478,7 @@ class Day_One_Importer_Parser {
 					if ( 0 === $entry_depth ) {
 						++$processed;
 						if ( ! $this->process_streamed_entry( $entry_buffer, $file, $entry_i, $manifest, $job, $results, $seen ) ) {
+							// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 							fclose( $handle );
 							return array(
 								'file_done' => false,
@@ -513,6 +518,7 @@ class Day_One_Importer_Parser {
 		}
 
 		$reached_eof = feof( $handle );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 		fclose( $handle );
 
 		if ( ! $paused && ! $file_done && $reached_eof ) {

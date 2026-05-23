@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.18
+Stable tag: 0.2.19
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,9 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.19 =
+* Document streaming JSON I/O exception for Plugin Check. `Day_One_Importer_Parser::stream_json_file_batch()` uses native PHP `fopen`/`fread`/`fclose` to stream multi-MB Day One JSON exports without buffering the entire file in memory (WP_Filesystem has no chunked-read API). Plugin Check ignores the project's `WordPress.WP.AlternativeFunctions` PHPCS exclusion and flags every call, so this release adds explicit `phpcs:ignore` comments at each of the four call sites with a rationale comment on the `fopen` site, and drops the `@` error suppression on `fopen` (the existing `if ( ! $handle )` branch already returns a no-op result on failure, so the suppression was redundant). No behaviour change; existing pure-helper streaming tests still pass byte-for-byte; no `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
 
 = 0.2.18 =
 * Attachment dedupe N+1 perf fix. Replace the two unbounded `get_posts` lookups inside `Day_One_Importer_Media::find_existing_attachment()` and `Day_One_Importer_Media::find_partial_attachment_by_source()` with single indexed `meta_query`-backed lookups. `find_existing_attachment()` now issues one query joining `_day_one_uuid` AND (`_day_one_media_identifier` OR `_day_one_media_md5`) with `posts_per_page=1`, `fields=ids`, `no_found_rows=true` (the identifier/md5 sub-clause collapses to a single equality when only one of the two markers is present on the photo record). `find_partial_attachment_by_source()` keeps the filename-shape predicate in PHP (basename isn't indexed in `postmeta`) but pushes the `_day_one_source != 'day-one-export'` filter into a `meta_query` (`NOT EXISTS` OR `!= 'day-one-export'`) and caps `posts_per_page=10` so a single query bounds the work irrespective of how many media a post carries. Previously both helpers loaded every attachment on the post and read up to three meta rows per attachment in PHP, which scales as O(M) attachments per imported photo / video / audio / PDF — for a post with hundreds of attachments and a re-import of dozens of entries this added thousands of `postmeta` reads per entry. Reruns + idempotency are preserved (same dedupe semantics); byte-for-byte fixture baseline from #56 is preserved (no change to upload pipeline or filename derivation). No `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
@@ -167,6 +170,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.19 =
+Documents the streaming JSON I/O exception for Plugin Check. The streaming parser uses native PHP `fopen`/`fread`/`fclose` (WP_Filesystem has no chunked-read API); this release adds explicit `phpcs:ignore` comments at each of the four call sites and drops the redundant `@` suppression on `fopen`. Internal-only release — no manifest changes, no schema bump, no site-visible behaviour change for existing imports.
 
 = 0.2.18 =
 Attachment dedupe N+1 perf fix. The two attachment-lookup helpers (`find_existing_attachment()` and `find_partial_attachment_by_source()`) now use single indexed `meta_query`-backed queries instead of loading every attachment on the post and reading meta rows per attachment in PHP. Reruns on posts with many attachments are now bounded by a single query per imported media item. Same dedupe semantics; no manifest changes; no schema bump; no site-visible behaviour change for existing imports.
