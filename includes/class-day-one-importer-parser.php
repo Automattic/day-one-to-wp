@@ -1097,6 +1097,26 @@ class Day_One_Importer_Parser {
 			}
 		}
 
+		// #61 R1 — extract and sanitize location alongside other normalizers.
+		$location = null;
+		if ( isset( $raw_entry['location'] ) ) {
+			$raw_location = $raw_entry['location'];
+			if ( is_array( $raw_location ) && ! empty( $raw_location ) ) {
+				$normalized_location = $this->normalize_location( $raw_location );
+				if ( ! empty( $normalized_location ) ) {
+					$location = $normalized_location;
+				}
+			} elseif ( ! is_array( $raw_location ) ) {
+				$results->add_warning(
+					sprintf(
+						/* translators: %s: Day One entry UUID. */
+						__( 'Malformed location for UUID %s; entry imported without location.', 'day-one-importer' ),
+						$uuid
+					)
+				);
+			}
+		}
+
 		$normalized = array(
 			'uuid'                => $uuid,
 			'creationDate'        => isset( $raw_entry['creationDate'] ) && is_scalar( $raw_entry['creationDate'] ) ? (string) $raw_entry['creationDate'] : '',
@@ -1118,6 +1138,10 @@ class Day_One_Importer_Parser {
 
 		if ( is_array( $rich_text ) ) {
 			$normalized['richText'] = $rich_text;
+		}
+
+		if ( is_array( $location ) && ! empty( $location ) ) {
+			$normalized['location'] = $location;
 		}
 
 		return $normalized;
@@ -1228,5 +1252,45 @@ class Day_One_Importer_Parser {
 			'orderInEntry' => isset( $pdf['orderInEntry'] ) && is_numeric( $pdf['orderInEntry'] ) ? (int) $pdf['orderInEntry'] : null,
 			'fileSize'     => isset( $pdf['fileSize'] ) && is_numeric( $pdf['fileSize'] ) ? (int) $pdf['fileSize'] : 0,
 		);
+	}
+
+	/**
+	 * Normalize entry location metadata.
+	 *
+	 * Extracts the typed scalar fields (latitude/longitude/placeName/localityName/
+	 * administrativeArea/country/timeZoneName) when each is present and valid, plus
+	 * a `raw` JSON snapshot of the full original location payload (preserves the
+	 * `region` subtree without exposing it as separate normalized fields). See spec
+	 * #61 R1.3 — each key is independently optional; the caller drops the entire
+	 * `location` key when this method returns an empty array.
+	 *
+	 * @param array<string,mixed> $raw Raw location subtree.
+	 * @return array<string,mixed>
+	 */
+	private function normalize_location( $raw ) {
+		$location = array();
+
+		if ( isset( $raw['latitude'] ) && is_numeric( $raw['latitude'] ) ) {
+			$location['latitude'] = (float) $raw['latitude'];
+		}
+
+		if ( isset( $raw['longitude'] ) && is_numeric( $raw['longitude'] ) ) {
+			$location['longitude'] = (float) $raw['longitude'];
+		}
+
+		$string_fields = array( 'placeName', 'localityName', 'administrativeArea', 'country', 'timeZoneName' );
+		foreach ( $string_fields as $field ) {
+			if ( isset( $raw[ $field ] ) && is_scalar( $raw[ $field ] ) ) {
+				$sanitized = day_one_importer_sanitize_text( (string) $raw[ $field ] );
+				if ( '' !== $sanitized ) {
+					$location[ $field ] = $sanitized;
+				}
+			}
+		}
+
+		$encoded         = wp_json_encode( $raw, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		$location['raw'] = false === $encoded ? '' : $encoded;
+
+		return $location;
 	}
 }
