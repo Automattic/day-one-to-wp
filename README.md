@@ -1,6 +1,6 @@
 # Day One Importer
 
-Day One Importer is a WordPress admin importer for Day One JSON exports. It creates one **private** WordPress post per Day One entry and attempts to preserve dates, journal categories, tags, text, supported photos, supported videos, supported audios, supported PDF attachments, and per-entry location metadata.
+Day One Importer is a WordPress admin importer for Day One JSON exports. It creates one **private** WordPress post per Day One entry and attempts to preserve dates, journal categories, tags, text, supported photos, supported videos, supported audios, supported PDF attachments, per-entry location metadata, and per-entry weather metadata.
 
 ## Try in WordPress Playground
 
@@ -99,6 +99,40 @@ The results/status screen is designed to be privacy-safe: it reports counts, UUI
     - Returning any other value (scalar truthy, object, resource) is treated as a no-op and emits one privacy-safe warning naming the filter; no rows are written.
 
     The filter fires only on entries that have a normalized location. Entries without `location` do not invoke the filter at all.
+- Day One `entry.weather` is preserved as sanitized post meta on the imported post. The streaming parser extracts the weather subtree when present and the runner writes up to twelve typed `_day_one_weather_*` meta keys during `finalize_imported_entry()`, plus one raw JSON snapshot key. Each typed key is gated on `isset()` in the source array (after sanitization) rather than truthiness, so numeric `0` / `0.0` values are preserved: `relativeHumidity: 0` (matching one of Day One's sample payloads), `windBearing: 0` (due north), and `moonPhase: 0` (new moon) all round-trip as the string `"0"` instead of being dropped as falsy. The full key set:
+    - `_day_one_weather_temperature_celsius` — `(string)(float)` of Day One `temperatureCelsius`.
+    - `_day_one_weather_humidity` — `(string)(float)` of Day One `relativeHumidity`.
+    - `_day_one_weather_pressure_mb` — `(string)(float)` of Day One `pressureMB`.
+    - `_day_one_weather_wind_kph` — `(string)(float)` of Day One `windSpeedKPH`.
+    - `_day_one_weather_wind_bearing` — `(string)(int)` of Day One `windBearing`.
+    - `_day_one_weather_visibility_km` — `(string)(float)` of Day One `visibilityKM`.
+    - `_day_one_weather_moon_phase` — `(string)(float)` of Day One `moonPhase`.
+    - `_day_one_weather_moon_phase_code` — sanitized Day One `moonPhaseCode`.
+    - `_day_one_weather_code` — sanitized Day One `weatherCode`.
+    - `_day_one_weather_conditions` — sanitized Day One `conditionsDescription`.
+    - `_day_one_weather_service` — sanitized Day One `weatherServiceName`.
+    - `_day_one_weather_raw` — `wp_json_encode()` of the original `weather` subtree (with `JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`). This is where any additional fields Day One ships under `weather` (sunrise/sunset timestamps, icon hints, future additions) round-trip; they are intentionally not split into separate meta fields.
+  Entries whose source JSON omits `weather` (or ships an empty object) write zero `_day_one_weather_*` rows. A non-array `weather` value emits one privacy-safe warning naming the entry UUID and the entry continues importing without weather meta. All writes use `update_post_meta` so reruns are idempotent and produce identical rows and values. No block-level rendering, icon mapping, unit conversion (Celsius → Fahrenheit, KPH → MPH), or external weather re-fetch is added in this release; the data is meta-only and is meant for downstream code (theme code, custom block, REST consumer) that wants to render or query against it. Floats are stored verbatim from source — note that Day One ships full IEEE-754 double precision (`29.909999847412109`) and the `(string)(float)` cast keeps that precision intact.
+- The weather meta map is exposed through a `day_one_importer_weather_meta` filter before any rows are written, so downstream code can mutate the twelve typed values, add related keys (the prefix is not enforced), or skip writes entirely:
+
+    ```php
+    /**
+     * Filter the weather meta key/value map before writing to the post.
+     *
+     * @param array<string,string> $meta    Meta key => value map, ready to write.
+     * @param array<string,mixed>  $weather Normalized weather array (temperatureCelsius, relativeHumidity, pressureMB, windSpeedKPH, windBearing, visibilityKM, moonPhase, moonPhaseCode, weatherCode, conditionsDescription, weatherServiceName, raw).
+     * @param int                  $post_id Imported post ID.
+     * @param array<string,mixed>  $entry   Full normalized entry.
+     */
+    apply_filters( 'day_one_importer_weather_meta', $meta, $weather, $post_id, $entry );
+    ```
+
+    Filter return contract:
+    - Returning an `array` writes its `key => value` pairs via `update_post_meta` (callbacks may add, remove, or replace keys; unprefixed keys are allowed).
+    - Returning `null` or `false` skips ALL writes for this entry (no rows touched).
+    - Returning any other value (scalar truthy, object, resource) is treated as a no-op and emits one privacy-safe warning naming the filter; no rows are written.
+
+    The filter fires only on entries that have a normalized weather array. Entries without `weather` do not invoke the filter at all.
 
 ## Batched jobs, idempotency, and resume behavior
 
