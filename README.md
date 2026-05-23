@@ -234,3 +234,15 @@ The wp-env smoke test imports the committed fictional fixture at `tests/fixtures
 WordPress Plugin Check is not required by the first CI workflow. It can be added later as a separate GitHub Actions job using the official Plugin Check action or a `wp-env`/WP-CLI job once that path is verified as stable and publish-safe.
 
 See `tests/manual-verification.md` for a WordPress manual verification checklist covering installation, import, privacy, idempotency, invalid inputs, media behavior, and cleanup.
+
+## Pre-submission verification (WordPress Plugin Check)
+
+Before tagging a release for submission to WordPress.org, run Plugin Check (PCP) against the plugin. This step is intentionally gated behind an explicit helper so it does **not** run during the normal lint / test loop:
+
+```sh
+composer plugin-check
+# or equivalently:
+./tools/run-plugin-check.sh
+```
+
+The helper is idempotent: it starts `wp-env` only if it is not already running, installs and activates the `plugin-check` plugin only when needed, then runs `wp plugin check day-one-importer --checks=all` and prints a tabular report. Zero findings exits `0`; any error or warning exits `1`; environment problems (Docker not running, port conflict, wp-env unavailable) exit `2` with a hint. A clean release should print `Plugin Check reported zero findings. Ready for submission review.` See the `## Plugin Check (PCP)` section in `tests/manual-verification.md` for the full pre-submission checklist.

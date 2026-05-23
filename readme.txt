@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.21
+Stable tag: 0.2.22
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,9 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.22 =
+* tooling: Plugin Check helper script. Add `tools/run-plugin-check.sh` (POSIX shell) and a matching `composer plugin-check` script alias that automate WordPress Plugin Check (PCP) against the plugin via the repository's `wp-env` environment. The helper is idempotent: it starts `wp-env` only if it is not already running (probing `wp core is-installed`), installs and activates the `plugin-check` plugin only when not already active, then runs `wp plugin check day-one-importer --checks=all --format=table --fields=check,file,line,column,type,code,message` inside the container. Exit codes are distinguishable: `0` = zero findings (ready for submission review), `1` = PCP reported one or more errors or warnings, `2` = environment / setup failure (Docker not running, port `8888`/`8889` conflict, wp-env unavailable) with a hint pointing at the likely cause. The script is intentionally **not** wired into the normal lint / test loop — it runs only when invoked explicitly (`composer plugin-check` or `./tools/run-plugin-check.sh`) so contributors are not gated on Docker for routine work. The README's "Pre-submission verification" section and a new `## Plugin Check (PCP)` section in `tests/manual-verification.md` document the expected zero-findings output. No `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
 
 = 0.2.21 =
 * Harden private-media response headers. `Day_One_Importer_Media::serve_private_media()` now emits `Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0` (augmenting `nocache_headers()` with `private` and `no-store` so downstream proxies cannot retain the nonce'd response), `Referrer-Policy: same-origin` (so the auth-nonce'd URL is not leaked via `Referer` when an embedded `<img>` is followed off-site), and `Content-Disposition: inline; filename="<sanitized basename>"` (explicit intent + a sensible Save As filename, with the on-disk basename run through `sanitize_file_name()` so it cannot be tampered with via header injection). The existing `Content-Type`, `Content-Length`, and `X-Content-Type-Options: nosniff` headers are unchanged. The `<img>` src URL is unchanged, so existing posts continue to render. No `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
