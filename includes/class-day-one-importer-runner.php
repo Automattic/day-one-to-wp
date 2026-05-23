@@ -633,6 +633,7 @@ class Day_One_Importer_Runner {
 		update_post_meta( $post_id, '_day_one_import_completed_at', current_time( 'mysql', true ) );
 
 		$this->write_location_meta( (int) $post_id, $entry, $results );
+		$this->write_weather_meta( (int) $post_id, $entry, $results );
 
 		return true;
 	}
@@ -717,6 +718,112 @@ class Day_One_Importer_Runner {
 		if ( ! is_array( $filtered ) ) {
 			$results->add_warning(
 				__( 'day_one_importer_location_meta filter returned a non-array, non-null value; location meta was not written.', 'day-one-importer' )
+			);
+			return;
+		}
+
+		foreach ( $filtered as $key => $value ) {
+			update_post_meta( $post_id, (string) $key, $value );
+		}
+	}
+
+	/**
+	 * Write sanitized weather metadata to the imported post.
+	 *
+	 * Builds the `_day_one_weather_*` meta map from the normalized entry
+	 * weather (spec #62 R3.2/R3.3) and runs it through the
+	 * `day_one_importer_weather_meta` filter (R4.1/R4.2). The filter contract:
+	 *
+	 * - `array` (including `array()`): each pair is written via `update_post_meta`.
+	 * - `null` or `false`: skip all writes silently.
+	 * - any other value: skip writes and emit a warning naming the filter.
+	 *
+	 * The filter does NOT fire when the entry carries no normalized weather
+	 * (R4.3). All writes use `update_post_meta` so reruns are idempotent (R3.4).
+	 * Numeric `0`/`0.0` (e.g. `relativeHumidity: 0`, `windBearing: 0`,
+	 * `moonPhase: 0`) are preserved via `isset()` gates (R3.3, RK5).
+	 *
+	 * @param int                      $post_id Post ID.
+	 * @param array<string,mixed>      $entry   Normalized entry array.
+	 * @param Day_One_Importer_Results $results Results.
+	 * @return void
+	 */
+	private function write_weather_meta( $post_id, array $entry, Day_One_Importer_Results $results ) {
+		if ( ! isset( $entry['weather'] ) || ! is_array( $entry['weather'] ) || empty( $entry['weather'] ) ) {
+			return;
+		}
+
+		$weather = $entry['weather'];
+		$meta    = array();
+
+		if ( isset( $weather['temperatureCelsius'] ) ) {
+			$meta['_day_one_weather_temperature_celsius'] = (string) (float) $weather['temperatureCelsius'];
+		}
+		if ( isset( $weather['relativeHumidity'] ) ) {
+			$meta['_day_one_weather_humidity'] = (string) (float) $weather['relativeHumidity'];
+		}
+		if ( isset( $weather['pressureMB'] ) ) {
+			$meta['_day_one_weather_pressure_mb'] = (string) (float) $weather['pressureMB'];
+		}
+		if ( isset( $weather['windSpeedKPH'] ) ) {
+			$meta['_day_one_weather_wind_kph'] = (string) (float) $weather['windSpeedKPH'];
+		}
+		if ( isset( $weather['visibilityKM'] ) ) {
+			$meta['_day_one_weather_visibility_km'] = (string) (float) $weather['visibilityKM'];
+		}
+		if ( isset( $weather['moonPhase'] ) ) {
+			$meta['_day_one_weather_moon_phase'] = (string) (float) $weather['moonPhase'];
+		}
+
+		if ( isset( $weather['windBearing'] ) ) {
+			$meta['_day_one_weather_wind_bearing'] = (string) (int) $weather['windBearing'];
+		}
+
+		$string_map = array(
+			'moonPhaseCode'         => '_day_one_weather_moon_phase_code',
+			'weatherCode'           => '_day_one_weather_code',
+			'conditionsDescription' => '_day_one_weather_conditions',
+			'weatherServiceName'    => '_day_one_weather_service',
+		);
+		foreach ( $string_map as $source => $meta_key ) {
+			if ( isset( $weather[ $source ] ) && is_scalar( $weather[ $source ] ) ) {
+				$value = day_one_importer_sanitize_text( (string) $weather[ $source ] );
+				if ( '' !== $value ) {
+					$meta[ $meta_key ] = $value;
+				}
+			}
+		}
+
+		if ( isset( $weather['raw'] ) && is_scalar( $weather['raw'] ) ) {
+			$raw = (string) $weather['raw'];
+			if ( '' !== $raw ) {
+				$meta['_day_one_weather_raw'] = $raw;
+			}
+		}
+
+		/**
+		 * Filter the weather meta key/value map before writing to the post.
+		 *
+		 * Return an array (possibly empty) to write its pairs as post meta.
+		 * Return `null` or `false` to skip all writes silently. Any other
+		 * value is treated as a no-op and emits a warning.
+		 *
+		 * @since 0.2.15
+		 *
+		 * @param array<string,string> $meta    Meta key => value pairs ready to write.
+		 * @param array<string,mixed>  $weather Normalized weather array.
+		 * @param int                  $post_id Post ID receiving the meta.
+		 * @param array<string,mixed>  $entry   Full normalized entry.
+		 */
+		$filtered = apply_filters( 'day_one_importer_weather_meta', $meta, $weather, (int) $post_id, $entry );
+
+		if ( null === $filtered || false === $filtered ) {
+			return;
+		}
+
+		if ( ! is_array( $filtered ) ) {
+			$results->add_warning(
+				__( 'day_one_importer_weather_meta filter returned a non-array, non-null value; weather meta was not written.', 'day-one-importer' )
 			);
 			return;
 		}
