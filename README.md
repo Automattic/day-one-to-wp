@@ -1,6 +1,6 @@
 # Day One Importer
 
-Day One Importer is a WordPress admin importer for Day One JSON exports. It creates one **private** WordPress post per Day One entry and attempts to preserve dates, journal categories, tags, text, supported photos, supported videos, supported audios, and supported PDF attachments.
+Day One Importer is a WordPress admin importer for Day One JSON exports. It creates one **private** WordPress post per Day One entry and attempts to preserve dates, journal categories, tags, text, supported photos, supported videos, supported audios, supported PDF attachments, and per-entry location metadata.
 
 ## Try in WordPress Playground
 
@@ -69,6 +69,36 @@ The results/status screen is designed to be privacy-safe: it reports counts, UUI
 - The MIME allowlist gate (`Day_One_Importer_Media::validate_media_file()`) now also accepts `audio/*` (in addition to the existing `image/*` and `video/*` paths). An audio is sideloaded only when both `wp_check_filetype_and_ext()` reports an `audio/*` MIME and that MIME appears in the site's `get_allowed_mime_types()` list. On a default WordPress install, Administrator-role users have `audio/mpeg`, `audio/mp4`, and `audio/aac` enabled, so typical `.mp3`, `.m4a`, and `.aac` files from a Day One export are accepted. Day One records shipped as `.lpcm` (linear PCM — `audio/L16` / `audio/L24`) are reliably **not** in WordPress's default allowlist and are **dropped** with a privacy-safe warning ("Skipping embedded audio in Day One entry: referenced media file is unsupported or missing."). Any audio whose MIME the site refuses follows the same drop path. No attachment is created, no `core/file` fallback is emitted, and the warning contains no identifier, UUID, filename, md5, or path. To support additional audio MIME types on your site, extend the uploader allowlist via the standard WordPress `upload_mimes` filter (or your multisite Add to mime types settings).
 - Day One `entry.pdfAttachments[]` are imported alongside photos, videos, and audios. ZIP preflight discovers any top-level `pdfs/` directory next to the existing `photos/`, `videos/`, and `audios/` discovery, so a Day One export that ships PDFs is recognized in the same preflight pass. Each PDF file is sideloaded into the same protected `day-one-importer-private` uploads subfolder used for photos, videos, and audios, served through the same nonce- and permission-checked WordPress media endpoint, and attached to the imported post. Importer markers (`_day_one_uuid`, `_day_one_media_identifier`, `_day_one_media_md5`, `_day_one_source = day-one-export`, `_day_one_media_kind = pdf`, plus the pdf-specific `_day_one_pdf_name` when the Day One record carries a non-empty `pdfName`) are written to the attachment so reruns deduplicate by UUID + identifier (or md5) without creating duplicate attachments. Width, height, duration, and date are intentionally not persisted on PDF attachments (Day One ships zeros for the first three and omits the date). When a `richText` payload lists a PDF via `embeddedObjects[].type === "pdfAttachment"`, the PDF renders inline at the position the embed appears in the text stream as a `core/file` block (`<div class="wp-block-file"><a href="…">…</a><a … class="wp-block-file__button …" download>Download</a></div>`) with `showDownloadButton: true`. The Day One record's `pdfName` is used as the block link text when present; absent names fall back to the attachment basename without extension, and finally to a literal `[PDF]` floor. Interleaved photo + video + audio + PDF sequences emit blocks in scan order: consecutive photos still collapse into a single `core/image` or `core/gallery`, and each video, audio, and PDF produces one `core/video`, `core/audio`, or `core/file` block in between, splitting a run of photos when any of them is interposed.
 - The MIME allowlist gate (`Day_One_Importer_Media::validate_media_file()`) now also accepts `application/pdf` (in addition to the existing `image/*`, `video/*`, and `audio/*` paths). A PDF is sideloaded only when both `wp_check_filetype_and_ext()` reports `application/pdf` and that MIME appears in the site's `get_allowed_mime_types()` list. On a default WordPress install, Administrator-role users have `application/pdf` enabled, so the typical PDFs from a Day One export are accepted. Sites whose admins have explicitly stripped `application/pdf` from `upload_mimes` will see the affected PDFs **dropped** with a privacy-safe warning ("Skipping embedded PDF in Day One entry: referenced media file is unsupported or missing."). No attachment is created, no `core/file` fallback block is emitted, and the warning contains no identifier, UUID, filename, md5, `pdfName`, or path. To support additional PDF behavior on your site, extend the uploader allowlist via the standard WordPress `upload_mimes` filter (or your multisite Add to mime types settings). PDF preview / thumbnail rendering is intentionally out of scope: the emitted `core/file` block is link + Download button only.
+- Day One `entry.location` is preserved as sanitized post meta on the imported post. The streaming parser extracts the location subtree when present and the runner writes up to eight typed `_day_one_location_*` meta keys during `finalize_imported_entry()`, plus one raw JSON snapshot key. Each typed key is written only when its source field is present after sanitization, except `latitude` / `longitude` which are gated on `isset()` so the equator (`0.0`) and prime meridian (`0.0`) are preserved rather than dropped as falsy. The full key set:
+    - `_day_one_location_latitude` — `(string)(float)` of Day One `latitude`.
+    - `_day_one_location_longitude` — `(string)(float)` of Day One `longitude`.
+    - `_day_one_location_place_name` — sanitized Day One `placeName`.
+    - `_day_one_location_locality` — sanitized Day One `localityName`.
+    - `_day_one_location_administrative_area` — sanitized Day One `administrativeArea`.
+    - `_day_one_location_country` — sanitized Day One `country`.
+    - `_day_one_location_timezone` — sanitized Day One `timeZoneName`.
+    - `_day_one_location_raw` — `wp_json_encode()` of the original `location` subtree (with `JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`). This is where Day One's `region` center/identifier/radius subtree round-trips; it is intentionally not split into separate meta fields.
+  Entries whose source JSON omits `location` (or ships an empty object) write zero `_day_one_location_*` rows. A non-array `location` value emits one privacy-safe warning naming the entry UUID and the entry continues importing without location meta. All writes use `update_post_meta` so reruns are idempotent and produce identical rows and values. No block-level rendering, map embed, or geocoding is added in this release; the data is meta-only and is meant for downstream code (theme code, custom block, REST consumer) that wants to render or query against it.
+- The location meta map is exposed through a `day_one_importer_location_meta` filter before any rows are written, so downstream code can mutate the eight typed values, add related keys (the prefix is not enforced), or skip writes entirely:
+
+    ```php
+    /**
+     * Filter the location meta key/value map before writing to the post.
+     *
+     * @param array<string,string> $meta     Meta key => value map, ready to write.
+     * @param array<string,mixed>  $location Normalized location array (latitude, longitude, placeName, localityName, administrativeArea, country, timeZoneName, raw).
+     * @param int                  $post_id  Imported post ID.
+     * @param array<string,mixed>  $entry    Full normalized entry.
+     */
+    apply_filters( 'day_one_importer_location_meta', $meta, $location, $post_id, $entry );
+    ```
+
+    Filter return contract:
+    - Returning an `array` writes its `key => value` pairs via `update_post_meta` (callbacks may add, remove, or replace keys; unprefixed keys are allowed).
+    - Returning `null` or `false` skips ALL writes for this entry (no rows touched).
+    - Returning any other value (scalar truthy, object, resource) is treated as a no-op and emits one privacy-safe warning naming the filter; no rows are written.
+
+    The filter fires only on entries that have a normalized location. Entries without `location` do not invoke the filter at all.
 
 ## Batched jobs, idempotency, and resume behavior
 
