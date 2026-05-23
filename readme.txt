@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.12
+Stable tag: 0.2.13
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,9 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.13 =
+* Preserve animated GIF photos from Day One exports. Photo attachments now carry a uniform `_day_one_photo_format` meta marker (lowercased Day One `photo.type`, for example `gif`, `jpeg`, `png`, `heic`), and the `core/image` block emitted for a GIF photo uses the original full-size file URL (`wp_get_attachment_url()`) with `sizeSlug: "full"` and a `wp-block-image size-full` figure class instead of the `large` derivative WordPress generates during sub-size creation. Non-GIF photos keep the existing `large` ladder unchanged, so JPEG and PNG posts render identically to prior releases. Mixed galleries (GIF + JPEG in the same entry) get per-image correct `sizeSlug` automatically because the gallery serializer delegates to the per-image block builder. The fictional fixture journal grows from 25 to 26 entries with one new GIF-only entry (a hand-crafted 2-frame 1x1 GIF89a) so the wp-env smoke can assert md5 round-trip equality between the export's `photo.md5` and the saved attachment file on disk. Hosts running image-optimization plugins that transcode GIFs post-upload (Jetpack Image CDN, EWWW) may still flatten animation — that path is out of this plugin's control and documented as a known risk. The internal `IMPORT_SCHEMA_VERSION` is intentionally unchanged at `9` because the manifest shape is identical; only new attachment meta is written.
 
 = 0.2.12 =
 * Import Day One `entry.pdfAttachments[]` from the JSON export as `core/file` blocks at their inline `embeddedObjects[]` positions. The streaming parser normalizes a new `pdfAttachments` field on each entry (with `identifier`, `md5`, `pdfName`, `orderInEntry`, and `fileSize`), and the JSONL manifest round-trips it alongside the existing `photos`, `videos`, and `audios` fields. Each PDF is sideloaded into the existing private uploads subfolder, deduped against any matching attachment on the same post via Day One UUID + identifier (or md5), and emitted as a `core/file` block at its inline position. An entry containing interleaved photo + video + audio + PDF embeds renders them in scan order. When the PDF record carries a non-empty `pdfName`, the block renders that name as the link text; otherwise the block falls back to the attachment basename (without extension) and finally to a literal `[PDF]` floor. The `core/file` block uses the standard `<div class="wp-block-file">` markup with a `Download` button (`wp-block-file__button`) and serves the file through the nonce-checked private endpoint, so PDFs remain readable only to users who can read the parent private post. New attachment markers (`_day_one_media_kind = pdf`, `_day_one_pdf_name`, plus the shared `_day_one_uuid` / `_day_one_media_identifier` / `_day_one_media_md5` / `_day_one_source` keys) are written to every PDF attachment so reruns deduplicate cleanly. Width, height, duration, and date are intentionally not persisted for PDF attachments (Day One ships zeros or omits them).
@@ -145,6 +148,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.13 =
+Preserves animated GIF photos from Day One exports. The `core/image` block emitted for a GIF photo now references the original full-size file URL with `sizeSlug: "full"` instead of WordPress's flattened `large` derivative, so animation survives. A new `_day_one_photo_format` attachment meta marker is written for every photo (gif, jpeg, png, heic, ...). Non-GIF photos render identically to prior releases. Hosts running image-optimization plugins that transcode GIFs post-upload (Jetpack Image CDN, EWWW) may still flatten animation. The internal import schema is unchanged at `9` — no rerun is required.
 
 = 0.2.12 =
 Imports Day One `entry.pdfAttachments[]` into the existing private uploads subfolder and renders them as `core/file` blocks at their inline `embeddedObjects[]` positions, including interleaved photo + video + audio + PDF sequences. The PDF's `pdfName` is rendered as the block link text with a `Download` button per Gutenberg defaults; absent names fall back to the attachment basename and then to a `[PDF]` floor. ZIP preflight now discovers `pdfs/` directories alongside `photos/`, `videos/`, and `audios/`. The MIME gate is extended to `application/pdf`; PDFs whose MIME the site refuses (rare — `application/pdf` ships in WordPress core's default allowlist for admins) are dropped with a privacy-safe warning (no identifier leak and no `core/file` fallback) — extend `upload_mimes` to allow them. Bumps the internal import schema (`8` → `9`) so re-imports refresh existing posts that contain PDF embeds.

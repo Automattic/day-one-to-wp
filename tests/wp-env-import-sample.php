@@ -1030,6 +1030,47 @@ if ( $using_default_zip ) {
 		day_one_importer_wp_env_assert( array( 'core/image', 'core/video', 'core/audio', 'core/file' ) === $entry_0025_top_names, '#59 AC9 / AC16 — entry 0025 emits core/image, core/video, core/audio, core/file in inline order.' );
 	}
 
+	// #60 R5.2 / AC1-AC3 — entry 0026 is an animated GIF; the imported core/image
+	// block MUST carry sizeSlug=full, url MUST equal wp_get_attachment_url() of
+	// the GIF attachment (exact ===, not suffix/regex), md5 round-trip MUST
+	// match the export's photo.md5, and _day_one_photo_format MUST equal 'gif'.
+	$entry_0026_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0026'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0026'] : 0;
+	day_one_importer_wp_env_assert( $entry_0026_post_id > 0, '#60 AC1 — fictional entry 0026 (animated GIF) was imported.' );
+	if ( $entry_0026_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0026_content = (string) get_post_field( 'post_content', $entry_0026_post_id );
+		$entry_0026_blocks  = parse_blocks( $entry_0026_content );
+		$entry_0026_image   = null;
+		foreach ( $entry_0026_blocks as $entry_0026_block ) {
+			if ( isset( $entry_0026_block['blockName'] ) && 'core/image' === $entry_0026_block['blockName'] ) {
+				$entry_0026_image = $entry_0026_block;
+				break;
+			}
+		}
+		day_one_importer_wp_env_assert( null !== $entry_0026_image, '#60 AC1 — entry 0026 post body contains a core/image block.' );
+		if ( null !== $entry_0026_image ) {
+			$gif_attachment_id  = isset( $entry_0026_image['attrs']['id'] ) ? (int) $entry_0026_image['attrs']['id'] : 0;
+			$gif_size_slug      = isset( $entry_0026_image['attrs']['sizeSlug'] ) ? (string) $entry_0026_image['attrs']['sizeSlug'] : '';
+			$gif_block_url      = isset( $entry_0026_image['attrs']['url'] ) ? (string) $entry_0026_image['attrs']['url'] : '';
+			day_one_importer_wp_env_assert( $gif_attachment_id > 0, '#60 AC1 — entry 0026 core/image block carries an attachment id.' );
+			day_one_importer_wp_env_assert( 'full' === $gif_size_slug, '#60 R5.2 / AC1 — entry 0026 core/image block emits sizeSlug=full.' );
+			if ( $gif_attachment_id > 0 ) {
+				$expected_gif_url = (string) wp_get_attachment_url( $gif_attachment_id );
+				day_one_importer_wp_env_assert( '' !== $expected_gif_url, '#60 R5.2 — wp_get_attachment_url() resolves for the GIF attachment.' );
+				day_one_importer_wp_env_assert( $expected_gif_url === $gif_block_url, '#60 R5.2 / AC1 — entry 0026 core/image block url is exactly wp_get_attachment_url().' );
+
+				$gif_attached_path = get_attached_file( $gif_attachment_id );
+				day_one_importer_wp_env_assert( is_string( $gif_attached_path ) && '' !== $gif_attached_path && is_file( $gif_attached_path ), '#60 AC2 — entry 0026 GIF attachment has a file on disk.' );
+				if ( is_string( $gif_attached_path ) && is_file( $gif_attached_path ) ) {
+					$gif_actual_md5 = (string) md5_file( $gif_attached_path );
+					day_one_importer_wp_env_assert( '3b22a729ac3d48d50fc2925514df76e0' === $gif_actual_md5, '#60 R5.2 / AC2 — entry 0026 GIF file md5 round-trip equals the export photo.md5.' );
+				}
+
+				$gif_format_meta = (string) get_post_meta( $gif_attachment_id, '_day_one_photo_format', true );
+				day_one_importer_wp_env_assert( 'gif' === $gif_format_meta, '#60 R5.2 / AC3 — entry 0026 GIF attachment carries _day_one_photo_format=gif meta.' );
+			}
+		}
+	}
+
 	// Stash for rerun-identity check below.
 	$GLOBALS['day_one_importer_57_video_attachment_id'] = $day_one_importer_57_video_attachment_id;
 	$GLOBALS['day_one_importer_58_audio_attachment_id'] = $day_one_importer_58_audio_attachment_id;
