@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.14
+Stable tag: 0.2.15
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,10 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.15 =
+* Preserve Day One `entry.weather` as post meta. The streaming parser sanitizes the weather subtree (temperatureCelsius, relativeHumidity, pressureMB, windSpeedKPH, windBearing, visibilityKM, moonPhase, moonPhaseCode, weatherCode, conditionsDescription, weatherServiceName) and stores it on the entry; the runner writes twelve `_day_one_weather_*` post meta keys during `finalize_imported_entry()` (`_day_one_weather_temperature_celsius`, `_day_one_weather_humidity`, `_day_one_weather_pressure_mb`, `_day_one_weather_wind_kph`, `_day_one_weather_wind_bearing`, `_day_one_weather_visibility_km`, `_day_one_weather_moon_phase`, `_day_one_weather_moon_phase_code`, `_day_one_weather_code`, `_day_one_weather_conditions`, `_day_one_weather_service`, and a `_day_one_weather_raw` JSON snapshot of the original payload so additional fields like sunrise/sunset are preserved without exposing them as separate fields). The full meta map is exposed through a new `day_one_importer_weather_meta` filter so downstream code can mutate values, add related keys, or skip writes by returning `null` or `false`. All writes use `update_post_meta` so reruns are idempotent. Entries with no `weather` field write zero `_day_one_weather_*` rows; a non-array `weather` value emits a single warning and the entry continues importing without weather meta. Numeric `0` / `0.0` for `relativeHumidity`, `windBearing` (due north), and `moonPhase` (new moon) is preserved (the gate is `isset()` rather than truthiness). No block-level rendering, icon mapping, or unit conversion is added in this release — meta only.
+* Bump the internal `IMPORT_SCHEMA_VERSION` from `10` to `11` so existing imported posts gain weather meta the next time the same export is re-imported. Posts whose source JSON has no `weather` re-finalize but produce zero new meta rows; posts whose source JSON has a `weather` re-finalize and gain the twelve new meta rows plus the raw JSON snapshot. The reprocessing cost is the same shape as previous schema bumps; large existing imports pay it once on the next rerun.
 
 = 0.2.14 =
 * Preserve Day One `entry.location` as post meta. The streaming parser sanitizes the location subtree (latitude, longitude, placeName, localityName, administrativeArea, country, timeZoneName) and stores it on the entry; the runner writes eight `_day_one_location_*` post meta keys during `finalize_imported_entry()` (`_day_one_location_latitude`, `_day_one_location_longitude`, `_day_one_location_place_name`, `_day_one_location_locality`, `_day_one_location_administrative_area`, `_day_one_location_country`, `_day_one_location_timezone`, and a `_day_one_location_raw` JSON snapshot of the original payload so the `region` center/identifier/radius subtree is preserved without exposing it as separate fields). The full meta map is exposed through a new `day_one_importer_location_meta` filter so downstream code can mutate values, add related keys, or skip writes by returning `null` or `false`. All writes use `update_post_meta` so reruns are idempotent. Entries with no `location` field write zero `_day_one_location_*` rows; a non-array `location` value emits a single warning and the entry continues importing without location meta. Float `0.0` for latitude or longitude (equator / prime meridian) is preserved (the gate is `isset()` rather than truthiness). No block-level rendering is added in this release — meta only.
@@ -152,6 +156,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.15 =
+Preserves Day One `entry.weather` as twelve `_day_one_weather_*` post meta keys (temperatureCelsius, relativeHumidity, pressureMB, windSpeedKPH, windBearing, visibilityKM, moonPhase, moonPhaseCode, weatherCode, conditionsDescription, weatherServiceName, plus a `_day_one_weather_raw` JSON snapshot for the original payload). A new `day_one_importer_weather_meta` filter lets downstream code mutate the meta map or skip writes by returning `null` or `false`. Entries without a `weather` field write zero new meta rows. Numeric `0` / `0.0` values (relativeHumidity, windBearing, moonPhase) are preserved. All writes use `update_post_meta` so reruns are idempotent. Bumps the internal import schema (`10` → `11`) so re-imports refresh existing posts; posts whose source JSON includes a `weather` gain the twelve new meta keys on the next rerun.
 
 = 0.2.14 =
 Preserves Day One `entry.location` as eight `_day_one_location_*` post meta keys (latitude, longitude, place name, locality, administrative area, country, timezone, plus a `_day_one_location_raw` JSON snapshot for the original payload including the `region` subtree). A new `day_one_importer_location_meta` filter lets downstream code mutate the meta map or skip writes by returning `null` or `false`. Entries without a `location` field write zero new meta rows. All writes use `update_post_meta` so reruns are idempotent. Bumps the internal import schema (`9` → `10`) so re-imports refresh existing posts; posts whose source JSON includes a `location` gain the eight new meta keys on the next rerun.

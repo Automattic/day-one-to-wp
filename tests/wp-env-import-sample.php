@@ -233,7 +233,7 @@ if ( $using_default_zip ) {
 	day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
 }
 day_one_importer_wp_env_assert( $media > 0, 'Imported sample media attachments.' );
-day_one_importer_wp_env_assert( '10' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 10 for entry location meta (issue #61).' );
+day_one_importer_wp_env_assert( '11' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 11 for entry weather meta (issue #62).' );
 
 $imported_post_candidates = get_posts(
 	array(
@@ -1123,11 +1123,49 @@ if ( $using_default_zip ) {
 		}
 	}
 
+	// #62 — entry 0028 carries the canonical Idaho Falls weather sample. Assert all
+	// 12 `_day_one_weather_*` typed meta keys + `_day_one_weather_raw` are written by
+	// the runner with the expected sanitized values, including the 0/0.0 edge cases
+	// (relativeHumidity=0, AC7).
+	$entry_0028_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0028'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0028'] : 0;
+	day_one_importer_wp_env_assert( $entry_0028_post_id > 0, '#62 AC9 — fictional entry 0028 (weather sample) was imported.' );
+	if ( $entry_0028_post_id > 0 ) {
+		$weather_temp     = (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_temperature_celsius', true );
+		$weather_humidity = (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_humidity', true );
+		$weather_pressure = (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_pressure_mb', true );
+		$weather_wind     = (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_wind_kph', true );
+		$weather_bearing  = (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_wind_bearing', true );
+		$weather_vis      = (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_visibility_km', true );
+		$weather_moon     = (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_moon_phase', true );
+		day_one_importer_wp_env_assert( $weather_temp === (string) (float) 29.909999847412109, '#62 R3.2 — _day_one_weather_temperature_celsius equals (string)(float) of the source temperatureCelsius.' );
+		day_one_importer_wp_env_assert( $weather_humidity === (string) (float) 0, '#62 AC7 — _day_one_weather_humidity is the string "0" (relativeHumidity=0 preserved via isset gate).' );
+		day_one_importer_wp_env_assert( $weather_pressure === (string) (float) 1016.7999877929688, '#62 R3.2 — _day_one_weather_pressure_mb equals (string)(float) of the source pressureMB.' );
+		day_one_importer_wp_env_assert( $weather_wind === (string) (float) 9.8500003814697266, '#62 R3.2 — _day_one_weather_wind_kph equals (string)(float) of the source windSpeedKPH.' );
+		day_one_importer_wp_env_assert( '234' === $weather_bearing, '#62 R3.2 — _day_one_weather_wind_bearing equals (string)(int) of the source windBearing.' );
+		day_one_importer_wp_env_assert( $weather_vis === (string) (float) 10.451999664306641, '#62 R3.2 — _day_one_weather_visibility_km equals (string)(float) of the source visibilityKM.' );
+		day_one_importer_wp_env_assert( $weather_moon === (string) (float) 0.19, '#62 R3.2 — _day_one_weather_moon_phase equals (string)(float) of the source moonPhase.' );
+		day_one_importer_wp_env_assert( 'first-quarter' === (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_moon_phase_code', true ), '#62 AC3 — entry 0028 _day_one_weather_moon_phase_code equals the sanitized source value.' );
+		day_one_importer_wp_env_assert( 'clear' === (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_code', true ), '#62 AC3 — entry 0028 _day_one_weather_code equals the sanitized source value.' );
+		day_one_importer_wp_env_assert( 'Clear' === (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_conditions', true ), '#62 AC3 — entry 0028 _day_one_weather_conditions equals the sanitized source value.' );
+		day_one_importer_wp_env_assert( 'Forecast.io' === (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_service', true ), '#62 AC3 — entry 0028 _day_one_weather_service equals the sanitized source value.' );
+		$weather_raw = (string) get_post_meta( $entry_0028_post_id, '_day_one_weather_raw', true );
+		day_one_importer_wp_env_assert( '' !== $weather_raw && false !== strpos( $weather_raw, '"conditionsDescription"' ), '#62 AC3 — entry 0028 _day_one_weather_raw is non-empty JSON containing all source weather keys.' );
+
+		// AC4 — pick a pre-existing fixture entry without `weather` (entry 0001) and assert zero `_day_one_weather_*` rows.
+		$entry_0001_post_id_for_62 = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0001'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0001'] : 0;
+		if ( $entry_0001_post_id_for_62 > 0 ) {
+			foreach ( array( '_day_one_weather_temperature_celsius', '_day_one_weather_humidity', '_day_one_weather_pressure_mb', '_day_one_weather_wind_kph', '_day_one_weather_wind_bearing', '_day_one_weather_visibility_km', '_day_one_weather_moon_phase', '_day_one_weather_moon_phase_code', '_day_one_weather_code', '_day_one_weather_conditions', '_day_one_weather_service', '_day_one_weather_raw' ) as $weather_key ) {
+				day_one_importer_wp_env_assert( '' === (string) get_post_meta( $entry_0001_post_id_for_62, $weather_key, true ), '#62 AC4 — entry 0001 (no source weather) carries zero rows for ' . $weather_key . '.' );
+			}
+		}
+	}
+
 	// Stash for rerun-identity check below.
 	$GLOBALS['day_one_importer_57_video_attachment_id'] = $day_one_importer_57_video_attachment_id;
 	$GLOBALS['day_one_importer_58_audio_attachment_id'] = $day_one_importer_58_audio_attachment_id;
 	$GLOBALS['day_one_importer_59_pdf_attachment_id']   = $day_one_importer_59_pdf_attachment_id;
 	$GLOBALS['day_one_importer_61_entry_0027_post_id']  = $entry_0027_post_id;
+	$GLOBALS['day_one_importer_62_entry_0028_post_id']  = $entry_0028_post_id;
 }
 
 $second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
@@ -1190,6 +1228,20 @@ if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_61_entry_0027_pos
 	}
 	day_one_importer_wp_env_assert( 'Idaho Falls' === (string) get_post_meta( $loc_rerun_post_id, '_day_one_location_locality', true ), '#61 AC5 — entry 0027 locality meta is identical after the rerun.' );
 	day_one_importer_wp_env_assert( 'United States' === (string) get_post_meta( $loc_rerun_post_id, '_day_one_location_country', true ), '#61 AC5 — entry 0027 country meta is identical after the rerun.' );
+}
+
+// #62 AC5 — rerun idempotency: the entry-28 `_day_one_weather_*` meta values are
+// identical after the second async import, and each meta row is single-valued (no
+// duplicates from add_post_meta).
+if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_62_entry_0028_post_id'] ) ) {
+	$weather_rerun_post_id = (int) $GLOBALS['day_one_importer_62_entry_0028_post_id'];
+	foreach ( array( '_day_one_weather_temperature_celsius', '_day_one_weather_humidity', '_day_one_weather_pressure_mb', '_day_one_weather_wind_kph', '_day_one_weather_wind_bearing', '_day_one_weather_visibility_km', '_day_one_weather_moon_phase', '_day_one_weather_moon_phase_code', '_day_one_weather_code', '_day_one_weather_conditions', '_day_one_weather_service', '_day_one_weather_raw' ) as $weather_key_rerun ) {
+		$weather_rows = get_post_meta( $weather_rerun_post_id, $weather_key_rerun, false );
+		day_one_importer_wp_env_assert( is_array( $weather_rows ) && 1 === count( $weather_rows ), '#62 AC5 — entry 0028 ' . $weather_key_rerun . ' is a single row after rerun (no duplicates).' );
+	}
+	day_one_importer_wp_env_assert( 'Clear' === (string) get_post_meta( $weather_rerun_post_id, '_day_one_weather_conditions', true ), '#62 AC5 — entry 0028 conditions meta is identical after the rerun.' );
+	day_one_importer_wp_env_assert( 'Forecast.io' === (string) get_post_meta( $weather_rerun_post_id, '_day_one_weather_service', true ), '#62 AC5 — entry 0028 service meta is identical after the rerun.' );
+	day_one_importer_wp_env_assert( ( (string) (float) 0 ) === (string) get_post_meta( $weather_rerun_post_id, '_day_one_weather_humidity', true ), '#62 AC5, AC7 — entry 0028 humidity meta is "0" after the rerun (no drop on zero).' );
 }
 
 // #59 AC10 / AC16 — rerun identity: the entry-24 PDF attachment ID is stable
@@ -1296,6 +1348,69 @@ if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_61_entry_0027_pos
 	update_post_meta( $filter_post_id, '_day_one_import_version', '1' );
 	day_one_importer_wp_env_import_from_zip( $sample_zip );
 	day_one_importer_wp_env_assert( 'United States' === (string) get_post_meta( $filter_post_id, '_day_one_location_country', true ), '#61 AC6 final cleanup — country meta is restored to "United States" after all filter scenarios.' );
+}
+
+// #62 AC6 — filter mutation, null skip, and false skip. Drive each via a re-finalize
+// (set entry-0028's _day_one_import_version to an old value before each import so the
+// runner runs through finalize_imported_entry() again and fires the filter).
+if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_62_entry_0028_post_id'] ) ) {
+	$weather_filter_post_id = (int) $GLOBALS['day_one_importer_62_entry_0028_post_id'];
+	$weather_meta_keys      = array( '_day_one_weather_temperature_celsius', '_day_one_weather_humidity', '_day_one_weather_pressure_mb', '_day_one_weather_wind_kph', '_day_one_weather_wind_bearing', '_day_one_weather_visibility_km', '_day_one_weather_moon_phase', '_day_one_weather_moon_phase_code', '_day_one_weather_code', '_day_one_weather_conditions', '_day_one_weather_service', '_day_one_weather_raw' );
+
+	// --- AC6 mutate: filter uppercases the conditions meta. ---
+	$day_one_importer_62_uppercase_filter = static function ( $meta ) {
+		if ( is_array( $meta ) && isset( $meta['_day_one_weather_conditions'] ) ) {
+			$meta['_day_one_weather_conditions'] = strtoupper( (string) $meta['_day_one_weather_conditions'] );
+		}
+		return $meta;
+	};
+	add_filter( 'day_one_importer_weather_meta', $day_one_importer_62_uppercase_filter );
+	update_post_meta( $weather_filter_post_id, '_day_one_import_version', '1' );
+	day_one_importer_wp_env_import_from_zip( $sample_zip );
+	day_one_importer_wp_env_assert( 'CLEAR' === (string) get_post_meta( $weather_filter_post_id, '_day_one_weather_conditions', true ), '#62 AC6 mutate — filter uppercases _day_one_weather_conditions during re-finalize.' );
+	remove_filter( 'day_one_importer_weather_meta', $day_one_importer_62_uppercase_filter );
+
+	// Restore baseline conditions meta via another re-finalize without the filter so the
+	// subsequent null/false tests start from a known sanitized state.
+	update_post_meta( $weather_filter_post_id, '_day_one_import_version', '1' );
+	day_one_importer_wp_env_import_from_zip( $sample_zip );
+	day_one_importer_wp_env_assert( 'Clear' === (string) get_post_meta( $weather_filter_post_id, '_day_one_weather_conditions', true ), '#62 AC6 mutate cleanup — conditions meta is restored to "Clear" after the filter is removed and the entry re-finalizes.' );
+
+	// --- AC6 null skip: filter returns null → zero `_day_one_weather_*` rows written by the runner. ---
+	foreach ( $weather_meta_keys as $weather_key_pre ) {
+		delete_post_meta( $weather_filter_post_id, $weather_key_pre );
+	}
+	$day_one_importer_62_null_filter = static function () {
+		return null;
+	};
+	add_filter( 'day_one_importer_weather_meta', $day_one_importer_62_null_filter );
+	update_post_meta( $weather_filter_post_id, '_day_one_import_version', '1' );
+	day_one_importer_wp_env_import_from_zip( $sample_zip );
+	foreach ( $weather_meta_keys as $weather_key_null ) {
+		day_one_importer_wp_env_assert( '' === (string) get_post_meta( $weather_filter_post_id, $weather_key_null, true ), '#62 AC6 null skip — filter returning null writes zero rows for ' . $weather_key_null . '.' );
+	}
+	remove_filter( 'day_one_importer_weather_meta', $day_one_importer_62_null_filter );
+
+	// --- AC6 false skip: filter returns false → zero rows written. ---
+	foreach ( $weather_meta_keys as $weather_key_pre_false ) {
+		delete_post_meta( $weather_filter_post_id, $weather_key_pre_false );
+	}
+	$day_one_importer_62_false_filter = static function () {
+		return false;
+	};
+	add_filter( 'day_one_importer_weather_meta', $day_one_importer_62_false_filter );
+	update_post_meta( $weather_filter_post_id, '_day_one_import_version', '1' );
+	day_one_importer_wp_env_import_from_zip( $sample_zip );
+	foreach ( $weather_meta_keys as $weather_key_false ) {
+		day_one_importer_wp_env_assert( '' === (string) get_post_meta( $weather_filter_post_id, $weather_key_false, true ), '#62 AC6 false skip — filter returning false writes zero rows for ' . $weather_key_false . '.' );
+	}
+	remove_filter( 'day_one_importer_weather_meta', $day_one_importer_62_false_filter );
+
+	// Final restore: re-finalize once more without any filter so the suite leaves a
+	// clean, repeatable state in the database for any downstream tests.
+	update_post_meta( $weather_filter_post_id, '_day_one_import_version', '1' );
+	day_one_importer_wp_env_import_from_zip( $sample_zip );
+	day_one_importer_wp_env_assert( 'Clear' === (string) get_post_meta( $weather_filter_post_id, '_day_one_weather_conditions', true ), '#62 AC6 final cleanup — conditions meta is restored to "Clear" after all filter scenarios.' );
 }
 
 echo wp_json_encode(
