@@ -1031,9 +1031,13 @@ if ( $using_default_zip ) {
 	}
 
 	// #60 R5.2 / AC1-AC3 — entry 0026 is an animated GIF; the imported core/image
-	// block MUST carry sizeSlug=full, url MUST equal wp_get_attachment_url() of
-	// the GIF attachment (exact ===, not suffix/regex), md5 round-trip MUST
-	// match the export's photo.md5, and _day_one_photo_format MUST equal 'gif'.
+	// block MUST carry sizeSlug=full, the figure must carry size-full, the
+	// inner <img src=...> MUST equal wp_get_attachment_url() of the GIF
+	// attachment (modulo the per-request nonce churn that the plugin's
+	// private-media endpoint bakes into every attachment URL — same
+	// normalization the #56 byte-parity range uses, lines ~714-720), the md5
+	// round-trip MUST match the export's photo.md5, and the attachment must
+	// carry _day_one_photo_format=gif meta.
 	$entry_0026_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0026'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0026'] : 0;
 	day_one_importer_wp_env_assert( $entry_0026_post_id > 0, '#60 AC1 — fictional entry 0026 (animated GIF) was imported.' );
 	if ( $entry_0026_post_id > 0 && function_exists( 'parse_blocks' ) ) {
@@ -1048,15 +1052,34 @@ if ( $using_default_zip ) {
 		}
 		day_one_importer_wp_env_assert( null !== $entry_0026_image, '#60 AC1 — entry 0026 post body contains a core/image block.' );
 		if ( null !== $entry_0026_image ) {
-			$gif_attachment_id  = isset( $entry_0026_image['attrs']['id'] ) ? (int) $entry_0026_image['attrs']['id'] : 0;
-			$gif_size_slug      = isset( $entry_0026_image['attrs']['sizeSlug'] ) ? (string) $entry_0026_image['attrs']['sizeSlug'] : '';
-			$gif_block_url      = isset( $entry_0026_image['attrs']['url'] ) ? (string) $entry_0026_image['attrs']['url'] : '';
+			$gif_attachment_id   = isset( $entry_0026_image['attrs']['id'] ) ? (int) $entry_0026_image['attrs']['id'] : 0;
+			$gif_size_slug       = isset( $entry_0026_image['attrs']['sizeSlug'] ) ? (string) $entry_0026_image['attrs']['sizeSlug'] : '';
+			$gif_inner_html      = isset( $entry_0026_image['innerHTML'] ) ? (string) $entry_0026_image['innerHTML'] : '';
 			day_one_importer_wp_env_assert( $gif_attachment_id > 0, '#60 AC1 — entry 0026 core/image block carries an attachment id.' );
 			day_one_importer_wp_env_assert( 'full' === $gif_size_slug, '#60 R5.2 / AC1 — entry 0026 core/image block emits sizeSlug=full.' );
+			day_one_importer_wp_env_assert( false !== strpos( $gif_inner_html, '<figure class="wp-block-image size-full">' ), '#60 R5.2 / AC1 — entry 0026 core/image figure carries size-full class.' );
 			if ( $gif_attachment_id > 0 ) {
 				$expected_gif_url = (string) wp_get_attachment_url( $gif_attachment_id );
 				day_one_importer_wp_env_assert( '' !== $expected_gif_url, '#60 R5.2 — wp_get_attachment_url() resolves for the GIF attachment.' );
-				day_one_importer_wp_env_assert( $expected_gif_url === $gif_block_url, '#60 R5.2 / AC1 — entry 0026 core/image block url is exactly wp_get_attachment_url().' );
+
+				// Extract the actual img src from the figure inner HTML.
+				$gif_block_src = '';
+				if ( preg_match( '/<img\b[^>]*\ssrc\s*=\s*(["\'])([^"\']+)\1/i', $gif_inner_html, $gif_src_match ) ) {
+					$gif_block_src = html_entity_decode( $gif_src_match[2], ENT_QUOTES, 'UTF-8' );
+				}
+
+				// Normalize the nonce (and ampersand-entity-form vs raw) on both
+				// sides so we compare the URL SHAPE produced by
+				// wp_get_attachment_url(), not the per-request nonce value.
+				$day_one_importer_60_normalize_gif_url = static function ( $url ) {
+					$url = preg_replace( '/&(?:#038;)?nonce=[A-Za-z0-9]+/', '&nonce=NONCE', (string) $url );
+					$url = preg_replace( '/&#038;/', '&', $url );
+					return $url;
+				};
+				$gif_block_src_normalized    = $day_one_importer_60_normalize_gif_url( $gif_block_src );
+				$expected_gif_url_normalized = $day_one_importer_60_normalize_gif_url( $expected_gif_url );
+
+				day_one_importer_wp_env_assert( $expected_gif_url_normalized === $gif_block_src_normalized, '#60 R5.2 / AC1 — entry 0026 core/image img src equals wp_get_attachment_url() exactly (nonce normalized).' );
 
 				$gif_attached_path = get_attached_file( $gif_attachment_id );
 				day_one_importer_wp_env_assert( is_string( $gif_attached_path ) && '' !== $gif_attached_path && is_file( $gif_attached_path ), '#60 AC2 — entry 0026 GIF attachment has a file on disk.' );
