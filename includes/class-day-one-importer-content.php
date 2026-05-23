@@ -1194,20 +1194,43 @@ class Day_One_Importer_Content {
 	/**
 	 * Build an image record for block serialization.
 	 *
+	 * #60 R2.1 — when the attachment carries `_day_one_photo_format = 'gif'`
+	 * the URL source is the original file (`wp_get_attachment_url()`) rather
+	 * than the `large` derivative, so animated GIFs survive WordPress sub-size
+	 * generation. The returned `format` field is the lowercased meta value
+	 * (empty string when missing) so the serializer can choose the matching
+	 * `sizeSlug` without re-querying meta.
+	 *
 	 * @param int $attachment_id Attachment ID.
-	 * @return array{id:int,url:string,alt:string,class:string}|null
+	 * @return array{id:int,url:string,alt:string,class:string,format:string}|null
 	 */
 	private static function build_attachment_image_record( $attachment_id ) {
 		$attachment_id = (int) $attachment_id;
 		$image_class   = 'wp-image-' . $attachment_id;
 		$url           = '';
 		$alt           = '';
+		$format        = '';
 
-		if ( function_exists( 'wp_get_attachment_image_src' ) ) {
+		if ( function_exists( 'get_post_meta' ) ) {
+			$format_meta = get_post_meta( $attachment_id, '_day_one_photo_format', true );
+			$format      = is_scalar( $format_meta ) ? strtolower( (string) $format_meta ) : '';
+		}
+
+		$is_gif = ( 'gif' === $format );
+
+		// #60 R2.1 — GIF branch skips the `large` derivative; non-GIF keeps the
+		// existing `large` -> `wp_get_attachment_image` -> `wp_get_attachment_url`
+		// ladder (R2.2).
+		if ( ! $is_gif && function_exists( 'wp_get_attachment_image_src' ) ) {
 			$image_src = wp_get_attachment_image_src( $attachment_id, 'large' );
 			if ( is_array( $image_src ) && ! empty( $image_src[0] ) ) {
 				$url = (string) $image_src[0];
 			}
+		}
+
+		if ( $is_gif && function_exists( 'wp_get_attachment_url' ) ) {
+			$gif_url = wp_get_attachment_url( $attachment_id );
+			$url     = $gif_url ? (string) $gif_url : '';
 		}
 
 		if ( '' === $url && function_exists( 'wp_get_attachment_image' ) ) {
@@ -1230,10 +1253,11 @@ class Day_One_Importer_Content {
 		}
 
 		return array(
-			'id'    => $attachment_id,
-			'url'   => (string) $url,
-			'alt'   => (string) $alt,
-			'class' => $image_class,
+			'id'     => $attachment_id,
+			'url'    => (string) $url,
+			'alt'    => (string) $alt,
+			'class'  => $image_class,
+			'format' => $format,
 		);
 	}
 
@@ -1254,7 +1278,7 @@ class Day_One_Importer_Content {
 	/**
 	 * Serialize validation-compatible img markup for a block save body.
 	 *
-	 * @param array{id:int,url:string,alt:string,class:string} $image Image record.
+	 * @param array{id:int,url:string,alt:string,class:string,format:string} $image Image record.
 	 * @return string
 	 */
 	private static function serialize_image_tag( $image ) {
@@ -1268,17 +1292,24 @@ class Day_One_Importer_Content {
 	/**
 	 * Serialize an Image block.
 	 *
-	 * @param array{id:int,url:string,alt:string,class:string} $image Image record.
+	 * #60 R2.3 — GIF records (`format === 'gif'`) emit `sizeSlug: 'full'` and a
+	 * `size-full` figure class so the original animated bytes are referenced;
+	 * any other format keeps the existing `large` behavior (R2.2).
+	 *
+	 * @param array{id:int,url:string,alt:string,class:string,format:string} $image Image record.
 	 * @return string
 	 */
 	private static function serialize_image_block( $image ) {
 		$attachment_id = (int) $image['id'];
+		$is_gif        = isset( $image['format'] ) && 'gif' === $image['format'];
+		$size_slug     = $is_gif ? 'full' : 'large';
+		$figure_class  = $is_gif ? 'wp-block-image size-full' : 'wp-block-image size-large';
 		$attrs         = array(
 			'id'              => $attachment_id,
-			'sizeSlug'        => 'large',
+			'sizeSlug'        => $size_slug,
 			'linkDestination' => 'none',
 		);
-		$inner_html    = '<figure class="wp-block-image size-large">' . self::serialize_image_tag( $image ) . '</figure>';
+		$inner_html    = '<figure class="' . $figure_class . '">' . self::serialize_image_tag( $image ) . '</figure>';
 
 		return self::serialize_block( 'image', $attrs, $inner_html );
 	}
@@ -1286,7 +1317,10 @@ class Day_One_Importer_Content {
 	/**
 	 * Serialize a Gallery block with nested Image blocks.
 	 *
-	 * @param array<int,array{id:int,url:string,alt:string,class:string}> $images Image records.
+	 * Per-image `sizeSlug` is preserved automatically because each nested
+	 * record flows through serialize_image_block() (#60 R2.5).
+	 *
+	 * @param array<int,array{id:int,url:string,alt:string,class:string,format:string}> $images Image records.
 	 * @return string
 	 */
 	private static function serialize_gallery_block( $images ) {
