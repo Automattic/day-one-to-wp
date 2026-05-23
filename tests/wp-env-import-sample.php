@@ -227,8 +227,8 @@ $created = isset( $first_counts['posts_created'] ) ? (int) $first_counts['posts_
 $media   = isset( $first_counts['media_imported'] ) ? (int) $first_counts['media_imported'] : 0;
 if ( $using_default_zip ) {
 	$entries_found = isset( $first_counts['entries_found'] ) ? (int) $first_counts['entries_found'] : 0;
-	day_one_importer_wp_env_assert( 27 === $entries_found, 'Fictional fixture parsed twenty-seven entries.' );
-	day_one_importer_wp_env_assert( 27 === $created, 'Fictional fixture created exactly twenty-seven private posts.' );
+	day_one_importer_wp_env_assert( 28 === $entries_found, 'Fictional fixture parsed twenty-eight entries.' );
+	day_one_importer_wp_env_assert( 28 === $created, 'Fictional fixture created exactly twenty-eight private posts.' );
 } else {
 	day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
 }

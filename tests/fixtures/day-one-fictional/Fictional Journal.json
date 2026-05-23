@@ -1426,6 +1426,34 @@
         "placeName": "Idaho Falls Regional Airport",
         "latitude": 43.511299133300781
       }
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0028",
+      "creationDate": "2031-05-11T17:00:00Z",
+      "modifiedDate": "2031-05-11T17:00:00Z",
+      "timeZone": "America/Boise",
+      "text": "# Forecast notes\n\nA fictional weather observer records the canonical sample weather payload from issue #62. The weather subtree below is preserved verbatim so the importer can prove every weather meta key round-trips.",
+      "tags": [
+        "fictional",
+        "weather"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "weather": {
+        "moonPhaseCode": "first-quarter",
+        "temperatureCelsius": 29.909999847412109,
+        "weatherServiceName": "Forecast.io",
+        "windBearing": 234,
+        "conditionsDescription": "Clear",
+        "pressureMB": 1016.7999877929688,
+        "moonPhase": 0.19,
+        "visibilityKM": 10.451999664306641,
+        "relativeHumidity": 0,
+        "windSpeedKPH": 9.8500003814697266,
+        "weatherCode": "clear"
+      }
     }
   ]
 }
