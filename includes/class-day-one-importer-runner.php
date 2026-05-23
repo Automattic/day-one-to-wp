@@ -632,7 +632,98 @@ class Day_One_Importer_Runner {
 		update_post_meta( $post_id, '_day_one_import_complete', '1' );
 		update_post_meta( $post_id, '_day_one_import_completed_at', current_time( 'mysql', true ) );
 
+		$this->write_location_meta( (int) $post_id, $entry, $results );
+
 		return true;
+	}
+
+	/**
+	 * Write sanitized location metadata to the imported post.
+	 *
+	 * Builds the `_day_one_location_*` meta map from the normalized entry
+	 * location (spec #61 R3.2/R3.3) and runs it through the
+	 * `day_one_importer_location_meta` filter (R4.1/R4.2). The filter contract:
+	 *
+	 * - `array` (including `array()`): each pair is written via `update_post_meta`.
+	 * - `null` or `false`: skip all writes silently.
+	 * - any other value: skip writes and emit a warning naming the filter.
+	 *
+	 * The filter does NOT fire when the entry carries no normalized location
+	 * (R4.3). All writes use `update_post_meta` so reruns are idempotent (R3.4).
+	 *
+	 * @param int                      $post_id Post ID.
+	 * @param array<string,mixed>      $entry   Normalized entry array.
+	 * @param Day_One_Importer_Results $results Results.
+	 * @return void
+	 */
+	private function write_location_meta( $post_id, array $entry, Day_One_Importer_Results $results ) {
+		if ( ! isset( $entry['location'] ) || ! is_array( $entry['location'] ) || empty( $entry['location'] ) ) {
+			return;
+		}
+
+		$location = $entry['location'];
+		$meta     = array();
+
+		if ( isset( $location['latitude'] ) ) {
+			$meta['_day_one_location_latitude'] = (string) (float) $location['latitude'];
+		}
+		if ( isset( $location['longitude'] ) ) {
+			$meta['_day_one_location_longitude'] = (string) (float) $location['longitude'];
+		}
+
+		$string_map = array(
+			'placeName'          => '_day_one_location_place_name',
+			'localityName'       => '_day_one_location_locality',
+			'administrativeArea' => '_day_one_location_administrative_area',
+			'country'            => '_day_one_location_country',
+			'timeZoneName'       => '_day_one_location_timezone',
+		);
+		foreach ( $string_map as $source => $meta_key ) {
+			if ( isset( $location[ $source ] ) && is_scalar( $location[ $source ] ) ) {
+				$value = day_one_importer_sanitize_text( (string) $location[ $source ] );
+				if ( '' !== $value ) {
+					$meta[ $meta_key ] = $value;
+				}
+			}
+		}
+
+		if ( isset( $location['raw'] ) && is_scalar( $location['raw'] ) ) {
+			$raw = (string) $location['raw'];
+			if ( '' !== $raw ) {
+				$meta['_day_one_location_raw'] = $raw;
+			}
+		}
+
+		/**
+		 * Filter the location meta key/value map before writing to the post.
+		 *
+		 * Return an array (possibly empty) to write its pairs as post meta.
+		 * Return `null` or `false` to skip all writes silently. Any other
+		 * value is treated as a no-op and emits a warning.
+		 *
+		 * @since 0.2.14
+		 *
+		 * @param array<string,string> $meta     Meta key => value pairs ready to write.
+		 * @param array<string,mixed>  $location Normalized location array.
+		 * @param int                  $post_id  Post ID receiving the meta.
+		 * @param array<string,mixed>  $entry    Full normalized entry.
+		 */
+		$filtered = apply_filters( 'day_one_importer_location_meta', $meta, $location, (int) $post_id, $entry );
+
+		if ( null === $filtered || false === $filtered ) {
+			return;
+		}
+
+		if ( ! is_array( $filtered ) ) {
+			$results->add_warning(
+				__( 'day_one_importer_location_meta filter returned a non-array, non-null value; location meta was not written.', 'day-one-importer' )
+			);
+			return;
+		}
+
+		foreach ( $filtered as $key => $value ) {
+			update_post_meta( $post_id, (string) $key, $value );
+		}
 	}
 
 	/**
