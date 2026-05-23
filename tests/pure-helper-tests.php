@@ -4417,4 +4417,185 @@ $loc_no_branch_entry   = $parser->normalize_entry(
 );
 assert_true( ! isset( $loc_no_branch_entry['location'] ), '#61 R4.3 — entries without a location have no `location` key, so the runner skips the filter-fire branch.' );
 
+// --- #62 — weather normalization + filter contract ---------------------------------------
+
+// AC1, R1.3 — sample-shape weather entry normalizes to the 11 typed fields + raw.
+$weather_results  = new Day_One_Importer_Results();
+$weather_entry    = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-WEATHER-SAMPLE',
+		'creationDate' => '2031-05-11T17:00:00Z',
+		'weather'      => array(
+			'moonPhaseCode'         => 'first-quarter',
+			'temperatureCelsius'    => 29.909999847412109,
+			'weatherServiceName'    => 'Forecast.io',
+			'windBearing'           => 234,
+			'conditionsDescription' => 'Clear',
+			'pressureMB'            => 1016.7999877929688,
+			'moonPhase'             => 0.19,
+			'visibilityKM'          => 10.451999664306641,
+			'relativeHumidity'      => 0,
+			'windSpeedKPH'          => 9.8500003814697266,
+			'weatherCode'           => 'clear',
+		),
+	),
+	'fictional.json',
+	0,
+	$weather_results
+);
+assert_true( is_array( $weather_entry ) && isset( $weather_entry['weather'] ), '#62 R1.2 — normalize_entry sets a weather key when raw entry carries a sample-shape weather.' );
+assert_true( is_array( $weather_entry['weather'] ) && abs( $weather_entry['weather']['temperatureCelsius'] - 29.909999847412109 ) < 1e-9, '#62 R1.3 — temperatureCelsius is cast to float and round-trips to within 1e-9.' );
+assert_true( 'first-quarter' === $weather_entry['weather']['moonPhaseCode'], '#62 R1.3 — moonPhaseCode is sanitized + preserved verbatim.' );
+assert_true( 'Forecast.io' === $weather_entry['weather']['weatherServiceName'], '#62 R1.3 — weatherServiceName is sanitized + preserved verbatim.' );
+assert_true( 234 === $weather_entry['weather']['windBearing'] && is_int( $weather_entry['weather']['windBearing'] ), '#62 R1.3 — windBearing is cast to int.' );
+assert_true( 'Clear' === $weather_entry['weather']['conditionsDescription'], '#62 R1.3 — conditionsDescription is sanitized + preserved verbatim.' );
+assert_true( abs( $weather_entry['weather']['pressureMB'] - 1016.7999877929688 ) < 1e-9, '#62 R1.3 — pressureMB is cast to float and round-trips to within 1e-9.' );
+assert_true( 0.19 === $weather_entry['weather']['moonPhase'], '#62 R1.3 — moonPhase is cast to float and round-trips.' );
+assert_true( abs( $weather_entry['weather']['visibilityKM'] - 10.451999664306641 ) < 1e-9, '#62 R1.3 — visibilityKM is cast to float and round-trips to within 1e-9.' );
+assert_true( isset( $weather_entry['weather']['relativeHumidity'] ) && 0.0 === $weather_entry['weather']['relativeHumidity'], '#62 AC7, R3.3 — relativeHumidity=0 is preserved as float 0.0 (isset gate).' );
+assert_true( abs( $weather_entry['weather']['windSpeedKPH'] - 9.8500003814697266 ) < 1e-9, '#62 R1.3 — windSpeedKPH is cast to float and round-trips to within 1e-9.' );
+assert_true( 'clear' === $weather_entry['weather']['weatherCode'], '#62 R1.3 — weatherCode is sanitized + preserved verbatim.' );
+assert_true( isset( $weather_entry['weather']['raw'] ) && is_string( $weather_entry['weather']['raw'] ) && '' !== $weather_entry['weather']['raw'], '#62 R1.3 — raw field is a non-empty JSON string snapshot of the source weather.' );
+assert_true( false !== strpos( $weather_entry['weather']['raw'], '"conditionsDescription"' ), '#62 R1.3 — raw JSON preserves all source weather keys.' );
+assert_true( 0 === count( $weather_results->get_warnings() ), '#62 R1.5 — well-formed sample-shape weather emits no warnings.' );
+
+// AC2, R1.2 — entry without weather key omits the normalized weather key.
+$weather_missing_results = new Day_One_Importer_Results();
+$weather_missing_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-WEATHER-MISSING',
+		'creationDate' => '2031-05-11T17:00:00Z',
+	),
+	'fictional.json',
+	1,
+	$weather_missing_results
+);
+assert_true( is_array( $weather_missing_entry ) && ! isset( $weather_missing_entry['weather'] ), '#62 R1.2 — normalize_entry omits the `weather` key entirely when raw entry has no weather.' );
+assert_true( 0 === count( $weather_missing_results->get_warnings() ), '#62 R1.5 — entry without weather emits no warnings.' );
+
+// AC2, R1.2 — empty-array weather omits the normalized weather key.
+$weather_empty_results = new Day_One_Importer_Results();
+$weather_empty_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-WEATHER-EMPTY',
+		'creationDate' => '2031-05-11T17:00:00Z',
+		'weather'      => array(),
+	),
+	'fictional.json',
+	2,
+	$weather_empty_results
+);
+assert_true( is_array( $weather_empty_entry ) && ! isset( $weather_empty_entry['weather'] ), '#62 R1.2 — normalize_entry omits the `weather` key when raw entry has an empty-array weather.' );
+assert_true( 0 === count( $weather_empty_results->get_warnings() ), '#62 R1.5 — empty-array weather emits no warnings.' );
+
+// AC2, R1.5 — non-array weather emits a warning that includes the entry UUID.
+$weather_bad_results = new Day_One_Importer_Results();
+$weather_bad_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-WEATHER-BAD',
+		'creationDate' => '2031-05-11T17:00:00Z',
+		'weather'      => 'oops',
+	),
+	'fictional.json',
+	3,
+	$weather_bad_results
+);
+assert_true( is_array( $weather_bad_entry ) && ! isset( $weather_bad_entry['weather'] ), '#62 R1.2 — non-array `weather` produces no `weather` key.' );
+$weather_bad_warnings = $weather_bad_results->get_warnings();
+assert_true( 1 === count( $weather_bad_warnings ), '#62 R1.5 — non-array `weather` emits exactly one warning.' );
+assert_true( false !== strpos( (string) $weather_bad_warnings[0], 'TEST-WEATHER-BAD' ), '#62 R1.5 — malformed-weather warning includes the entry UUID.' );
+
+// AC7, R3.3, RK5 — numeric-0 preservation for windBearing (due north) and moonPhase (new moon).
+$weather_zero_results = new Day_One_Importer_Results();
+$weather_zero_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-WEATHER-ZERO',
+		'creationDate' => '2031-05-11T17:00:00Z',
+		'weather'      => array(
+			'relativeHumidity' => 0,
+			'windBearing'      => 0,
+			'moonPhase'        => 0,
+		),
+	),
+	'fictional.json',
+	4,
+	$weather_zero_results
+);
+assert_true( isset( $weather_zero_entry['weather']['relativeHumidity'] ) && 0.0 === $weather_zero_entry['weather']['relativeHumidity'], '#62 AC7, R3.3 — relativeHumidity=0 preserved as float 0.0 (isset gate, not truthiness).' );
+assert_true( isset( $weather_zero_entry['weather']['windBearing'] ) && 0 === $weather_zero_entry['weather']['windBearing'], '#62 AC7, R3.3 — windBearing=0 (due north) preserved as int 0 (isset gate, not truthiness).' );
+assert_true( isset( $weather_zero_entry['weather']['moonPhase'] ) && 0.0 === $weather_zero_entry['weather']['moonPhase'], '#62 AC7, R3.3 — moonPhase=0 (new moon) preserved as float 0.0 (isset gate, not truthiness).' );
+
+// AC1, R1.3, R1.4 — unknown / invalid fields filter correctly.
+$weather_extra_results = new Day_One_Importer_Results();
+$weather_extra_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-WEATHER-EXTRA',
+		'creationDate' => '2031-05-11T17:00:00Z',
+		'weather'      => array(
+			'temperatureCelsius' => 'hot',
+			'weatherServiceName' => array(),
+			'sunriseDate'        => '2031-05-11T06:00:00Z',
+			'weatherCode'        => 'clear',
+		),
+	),
+	'fictional.json',
+	5,
+	$weather_extra_results
+);
+assert_true( ! isset( $weather_extra_entry['weather']['sunriseDate'] ), '#62 R1.4 — unknown field (sunriseDate) is not promoted to a normalized weather field.' );
+assert_true( isset( $weather_extra_entry['weather']['raw'] ) && false !== strpos( $weather_extra_entry['weather']['raw'], '"sunriseDate"' ), '#62 R1.4 — unknown field (sunriseDate) is preserved inside the raw JSON snapshot.' );
+assert_true( ! isset( $weather_extra_entry['weather']['temperatureCelsius'] ), '#62 R1.3 — non-numeric temperatureCelsius is dropped.' );
+assert_true( ! isset( $weather_extra_entry['weather']['weatherServiceName'] ), '#62 R1.3 — non-scalar weatherServiceName is dropped.' );
+assert_true( 'clear' === $weather_extra_entry['weather']['weatherCode'], '#62 R1.3 — non-empty sibling fields survive when others are invalid.' );
+
+// AC6, AC8, R4.1, R4.2 — filter contract sanity: the runner consumes apply_filters() return-value flow.
+// The runner's contract — write on array, skip on null/false, warn on other — is covered by the wp-env
+// smoke; here we assert the filter is invocable and stable in the value-flow path.
+$weather_filter_meta = array(
+	'_day_one_weather_temperature_celsius' => '29.909999847412',
+	'_day_one_weather_conditions'          => 'Clear',
+);
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_weather_meta'] = static function ( $meta ) {
+	if ( is_array( $meta ) && isset( $meta['_day_one_weather_conditions'] ) ) {
+		$meta['_day_one_weather_conditions'] = strtoupper( (string) $meta['_day_one_weather_conditions'] );
+	}
+	return $meta;
+};
+$weather_filter_mutated = apply_filters( 'day_one_importer_weather_meta', $weather_filter_meta, array(), 123, array() );
+assert_true( is_array( $weather_filter_mutated ) && 'CLEAR' === $weather_filter_mutated['_day_one_weather_conditions'], '#62 R4.1 — filter callback can mutate values (uppercased conditions example).' );
+
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_weather_meta'] = static function () {
+	return null;
+};
+$weather_filter_null = apply_filters( 'day_one_importer_weather_meta', $weather_filter_meta, array(), 123, array() );
+assert_true( null === $weather_filter_null, '#62 R4.2 — filter returning null is observable to the runner skip branch.' );
+
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_weather_meta'] = static function () {
+	return false;
+};
+$weather_filter_false = apply_filters( 'day_one_importer_weather_meta', $weather_filter_meta, array(), 123, array() );
+assert_true( false === $weather_filter_false, '#62 R4.2 — filter returning false is observable to the runner skip branch.' );
+
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_weather_meta'] = static function () {
+	return 'nope';
+};
+$weather_filter_string = apply_filters( 'day_one_importer_weather_meta', $weather_filter_meta, array(), 123, array() );
+assert_true( 'nope' === $weather_filter_string, '#62 R4.2 — filter returning a non-array non-null value reaches the runner (which then warns + skips).' );
+
+// Clean up the filter registration so later tests / re-runs see a known state.
+unset( $GLOBALS['day_one_importer_test_filters']['day_one_importer_weather_meta'] );
+
+// AC6, R4.3 — filter-not-fired mirror: entries without a `weather` key never enter the meta-write branch.
+$weather_no_branch_results = new Day_One_Importer_Results();
+$weather_no_branch_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-WEATHER-NO-BRANCH',
+		'creationDate' => '2031-05-11T17:00:00Z',
+	),
+	'fictional.json',
+	6,
+	$weather_no_branch_results
+);
+assert_true( ! isset( $weather_no_branch_entry['weather'] ), '#62 R4.3 — entries without a weather have no `weather` key, so the runner skips the filter-fire branch.' );
+
 echo "All pure helper tests passed.\n";
