@@ -470,6 +470,19 @@ if ( ! function_exists( 'parse_blocks' ) ) {
 	}
 }
 
+// #75 — capture get_posts() argument lists so the runner's `find_existing_post_id`
+// lookup can assert the new `meta_key` / `meta_value` shape without spinning up
+// WordPress. Tests that do not exercise the runner ignore the capture buffer.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array();
+if ( ! function_exists( 'get_posts' ) ) {
+	function get_posts( $args = array() ) {
+		$GLOBALS['day_one_importer_test_get_posts_calls'][] = is_array( $args ) ? $args : array();
+		$result = isset( $GLOBALS['day_one_importer_test_get_posts_result'] ) ? $GLOBALS['day_one_importer_test_get_posts_result'] : array();
+		return is_array( $result ) ? $result : array();
+	}
+}
+
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-results.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-job-state.php';
@@ -478,6 +491,7 @@ require_once __DIR__ . '/../includes/class-day-one-importer-job-store.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-content.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-parser.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-media.php';
+require_once __DIR__ . '/../includes/class-day-one-importer-runner.php';
 
 function assert_true( $condition, $message ) {
 	if ( ! $condition ) {
@@ -4584,6 +4598,52 @@ assert_true( 'nope' === $weather_filter_string, '#62 R4.2 — filter returning a
 
 // Clean up the filter registration so later tests / re-runs see a known state.
 unset( $GLOBALS['day_one_importer_test_filters']['day_one_importer_weather_meta'] );
+
+// #75 — `find_existing_post_id` issues a single indexed postmeta query (no full
+// table scan). Exercise the private method via reflection with the get_posts()
+// stub above capturing the argument list; assert the new shape:
+//   - meta_key   === '_day_one_uuid'
+//   - meta_value === $uuid (echo'd verbatim from the call site)
+//   - posts_per_page === 2 (so the duplicate-UUID warning still fires on > 1 hit)
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array();
+$find_existing_uuid  = 'TEST-75-UUID-NO-MATCH';
+$find_existing_runner = new Day_One_Importer_Runner();
+$find_existing_method = new ReflectionMethod( 'Day_One_Importer_Runner', 'find_existing_post_id' );
+$find_existing_method->setAccessible( true );
+$find_existing_results = new Day_One_Importer_Results();
+$found_id = $find_existing_method->invoke( $find_existing_runner, $find_existing_uuid, $find_existing_results );
+assert_true( 0 === $found_id, '#75 — find_existing_post_id returns 0 when no posts match the UUID.' );
+assert_true( 1 === count( $GLOBALS['day_one_importer_test_get_posts_calls'] ), '#75 — find_existing_post_id issues a single get_posts() query (no per-row meta scan).' );
+$find_existing_args = $GLOBALS['day_one_importer_test_get_posts_calls'][0];
+assert_true( isset( $find_existing_args['meta_key'] ) && '_day_one_uuid' === $find_existing_args['meta_key'], '#75 — find_existing_post_id passes meta_key=_day_one_uuid to get_posts().' );
+assert_true( isset( $find_existing_args['meta_value'] ) && $find_existing_uuid === $find_existing_args['meta_value'], '#75 — find_existing_post_id passes the UUID verbatim as meta_value.' );
+assert_true( isset( $find_existing_args['posts_per_page'] ) && 2 === $find_existing_args['posts_per_page'], '#75 — find_existing_post_id caps posts_per_page at 2 so the duplicate-UUID warning still fires.' );
+assert_true( isset( $find_existing_args['fields'] ) && 'ids' === $find_existing_args['fields'], '#75 — find_existing_post_id requests only post IDs from get_posts().' );
+assert_true( isset( $find_existing_args['no_found_rows'] ) && true === $find_existing_args['no_found_rows'], '#75 — find_existing_post_id disables SQL_CALC_FOUND_ROWS via no_found_rows=true.' );
+assert_true( isset( $find_existing_args['post_type'] ) && 'post' === $find_existing_args['post_type'], '#75 — find_existing_post_id scopes the lookup to post_type=post.' );
+assert_true( isset( $find_existing_args['post_status'] ) && 'any' === $find_existing_args['post_status'], '#75 — find_existing_post_id uses post_status=any so private imported posts are included.' );
+assert_true( ! $find_existing_results->has_warnings(), '#75 — no warning is emitted when zero posts match.' );
+
+// #75 — single match: returns the ID and emits no duplicate-UUID warning.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array( '4242' );
+$single_match_results = new Day_One_Importer_Results();
+$single_match_id      = $find_existing_method->invoke( $find_existing_runner, 'TEST-75-UUID-ONE', $single_match_results );
+assert_true( 4242 === $single_match_id, '#75 — find_existing_post_id returns the matching post ID coerced to int.' );
+assert_true( ! $single_match_results->has_warnings(), '#75 — a single match does not trigger the duplicate-UUID warning.' );
+
+// #75 — multiple matches: returns the first ID and emits the duplicate-UUID warning.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array( '4242', '5353' );
+$dup_match_results = new Day_One_Importer_Results();
+$dup_match_id      = $find_existing_method->invoke( $find_existing_runner, 'TEST-75-UUID-DUP', $dup_match_results );
+assert_true( 4242 === $dup_match_id, '#75 — find_existing_post_id returns the first matching post ID on duplicate UUIDs.' );
+assert_true( $dup_match_results->has_warnings(), '#75 — duplicate-UUID warning is emitted when more than one post matches.' );
+
+// Clean up the get_posts() capture buffer so later tests / re-runs see a known state.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array();
 
 // AC6, R4.3 — filter-not-fired mirror: entries without a `weather` key never enter the meta-write branch.
 $weather_no_branch_results = new Day_One_Importer_Results();

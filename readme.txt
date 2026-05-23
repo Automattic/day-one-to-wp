@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.16
+Stable tag: 0.2.17
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,9 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.17 =
+* Replace the unbounded `get_posts` lookup inside `Day_One_Importer_Runner::find_existing_post_id()` with a `_day_one_uuid` `meta_key` / `meta_value` query (`posts_per_page=2`, `no_found_rows=true`, `fields=ids`, `post_status=any`). Previously the importer loaded every post ID in the database and iterated them in PHP calling `get_post_meta()` per row, which scales as O(N) total posts per imported entry. Re-importing the same export on a site with thousands of existing posts now runs a single indexed `postmeta`-backed query per entry instead. The duplicate-UUID warning still fires when more than one post shares the same UUID (the new query caps at 2 results, so the existing `count($ids) > 1` branch remains observable). No site-visible behaviour change for existing imports beyond the speed-up; no `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
 
 = 0.2.16 =
 * Document the curated fictional fixture journal in `tests/fixtures/README.md`. The new doc lists every entry by UUID with the block type / parser path it exercises and the GitHub issue that introduced it, explains how to regenerate the lock-step ZIP via `php tools/build-fictional-sample-zip.php`, and walks through the six hard-coded count assertions that must be bumped when a new fixture entry is added. The fixture grows by one final entry (`FICTIONAL-SAMPLE-ENTRY-0029`, twenty-ninth) so `core/gallery` is exercised by name (two consecutive inline photo embeds with distinct identifiers and distinct md5s collapse into a single gallery, matching the #56 R8 cardinality contract: 2+ resolved photo IDs → `core/gallery`).
@@ -161,6 +164,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.17 =
+Speeds up reruns on sites with many existing posts: the importer now looks up previously-imported entries via a single `_day_one_uuid` meta query per Day One entry instead of scanning every post in the database. Duplicate-UUID detection still fires. Internal-only release — no manifest changes, no schema bump, no site-visible behaviour change for existing imports.
 
 = 0.2.16 =
 Documents the curated fictional fixture journal in `tests/fixtures/README.md` (per-entry table, regeneration command, extension instructions) and adds a consolidated wp-env smoke assertion that verifies every supported block type (`core/paragraph`, `core/heading`, `core/list`, `core/code`, `core/quote`, `core/image`, `core/gallery`, `core/video`, `core/audio`, `core/file`) is exercised at least once across the imported fixture. The fixture gains one final entry exercising `core/gallery`. Internal-only release — no manifest changes, no schema bump, no site-visible behaviour change for existing imports.

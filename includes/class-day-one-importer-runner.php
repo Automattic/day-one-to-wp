@@ -841,26 +841,22 @@ class Day_One_Importer_Runner {
 	 * @return int Post ID or 0.
 	 */
 	private function find_existing_post_id( $uuid, Day_One_Importer_Results $results ) {
-		$statuses   = get_post_stati( array(), 'names' );
-		$candidates = get_posts(
+		// #75 perf: look up imported posts by `_day_one_uuid` meta directly
+		// instead of loading every post in the database and filtering in PHP.
+		// `posts_per_page = 2` keeps the existing duplicate-UUID warning
+		// observable when more than one post shares the same UUID.
+		$ids = get_posts(
 			array(
 				'post_type'      => 'post',
-				'post_status'    => array_values( $statuses ),
+				'post_status'    => 'any',
 				'fields'         => 'ids',
-				'posts_per_page' => -1,
+				'posts_per_page' => 2,
 				'no_found_rows'  => true,
+				'meta_key'       => '_day_one_uuid', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_value'     => $uuid, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 			)
 		);
-		$ids        = array();
-		foreach ( $candidates as $candidate_id ) {
-			if ( (string) get_post_meta( (int) $candidate_id, '_day_one_uuid', true ) !== $uuid ) {
-				continue;
-			}
-			$ids[] = (int) $candidate_id;
-			if ( 1 < count( $ids ) ) {
-				break;
-			}
-		}
+		$ids = is_array( $ids ) ? array_values( array_map( 'intval', $ids ) ) : array();
 
 		if ( count( $ids ) > 1 ) {
 			$results->add_warning(
