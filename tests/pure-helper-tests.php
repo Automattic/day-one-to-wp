@@ -4814,4 +4814,104 @@ $GLOBALS['day_one_importer_test_get_posts_calls']  = array();
 $GLOBALS['day_one_importer_test_get_posts_result'] = array();
 $GLOBALS['day_one_importer_test_attached_files']   = array();
 
+// --- #78 — conditional file loading: structural assertions on day-one-importer.php ---
+// These tests guard the front-end fast path described in issue #78. The bootstrap
+// must skip the admin and AJAX-controller require_once calls when the request is
+// neither admin, admin-ajax, nor WP-CLI. We assert the wrapping conditional is
+// present and surrounds exactly the right require_once lines, and that the
+// plugin class mirrors the same condition for hook registration.
+$bootstrap_src = (string) file_get_contents( __DIR__ . '/../day-one-importer.php' );
+assert_true( '' !== $bootstrap_src, '#78 — day-one-importer.php is readable.' );
+
+$bootstrap_condition_pattern = '/if\s*\(\s*\n?\s*is_admin\(\s*\)\s*\n?\s*\|\|\s*\(\s*defined\(\s*\'DOING_AJAX\'\s*\)\s*&&\s*DOING_AJAX\s*\)\s*\n?\s*\|\|\s*\(\s*defined\(\s*\'WP_CLI\'\s*\)\s*&&\s*WP_CLI\s*\)\s*\n?\s*\)\s*\{\s*\n\s*require_once\s+DAY_ONE_IMPORTER_DIR\s*\.\s*\'includes\/class-day-one-importer-jobs-controller\.php\'\s*;\s*\n\s*require_once\s+DAY_ONE_IMPORTER_DIR\s*\.\s*\'includes\/class-day-one-importer-admin\.php\'\s*;\s*\n\s*\}/';
+assert_true(
+	1 === preg_match( $bootstrap_condition_pattern, $bootstrap_src ),
+	'#78 — day-one-importer.php wraps the jobs-controller and admin requires in an `is_admin() || DOING_AJAX || WP_CLI` block.'
+);
+
+// The two deferred requires must not appear OUTSIDE the conditional. Strip the
+// conditional and assert no stray require_once for either file remains.
+$bootstrap_without_conditional = (string) preg_replace( $bootstrap_condition_pattern, '', $bootstrap_src );
+assert_true(
+	false === strpos( $bootstrap_without_conditional, 'class-day-one-importer-jobs-controller.php' ),
+	'#78 — class-day-one-importer-jobs-controller.php is required only inside the conditional block (no unconditional require_once).'
+);
+assert_true(
+	false === strpos( $bootstrap_without_conditional, 'class-day-one-importer-admin.php' ),
+	'#78 — class-day-one-importer-admin.php is required only inside the conditional block (no unconditional require_once).'
+);
+
+// Always-on requires must still be present so cron-driven front-end dispatches
+// can construct the store and processor without paying for admin-only files.
+foreach (
+	array(
+		'class-day-one-importer-job-store.php',
+		'class-day-one-importer-job-processor.php',
+		'class-day-one-importer-job-state.php',
+		'class-day-one-importer-media.php',
+		'class-day-one-importer-parser.php',
+		'class-day-one-importer-runner.php',
+		'class-day-one-importer-plugin.php',
+		'class-day-one-importer-content.php',
+		'class-day-one-importer-cleanup.php',
+		'class-day-one-importer-results.php',
+		'functions.php',
+	) as $always_on_file
+) {
+	assert_true(
+		false !== strpos( $bootstrap_src, "require_once DAY_ONE_IMPORTER_DIR . 'includes/" . $always_on_file . "'" )
+			|| false !== strpos( $bootstrap_src, "require_once DAY_ONE_IMPORTER_DIR . 'includes/" . $always_on_file . "';" ),
+		'#78 — always-on bootstrap still requires includes/' . $always_on_file . '.'
+	);
+}
+
+// The plugin class must mirror the same condition before instantiating the
+// admin-only collaborators and must register the cron job-processing hook
+// outside that conditional so WP-Cron can dispatch on a front-end pageview.
+$plugin_src = (string) file_get_contents( __DIR__ . '/../includes/class-day-one-importer-plugin.php' );
+assert_true( '' !== $plugin_src, '#78 — class-day-one-importer-plugin.php is readable.' );
+
+$cron_register_pos = strpos(
+	$plugin_src,
+	"add_action( Day_One_Importer_Job_Store::CRON_HOOK, array( \$this, 'cron_process_job' )"
+);
+assert_true(
+	false !== $cron_register_pos,
+	'#78 — Day_One_Importer_Plugin::init() registers the cron job-processing hook (Day_One_Importer_Job_Store::CRON_HOOK -> cron_process_job).'
+);
+
+$admin_branch_pattern = '/if\s*\(\s*\n?\s*is_admin\(\s*\)\s*\n?\s*\|\|\s*\(\s*defined\(\s*\'DOING_AJAX\'\s*\)\s*&&\s*DOING_AJAX\s*\)\s*\n?\s*\|\|\s*\(\s*defined\(\s*\'WP_CLI\'\s*\)\s*&&\s*WP_CLI\s*\)\s*\n?\s*\)\s*\{/';
+assert_true(
+	1 === preg_match( $admin_branch_pattern, $plugin_src, $admin_branch_match, PREG_OFFSET_CAPTURE ),
+	'#78 — Day_One_Importer_Plugin::init() guards admin/AJAX-only setup behind the same `is_admin() || DOING_AJAX || WP_CLI` condition.'
+);
+$admin_branch_offset = isset( $admin_branch_match[0][1] ) ? (int) $admin_branch_match[0][1] : -1;
+assert_true(
+	$admin_branch_offset > $cron_register_pos,
+	'#78 — Day_One_Importer_Plugin::init() registers the cron hook BEFORE entering the admin/AJAX-only branch (cron stays always-on).'
+);
+
+// The deferred admin-only class names must only appear inside the gated branch.
+$admin_class_pos     = strpos( $plugin_src, 'new Day_One_Importer_Admin' );
+$jobs_class_pos      = strpos( $plugin_src, 'new Day_One_Importer_Jobs_Controller' );
+assert_true(
+	false !== $admin_class_pos && $admin_class_pos > $admin_branch_offset,
+	'#78 — Day_One_Importer_Plugin::init() instantiates Day_One_Importer_Admin only inside the admin/AJAX-only branch.'
+);
+assert_true(
+	false !== $jobs_class_pos && $jobs_class_pos > $admin_branch_offset,
+	'#78 — Day_One_Importer_Plugin::init() instantiates Day_One_Importer_Jobs_Controller only inside the admin/AJAX-only branch.'
+);
+
+// The jobs controller must no longer self-register the cron callback (the
+// plugin class owns that registration now). Pre-#78 wired it on every
+// controller::init() call, which the bootstrap only reaches in admin/AJAX
+// requests — so cron on a front-end pageview would silently drop.
+$jobs_src = (string) file_get_contents( __DIR__ . '/../includes/class-day-one-importer-jobs-controller.php' );
+assert_true( '' !== $jobs_src, '#78 — class-day-one-importer-jobs-controller.php is readable.' );
+assert_true(
+	false === strpos( $jobs_src, 'add_action( Day_One_Importer_Job_Store::CRON_HOOK' ),
+	'#78 — Day_One_Importer_Jobs_Controller::init() no longer registers the cron callback (registration moved to Day_One_Importer_Plugin so cron fires on front-end pageviews without loading this admin/AJAX file).'
+);
+
 echo "All pure helper tests passed.\n";

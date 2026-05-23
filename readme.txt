@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.19
+Stable tag: 0.2.20
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,9 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.20 =
+* Defer admin-only files on non-admin requests. `day-one-importer.php` now wraps the two heaviest admin/AJAX-only requires (`class-day-one-importer-admin.php`, `class-day-one-importer-jobs-controller.php`, ~750 LOC combined) in an `is_admin() || DOING_AJAX || WP_CLI` gate, so a front-end pageview no longer parses those files. `Day_One_Importer_Plugin::init()` mirrors the same condition for hook registration. The WP-Cron job-processing callback (`Day_One_Importer_Job_Store::CRON_HOOK`) and the daily cleanup callback are now registered unconditionally from `Day_One_Importer_Plugin` so cron still fires on front-end pageviews without loading the admin-only controller — the controller's previous `cron_process` method moved into `Day_One_Importer_Plugin::cron_process_job()` and lazy-loads the store and job processor only when cron actually fires. The private-media front-end endpoint (`wp_get_attachment_url` filter + `wp_ajax_day_one_importer_media`) remains registered on every request. No site-visible behaviour change for admin imports, AJAX polling, cron-driven job processing, or front-end private media serving; no `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
 
 = 0.2.19 =
 * Document streaming JSON I/O exception for Plugin Check. `Day_One_Importer_Parser::stream_json_file_batch()` uses native PHP `fopen`/`fread`/`fclose` to stream multi-MB Day One JSON exports without buffering the entire file in memory (WP_Filesystem has no chunked-read API). Plugin Check ignores the project's `WordPress.WP.AlternativeFunctions` PHPCS exclusion and flags every call, so this release adds explicit `phpcs:ignore` comments at each of the four call sites with a rationale comment on the `fopen` site, and drops the `@` error suppression on `fopen` (the existing `if ( ! $handle )` branch already returns a no-op result on failure, so the suppression was redundant). No behaviour change; existing pure-helper streaming tests still pass byte-for-byte; no `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
@@ -170,6 +173,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.20 =
+Defers admin-only files on non-admin requests. The two heaviest admin/AJAX-only files (`class-day-one-importer-admin.php` and `class-day-one-importer-jobs-controller.php`, ~750 LOC combined) are now skipped on plain front-end pageviews. WP-Cron job processing and the front-end private-media endpoint still work because their hooks are registered from the always-loaded plugin class. Internal-only release — no manifest changes, no schema bump, no site-visible behaviour change for existing imports.
 
 = 0.2.19 =
 Documents the streaming JSON I/O exception for Plugin Check. The streaming parser uses native PHP `fopen`/`fread`/`fclose` (WP_Filesystem has no chunked-read API); this release adds explicit `phpcs:ignore` comments at each of the four call sites and drops the redundant `@` suppression on `fopen`. Internal-only release — no manifest changes, no schema bump, no site-visible behaviour change for existing imports.
