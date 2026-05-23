@@ -1353,6 +1353,49 @@
           "fileSize": 303
         }
       ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0026",
+      "creationDate": "2031-05-09T08:00:00Z",
+      "modifiedDate": "2031-05-09T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "# Animated lantern test\n\nA fictional animated lantern, exported as a tiny 2-frame GIF so the importer can prove it kept the animation bytes intact.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "66ED4DF51BBC4EDC85644FA05CD8A2F3"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "gif",
+        "animation"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "66ED4DF51BBC4EDC85644FA05CD8A2F3",
+          "md5": "3b22a729ac3d48d50fc2925514df76e0",
+          "type": "gif",
+          "filename": "fictional-animated-lantern.gif",
+          "date": "2031-05-09T08:00:00Z",
+          "orderInEntry": 0,
+          "width": 1,
+          "height": 1
+        }
+      ]
     }
   ]
 }
