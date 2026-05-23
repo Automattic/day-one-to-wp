@@ -4658,4 +4658,160 @@ $weather_no_branch_entry   = $parser->normalize_entry(
 );
 assert_true( ! isset( $weather_no_branch_entry['weather'] ), '#62 R4.3 — entries without a weather have no `weather` key, so the runner skips the filter-fire branch.' );
 
+// #76 — attachment dedupe N+1 perf fix: both `find_existing_attachment()` and
+// `find_partial_attachment_by_source()` must issue a single indexed
+// `meta_query`-backed `get_posts` call instead of loading every attachment on
+// the post and reading meta rows per attachment in PHP. The `get_posts` stub
+// above captures argument lists; assert the new `meta_query` shape and that
+// the legacy "load all then filter" branch is gone.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array();
+$media_results   = new Day_One_Importer_Results();
+$media_for_tests = new Day_One_Importer_Media( '/tmp/day-one-importer-test-root', $media_results );
+
+// #76 — early-return: both markers empty ⇒ zero queries, return 0.
+$found_id = $media_for_tests->find_existing_attachment( 4242, 'TEST-76-UUID', '', '' );
+assert_true( 0 === $found_id, '#76 — find_existing_attachment returns 0 when both identifier and md5 are empty.' );
+assert_true( 0 === count( $GLOBALS['day_one_importer_test_get_posts_calls'] ), '#76 — find_existing_attachment issues zero queries when both markers are empty.' );
+
+// #76 — both markers present: single query, meta_query joins UUID AND ( identifier OR md5 ).
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array();
+$found_id = $media_for_tests->find_existing_attachment( 4242, 'TEST-76-UUID', 'photo-identifier-abc', 'md5deadbeef' );
+assert_true( 0 === $found_id, '#76 — find_existing_attachment returns 0 when get_posts yields no rows.' );
+assert_true( 1 === count( $GLOBALS['day_one_importer_test_get_posts_calls'] ), '#76 — find_existing_attachment issues exactly one get_posts() query (no per-attachment meta scan).' );
+$args = $GLOBALS['day_one_importer_test_get_posts_calls'][0];
+assert_true( isset( $args['post_type'] ) && 'attachment' === $args['post_type'], '#76 — find_existing_attachment scopes the lookup to post_type=attachment.' );
+assert_true( isset( $args['post_status'] ) && 'any' === $args['post_status'], '#76 — find_existing_attachment uses post_status=any.' );
+assert_true( isset( $args['post_parent'] ) && 4242 === $args['post_parent'], '#76 — find_existing_attachment scopes the lookup to the supplied post_parent.' );
+assert_true( isset( $args['fields'] ) && 'ids' === $args['fields'], '#76 — find_existing_attachment requests only post IDs from get_posts().' );
+assert_true( isset( $args['posts_per_page'] ) && 1 === $args['posts_per_page'], '#76 — find_existing_attachment caps posts_per_page at 1 (a single match is sufficient).' );
+assert_true( isset( $args['no_found_rows'] ) && true === $args['no_found_rows'], '#76 — find_existing_attachment disables SQL_CALC_FOUND_ROWS via no_found_rows=true.' );
+assert_true( isset( $args['meta_query'] ) && is_array( $args['meta_query'] ), '#76 — find_existing_attachment passes a meta_query to get_posts() (no per-row PHP meta filtering).' );
+$mq = $args['meta_query'];
+assert_true( isset( $mq['relation'] ) && 'AND' === $mq['relation'], '#76 — find_existing_attachment meta_query top-level relation is AND.' );
+assert_true( isset( $mq[0]['key'] ) && '_day_one_uuid' === $mq[0]['key'] && 'TEST-76-UUID' === $mq[0]['value'] && '=' === $mq[0]['compare'], '#76 — find_existing_attachment meta_query first clause matches _day_one_uuid = $uuid.' );
+$sub = isset( $mq[1] ) ? $mq[1] : array();
+assert_true( isset( $sub['relation'] ) && 'OR' === $sub['relation'], '#76 — find_existing_attachment marker sub-clause uses relation=OR when both identifier and md5 are present.' );
+$sub_clauses = array_values( array_filter( $sub, static function ( $value, $key ) { return is_int( $key ); }, ARRAY_FILTER_USE_BOTH ) );
+$marker_keys = array();
+foreach ( $sub_clauses as $clause ) {
+	if ( isset( $clause['key'] ) ) {
+		$marker_keys[ $clause['key'] ] = isset( $clause['value'] ) ? $clause['value'] : null;
+	}
+}
+assert_true( isset( $marker_keys['_day_one_media_identifier'] ) && 'photo-identifier-abc' === $marker_keys['_day_one_media_identifier'], '#76 — find_existing_attachment meta_query OR sub-clause includes _day_one_media_identifier = $identifier.' );
+assert_true( isset( $marker_keys['_day_one_media_md5'] ) && 'md5deadbeef' === $marker_keys['_day_one_media_md5'], '#76 — find_existing_attachment meta_query OR sub-clause includes _day_one_media_md5 = $md5.' );
+
+// #76 — identifier only (md5 empty): meta_query top-level relation is still AND
+// but the marker sub-clause collapses to a single equality on _day_one_media_identifier.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array();
+$found_id = $media_for_tests->find_existing_attachment( 4242, 'TEST-76-UUID', 'photo-identifier-abc', '' );
+assert_true( 0 === $found_id, '#76 — find_existing_attachment (identifier only) returns 0 when get_posts yields no rows.' );
+assert_true( 1 === count( $GLOBALS['day_one_importer_test_get_posts_calls'] ), '#76 — find_existing_attachment (identifier only) issues exactly one get_posts() query.' );
+$args = $GLOBALS['day_one_importer_test_get_posts_calls'][0];
+$mq   = $args['meta_query'];
+$sub  = isset( $mq[1] ) ? $mq[1] : array();
+assert_true( ! isset( $sub['relation'] ), '#76 — find_existing_attachment marker sub-clause omits relation=OR when only identifier is present (single clause).' );
+assert_true( isset( $sub['key'] ) && '_day_one_media_identifier' === $sub['key'] && 'photo-identifier-abc' === $sub['value'] && '=' === $sub['compare'], '#76 — find_existing_attachment (identifier only) sub-clause is _day_one_media_identifier = $identifier.' );
+
+// #76 — md5 only (identifier empty): mirror of the identifier-only case.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array();
+$found_id = $media_for_tests->find_existing_attachment( 4242, 'TEST-76-UUID', '', 'md5deadbeef' );
+assert_true( 0 === $found_id, '#76 — find_existing_attachment (md5 only) returns 0 when get_posts yields no rows.' );
+assert_true( 1 === count( $GLOBALS['day_one_importer_test_get_posts_calls'] ), '#76 — find_existing_attachment (md5 only) issues exactly one get_posts() query.' );
+$args = $GLOBALS['day_one_importer_test_get_posts_calls'][0];
+$mq   = $args['meta_query'];
+$sub  = isset( $mq[1] ) ? $mq[1] : array();
+assert_true( ! isset( $sub['relation'] ), '#76 — find_existing_attachment marker sub-clause omits relation=OR when only md5 is present (single clause).' );
+assert_true( isset( $sub['key'] ) && '_day_one_media_md5' === $sub['key'] && 'md5deadbeef' === $sub['value'] && '=' === $sub['compare'], '#76 — find_existing_attachment (md5 only) sub-clause is _day_one_media_md5 = $md5.' );
+
+// #76 — single match: returns the first ID coerced to int.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array( '9999' );
+$found_id = $media_for_tests->find_existing_attachment( 4242, 'TEST-76-UUID', 'photo-identifier-abc', 'md5deadbeef' );
+assert_true( 9999 === $found_id, '#76 — find_existing_attachment returns the matching attachment ID coerced to int.' );
+
+// #76 — `find_partial_attachment_by_source()` (private, invoked via reflection):
+// must issue a single meta_query-backed get_posts() with `_day_one_source`
+// NOT EXISTS OR != 'day-one-export', capped at posts_per_page=10.
+if ( ! function_exists( 'get_attached_file' ) ) {
+	function get_attached_file( $attachment_id ) {
+		$map = isset( $GLOBALS['day_one_importer_test_attached_files'] ) ? $GLOBALS['day_one_importer_test_attached_files'] : array();
+		return isset( $map[ (int) $attachment_id ] ) ? $map[ (int) $attachment_id ] : false;
+	}
+}
+$GLOBALS['day_one_importer_test_attached_files']   = array();
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array();
+$partial_method = new ReflectionMethod( 'Day_One_Importer_Media', 'find_partial_attachment_by_source' );
+$partial_method->setAccessible( true );
+$partial_photo  = array(
+	'identifier' => 'photo-identifier-abc',
+	'md5'        => 'md5deadbeef',
+	'type'       => 'jpeg',
+);
+$partial_source = '/tmp/day-one-importer-test/photos/abcdef0123456789abcdef0123456789.jpeg';
+$found_id       = $partial_method->invoke( $media_for_tests, 4242, 'TEST-76-UUID', $partial_photo, $partial_source );
+assert_true( 0 === $found_id, '#76 — find_partial_attachment_by_source returns 0 when get_posts yields no rows.' );
+assert_true( 1 === count( $GLOBALS['day_one_importer_test_get_posts_calls'] ), '#76 — find_partial_attachment_by_source issues exactly one get_posts() query (no per-attachment meta scan).' );
+$args = $GLOBALS['day_one_importer_test_get_posts_calls'][0];
+assert_true( isset( $args['post_type'] ) && 'attachment' === $args['post_type'], '#76 — find_partial_attachment_by_source scopes the lookup to post_type=attachment.' );
+assert_true( isset( $args['post_status'] ) && 'any' === $args['post_status'], '#76 — find_partial_attachment_by_source uses post_status=any.' );
+assert_true( isset( $args['post_parent'] ) && 4242 === $args['post_parent'], '#76 — find_partial_attachment_by_source scopes the lookup to the supplied post_parent.' );
+assert_true( isset( $args['fields'] ) && 'ids' === $args['fields'], '#76 — find_partial_attachment_by_source requests only post IDs from get_posts().' );
+assert_true( isset( $args['posts_per_page'] ) && 10 === $args['posts_per_page'], '#76 — find_partial_attachment_by_source caps posts_per_page at 10 (no unbounded scan).' );
+assert_true( isset( $args['no_found_rows'] ) && true === $args['no_found_rows'], '#76 — find_partial_attachment_by_source disables SQL_CALC_FOUND_ROWS via no_found_rows=true.' );
+assert_true( isset( $args['meta_query'] ) && is_array( $args['meta_query'] ), '#76 — find_partial_attachment_by_source passes a meta_query to get_posts() (the _day_one_source filter is pushed into SQL).' );
+$mq = $args['meta_query'];
+assert_true( isset( $mq['relation'] ) && 'OR' === $mq['relation'], '#76 — find_partial_attachment_by_source meta_query top-level relation is OR (NOT EXISTS OR != day-one-export).' );
+$found_not_exists   = false;
+$found_not_dayone   = false;
+foreach ( $mq as $key => $clause ) {
+	if ( ! is_array( $clause ) || ! isset( $clause['key'] ) ) {
+		continue;
+	}
+	if ( '_day_one_source' === $clause['key'] && isset( $clause['compare'] ) && 'NOT EXISTS' === $clause['compare'] ) {
+		$found_not_exists = true;
+	}
+	if ( '_day_one_source' === $clause['key'] && isset( $clause['compare'] ) && '!=' === $clause['compare'] && isset( $clause['value'] ) && 'day-one-export' === $clause['value'] ) {
+		$found_not_dayone = true;
+	}
+}
+assert_true( $found_not_exists, '#76 — find_partial_attachment_by_source meta_query includes a `_day_one_source` NOT EXISTS clause.' );
+assert_true( $found_not_dayone, '#76 — find_partial_attachment_by_source meta_query includes a `_day_one_source != day-one-export` clause.' );
+
+// #76 — `find_partial_attachment_by_source()` filename-shape match: when
+// get_posts returns an attachment whose `get_attached_file()` basename
+// matches the expected upload filename (same base, same extension), the
+// function returns that attachment ID. This preserves the pre-#76 semantics
+// for partial-repair (filename-shape match), now bounded by the capped
+// meta_query.
+$expected_upload = Day_One_Importer_Media::build_upload_filename( $partial_source, $partial_photo );
+$GLOBALS['day_one_importer_test_attached_files']   = array(
+	7777 => '/srv/www/wp-content/uploads/private/day-one/' . $expected_upload,
+);
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array( '7777' );
+$found_id = $partial_method->invoke( $media_for_tests, 4242, 'TEST-76-UUID', $partial_photo, $partial_source );
+assert_true( 7777 === $found_id, '#76 — find_partial_attachment_by_source returns the matching attachment ID when filename basename matches.' );
+
+// #76 — `find_partial_attachment_by_source()` extension mismatch: an
+// attachment whose extension differs from the expected upload extension is
+// skipped, the loop continues, and (with no other candidate) returns 0.
+$GLOBALS['day_one_importer_test_attached_files']   = array(
+	8888 => '/srv/www/wp-content/uploads/private/day-one/something-else.png',
+);
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array( '8888' );
+$found_id = $partial_method->invoke( $media_for_tests, 4242, 'TEST-76-UUID', $partial_photo, $partial_source );
+assert_true( 0 === $found_id, '#76 — find_partial_attachment_by_source returns 0 when the only candidate has a different file extension.' );
+
+// Clean up #76 capture buffers so later tests / re-runs see a known state.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$GLOBALS['day_one_importer_test_get_posts_result'] = array();
+$GLOBALS['day_one_importer_test_attached_files']   = array();
+
 echo "All pure helper tests passed.\n";

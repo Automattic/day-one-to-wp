@@ -1179,31 +1179,60 @@ class Day_One_Importer_Media {
 			return 0;
 		}
 
-		$attachments = get_posts(
+		// #76 perf: look up dedupe candidates via a single indexed `meta_query`
+		// joining `_day_one_uuid` AND (`_day_one_media_identifier` OR
+		// `_day_one_media_md5`) instead of loading every attachment on the post
+		// and reading three meta rows per attachment in PHP. The identifier /
+		// md5 sub-clause collapses to a single equality when only one of the
+		// two markers is present on the photo record (Day One sometimes ships
+		// one without the other).
+		$marker_clauses = array();
+		if ( $identifier ) {
+			$marker_clauses[] = array(
+				'key'     => '_day_one_media_identifier',
+				'value'   => (string) $identifier,
+				'compare' => '=',
+			);
+		}
+		if ( $md5 ) {
+			$marker_clauses[] = array(
+				'key'     => '_day_one_media_md5',
+				'value'   => (string) $md5,
+				'compare' => '=',
+			);
+		}
+		if ( count( $marker_clauses ) > 1 ) {
+			$marker_clauses = array_merge( array( 'relation' => 'OR' ), $marker_clauses );
+		} else {
+			$marker_clauses = $marker_clauses[0];
+		}
+
+		$meta_query = array(
+			'relation' => 'AND',
+			array(
+				'key'     => '_day_one_uuid',
+				'value'   => (string) $uuid,
+				'compare' => '=',
+			),
+			$marker_clauses,
+		);
+
+		$ids = get_posts(
 			array(
 				'post_type'      => 'attachment',
 				'post_status'    => 'any',
-				'post_parent'    => $post_id,
+				'post_parent'    => (int) $post_id,
 				'fields'         => 'ids',
-				'posts_per_page' => -1,
+				'posts_per_page' => 1,
 				'no_found_rows'  => true,
+				'meta_query'     => $meta_query, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 			)
 		);
-
-		foreach ( $attachments as $attachment_id ) {
-			$attachment_id = (int) $attachment_id;
-			if ( (string) get_post_meta( $attachment_id, '_day_one_uuid', true ) !== $uuid ) {
-				continue;
-			}
-			if ( $identifier && (string) get_post_meta( $attachment_id, '_day_one_media_identifier', true ) === $identifier ) {
-				return $attachment_id;
-			}
-			if ( $md5 && (string) get_post_meta( $attachment_id, '_day_one_media_md5', true ) === $md5 ) {
-				return $attachment_id;
-			}
+		if ( ! is_array( $ids ) || empty( $ids ) ) {
+			return 0;
 		}
 
-		return 0;
+		return (int) $ids[0];
 	}
 
 	/**
@@ -1228,19 +1257,47 @@ class Day_One_Importer_Media {
 
 		$expected_base = pathinfo( $expected, PATHINFO_FILENAME );
 		$expected_ext  = strtolower( pathinfo( $expected, PATHINFO_EXTENSION ) );
-		$attachments   = get_posts(
+		// #76 perf: previously this loaded every attachment on the post and
+		// called `get_post_meta` per row to filter out Day One imports. Move
+		// the `_day_one_source != 'day-one-export'` predicate into a single
+		// indexed `meta_query` and cap `posts_per_page` at 10 so a single
+		// query bounds the work irrespective of how many media a post carries.
+		// Partial attachments (the ones this helper repairs) by definition
+		// lack the Day One source marker, so this still captures every
+		// candidate the previous PHP filter would have returned. `$uuid` is
+		// accepted for signature parity with `find_existing_attachment()` and
+		// remains intentionally unused here (the partial repair predicate is
+		// filename-shape based, not Day One UUID based).
+		unset( $uuid );
+		$ids = get_posts(
 			array(
 				'post_type'      => 'attachment',
 				'post_status'    => 'any',
 				'post_parent'    => (int) $post_id,
-				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'posts_per_page' => 10,
 				'no_found_rows'  => true,
+				'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+					'relation' => 'OR',
+					array(
+						'key'     => '_day_one_source',
+						'compare' => 'NOT EXISTS',
+					),
+					array(
+						'key'     => '_day_one_source',
+						'value'   => 'day-one-export',
+						'compare' => '!=',
+					),
+				),
 			)
 		);
+		if ( ! is_array( $ids ) ) {
+			return 0;
+		}
 
-		foreach ( $attachments as $attachment ) {
-			$attachment_id = isset( $attachment->ID ) ? (int) $attachment->ID : 0;
-			if ( ! $attachment_id || 'day-one-export' === (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
+		foreach ( $ids as $attachment_id ) {
+			$attachment_id = (int) $attachment_id;
+			if ( ! $attachment_id ) {
 				continue;
 			}
 
