@@ -218,6 +218,10 @@ class Day_One_Importer_Job_Processor {
 			$existing              = isset( $job['zip_audio_dirs'] ) && is_array( $job['zip_audio_dirs'] ) ? $job['zip_audio_dirs'] : array();
 			$job['zip_audio_dirs'] = array_values( array_unique( array_merge( $existing, $batch['audio_dirs'] ) ) );
 		}
+		if ( ! empty( $batch['pdf_dirs'] ) && is_array( $batch['pdf_dirs'] ) ) {
+			$existing            = isset( $job['zip_pdf_dirs'] ) && is_array( $job['zip_pdf_dirs'] ) ? $job['zip_pdf_dirs'] : array();
+			$job['zip_pdf_dirs'] = array_values( array_unique( array_merge( $existing, $batch['pdf_dirs'] ) ) );
+		}
 		if ( ! empty( $batch['error'] ) ) {
 			$this->fail_job( $job, $results, (string) $batch['error'] );
 			return false;

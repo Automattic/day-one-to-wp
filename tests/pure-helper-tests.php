@@ -3554,4 +3554,159 @@ $c4_aud_kses_blocks = parse_blocks( $c4_aud_kses_html );
 assert_true( 1 === count( $c4_aud_kses_blocks ) && 'core/audio' === $c4_aud_kses_blocks[0]['blockName'], '#58 R6.5 — wp_kses_post() round-trip preserves the core/audio block.' );
 assert_true( false !== strpos( $c4_aud_kses_html, 'wp-block-audio' ), '#58 R6.5 — wp_kses_post() preserves the wp-block-audio class.' );
 
+// --- #59 R1 / R11.4 — Parser normalizes entry.pdfAttachments[] (issue #59 C1). ---
+
+$pdf_results_present = new Day_One_Importer_Results();
+$pdf_entry_present   = $parser->normalize_entry(
+	array(
+		'uuid'           => 'TEST-PDF-PRESENT',
+		'creationDate'   => '2024-01-01T00:00:00Z',
+		'pdfAttachments' => array(
+			array(
+				'identifier'   => 'PDF59C100000000000000000000000000',
+				'md5'          => 'ABCDEF0123456789abcdef0123456789',
+				'pdfName'      => 'Sample PDF',
+				'orderInEntry' => 3,
+				'fileSize'     => 1234,
+				// Day One ships these zeroed values; the normalizer drops them.
+				'duration'     => 0,
+				'width'        => 0,
+				'height'       => 0,
+				'type'         => 'pdf',
+			),
+		),
+	),
+	'fictional.json',
+	0,
+	$pdf_results_present
+);
+assert_true( is_array( $pdf_entry_present ) && isset( $pdf_entry_present['pdfAttachments'] ) && is_array( $pdf_entry_present['pdfAttachments'] ), '#59 normalize_entry emits pdfAttachments array when raw entry has pdfAttachments[] (R1.1, R11.4).' );
+assert_true( 1 === count( $pdf_entry_present['pdfAttachments'] ), '#59 normalize_entry preserves a single PDF record.' );
+assert_true( 'PDF59C100000000000000000000000000' === $pdf_entry_present['pdfAttachments'][0]['identifier'], '#59 normalize_pdf_attachment preserves the identifier value.' );
+assert_true( 'abcdef0123456789abcdef0123456789' === $pdf_entry_present['pdfAttachments'][0]['md5'], '#59 normalize_pdf_attachment lowercases the md5 hex.' );
+assert_true( 'Sample PDF' === $pdf_entry_present['pdfAttachments'][0]['pdfName'], '#59 normalize_pdf_attachment preserves the sanitized pdfName (R1.2).' );
+assert_true( 3 === $pdf_entry_present['pdfAttachments'][0]['orderInEntry'], '#59 normalize_pdf_attachment casts orderInEntry to int.' );
+assert_true( 1234 === $pdf_entry_present['pdfAttachments'][0]['fileSize'], '#59 normalize_pdf_attachment casts fileSize to int (R1.2).' );
+// R1.3 + R1.4: no type/format/duration/width/height fields persisted.
+$pdf_key_set = array_keys( $pdf_entry_present['pdfAttachments'][0] );
+sort( $pdf_key_set );
+$pdf_expected_keys = array( 'fileSize', 'identifier', 'md5', 'orderInEntry', 'pdfName' );
+sort( $pdf_expected_keys );
+assert_true( $pdf_expected_keys === $pdf_key_set, '#59 normalize_pdf_attachment exposes exactly {identifier, md5, pdfName, orderInEntry, fileSize} (R1.3 + R1.4).' );
+assert_true( ! isset( $pdf_entry_present['pdfAttachments'][0]['type'] ), '#59 normalize_pdf_attachment does NOT persist `type` (R1.3).' );
+assert_true( ! isset( $pdf_entry_present['pdfAttachments'][0]['format'] ), '#59 normalize_pdf_attachment does NOT persist `format` (R1.3).' );
+assert_true( ! isset( $pdf_entry_present['pdfAttachments'][0]['duration'] ), '#59 normalize_pdf_attachment does NOT persist `duration` (R1.4).' );
+assert_true( ! isset( $pdf_entry_present['pdfAttachments'][0]['width'] ), '#59 normalize_pdf_attachment does NOT persist `width` (R1.4).' );
+assert_true( ! isset( $pdf_entry_present['pdfAttachments'][0]['height'] ), '#59 normalize_pdf_attachment does NOT persist `height` (R1.4).' );
+
+// Missing pdfAttachments yields an empty array (R1.5).
+$pdf_results_missing = new Day_One_Importer_Results();
+$pdf_entry_missing   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-PDF-MISSING',
+		'creationDate' => '2024-01-01T00:00:00Z',
+	),
+	'fictional.json',
+	1,
+	$pdf_results_missing
+);
+assert_true( is_array( $pdf_entry_missing ) && isset( $pdf_entry_missing['pdfAttachments'] ) && array() === $pdf_entry_missing['pdfAttachments'], '#59 normalize_entry yields empty pdfAttachments array when raw entry lacks the field (R1.5).' );
+
+// Malformed entries (non-array members) are skipped silently (R1.6).
+$pdf_results_bad = new Day_One_Importer_Results();
+$pdf_entry_bad   = $parser->normalize_entry(
+	array(
+		'uuid'           => 'TEST-PDF-BAD',
+		'creationDate'   => '2024-01-01T00:00:00Z',
+		'pdfAttachments' => array(
+			'not-an-array',
+			array( 'identifier' => 'ONLY-ID-PDF' ),
+			null,
+		),
+	),
+	'fictional.json',
+	2,
+	$pdf_results_bad
+);
+assert_true( is_array( $pdf_entry_bad ) && 1 === count( $pdf_entry_bad['pdfAttachments'] ), '#59 normalize_entry skips non-array PDF members silently (R11.4).' );
+assert_true( 'ONLY-ID-PDF' === $pdf_entry_bad['pdfAttachments'][0]['identifier'], '#59 normalize_pdf_attachment accepts a minimal record with only identifier set.' );
+assert_true( '' === $pdf_entry_bad['pdfAttachments'][0]['md5'], '#59 normalize_pdf_attachment records md5="" when raw value is missing.' );
+assert_true( '' === $pdf_entry_bad['pdfAttachments'][0]['pdfName'], '#59 normalize_pdf_attachment records pdfName="" when raw value is missing (R11.4).' );
+assert_true( null === $pdf_entry_bad['pdfAttachments'][0]['orderInEntry'], '#59 normalize_pdf_attachment records orderInEntry=null when raw value is missing.' );
+assert_true( 0 === $pdf_entry_bad['pdfAttachments'][0]['fileSize'], '#59 normalize_pdf_attachment records fileSize=0 when raw value is missing (R11.4).' );
+
+// fileSize coercion: non-numeric raw value is stored as 0.
+$pdf_results_nonnumeric = new Day_One_Importer_Results();
+$pdf_entry_nonnumeric   = $parser->normalize_entry(
+	array(
+		'uuid'           => 'TEST-PDF-NONNUM',
+		'creationDate'   => '2024-01-01T00:00:00Z',
+		'pdfAttachments' => array(
+			array(
+				'identifier' => 'NONNUM-FS',
+				'fileSize'   => 'not-a-number',
+			),
+		),
+	),
+	'fictional.json',
+	3,
+	$pdf_results_nonnumeric
+);
+assert_true( 0 === $pdf_entry_nonnumeric['pdfAttachments'][0]['fileSize'], '#59 normalize_pdf_attachment stores fileSize=0 when raw value is non-numeric (R11.4).' );
+
+// JSONL manifest round-trip: pdfAttachments field travels through the manifest unchanged.
+$pdf_roundtrip_payload = array(
+	array(
+		'identifier'   => 'ROUNDTRIP-PDF-001',
+		'md5'          => '0123456789abcdef0123456789abcdef',
+		'pdfName'      => 'Round trip PDF',
+		'orderInEntry' => 0,
+		'fileSize'     => 4096,
+	),
+);
+$pdf_roundtrip_dir = sys_get_temp_dir() . '/day-one-importer-pdf-roundtrip-' . uniqid();
+mkdir( $pdf_roundtrip_dir, 0777, true );
+file_put_contents(
+	$pdf_roundtrip_dir . '/Journal.json',
+	wp_json_encode(
+		array(
+			'metadata' => array( 'version' => 'test' ),
+			'entries'  => array(
+				array(
+					'uuid'           => 'TEST-PDF-ROUNDTRIP',
+					'creationDate'   => '2024-01-01T00:00:00Z',
+					'pdfAttachments' => $pdf_roundtrip_payload,
+				),
+			),
+		)
+	)
+);
+$pdf_roundtrip_results = new Day_One_Importer_Results();
+$pdf_roundtrip_job     = array(
+	'manifest_path'       => sys_get_temp_dir() . '/day-one-importer-pdf-manifest-' . uniqid() . '/entries.jsonl',
+	'zip_json_candidates' => array( 'Journal.json' ),
+	'zip_photo_dirs'      => array( 'photos' ),
+	'zip_video_dirs'      => array( 'videos' ),
+	'zip_audio_dirs'      => array( 'audios' ),
+	'zip_pdf_dirs'        => array( 'pdfs' ),
+	'json_files'          => array(),
+	'json_file_index'     => 0,
+	'json_entry_index'    => 0,
+	'entries_total'       => 0,
+	'seen_uuids'          => array(),
+);
+$parser->discover_json_files_batch( $pdf_roundtrip_dir, $pdf_roundtrip_job, $pdf_roundtrip_results, 1.0E+30 );
+$pdf_roundtrip_index = $parser->index_export_batch( $pdf_roundtrip_dir, $pdf_roundtrip_job, $pdf_roundtrip_results, 1.0E+30 );
+assert_true( ! empty( $pdf_roundtrip_index['done'] ) && 1 === $pdf_roundtrip_job['entries_total'], '#59 pdfAttachments round-trip indexer writes one entry to the manifest.' );
+$pdf_roundtrip_entry = $parser->read_manifest_entry( $pdf_roundtrip_job['manifest_path'], 0 );
+assert_true( is_array( $pdf_roundtrip_entry ) && isset( $pdf_roundtrip_entry['pdfAttachments'] ) && 1 === count( $pdf_roundtrip_entry['pdfAttachments'] ), '#59 pdfAttachments field round-trips through the JSONL manifest (AC2).' );
+$rt_pdf = $pdf_roundtrip_entry['pdfAttachments'][0];
+assert_true( 'ROUNDTRIP-PDF-001' === $rt_pdf['identifier'], '#59 pdfAttachments manifest round-trip preserves identifier.' );
+assert_true( '0123456789abcdef0123456789abcdef' === $rt_pdf['md5'], '#59 pdfAttachments manifest round-trip preserves md5.' );
+assert_true( 'Round trip PDF' === $rt_pdf['pdfName'], '#59 pdfAttachments manifest round-trip preserves pdfName.' );
+assert_true( 0 === $rt_pdf['orderInEntry'], '#59 pdfAttachments manifest round-trip preserves orderInEntry.' );
+assert_true( 4096 === $rt_pdf['fileSize'], '#59 pdfAttachments manifest round-trip preserves fileSize (int).' );
+Day_One_Importer_Cleanup::remove( dirname( $pdf_roundtrip_job['manifest_path'] ) );
+Day_One_Importer_Cleanup::remove( $pdf_roundtrip_dir );
+
 echo "All pure helper tests passed.\n";

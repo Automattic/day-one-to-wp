@@ -466,6 +466,7 @@ class Day_One_Importer_Cleanup {
 			'photo_dirs'      => array(),
 			'video_dirs'      => array(),
 			'audio_dirs'      => array(),
+			'pdf_dirs'        => array(),
 		);
 
 		if ( ! class_exists( 'ZipArchive' ) ) {
@@ -530,6 +531,9 @@ class Day_One_Importer_Cleanup {
 			if ( ! empty( $metadata['audio_dir'] ) ) {
 				$result['audio_dirs'][] = $metadata['audio_dir'];
 			}
+			if ( ! empty( $metadata['pdf_dir'] ) ) {
+				$result['pdf_dirs'][] = $metadata['pdf_dir'];
+			}
 
 			++$index;
 			++$processed;
@@ -541,6 +545,7 @@ class Day_One_Importer_Cleanup {
 		$result['photo_dirs']      = array_values( array_unique( $result['photo_dirs'] ) );
 		$result['video_dirs']      = array_values( array_unique( $result['video_dirs'] ) );
 		$result['audio_dirs']      = array_values( array_unique( $result['audio_dirs'] ) );
+		$result['pdf_dirs']        = array_values( array_unique( $result['pdf_dirs'] ) );
 		$zip->close();
 
 		return $result;
@@ -550,7 +555,7 @@ class Day_One_Importer_Cleanup {
 	 * Extract import-relevant metadata from a safe archive member path.
 	 *
 	 * @param string $name Archive member name.
-	 * @return array{json:string,photo_dir:string,video_dir:string,audio_dir:string}
+	 * @return array{json:string,photo_dir:string,video_dir:string,audio_dir:string,pdf_dir:string}
 	 */
 	private static function archive_member_import_metadata( $name ) {
 		$normalized = trim( str_replace( '\\', '/', (string) $name ), '/' );
@@ -559,6 +564,7 @@ class Day_One_Importer_Cleanup {
 			'photo_dir' => '',
 			'video_dir' => '',
 			'audio_dir' => '',
+			'pdf_dir'   => '',
 		);
 		if ( '' === $normalized ) {
 			return $metadata;
@@ -580,6 +586,10 @@ class Day_One_Importer_Cleanup {
 			}
 			if ( 'audios' === strtolower( $part ) ) {
 				$metadata['audio_dir'] = implode( '/', array_slice( $parts, 0, $index + 1 ) );
+				break;
+			}
+			if ( 'pdfs' === strtolower( $part ) ) {
+				$metadata['pdf_dir'] = implode( '/', array_slice( $parts, 0, $index + 1 ) );
 				break;
 			}
 		}

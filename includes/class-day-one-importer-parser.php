@@ -90,7 +90,7 @@ class Day_One_Importer_Parser {
 			);
 		}
 
-		if ( array_key_exists( 'zip_json_candidates', $job ) || array_key_exists( 'zip_photo_dirs', $job ) || array_key_exists( 'zip_video_dirs', $job ) || array_key_exists( 'zip_audio_dirs', $job ) ) {
+		if ( array_key_exists( 'zip_json_candidates', $job ) || array_key_exists( 'zip_photo_dirs', $job ) || array_key_exists( 'zip_video_dirs', $job ) || array_key_exists( 'zip_audio_dirs', $job ) || array_key_exists( 'zip_pdf_dirs', $job ) ) {
 			return $this->discover_archive_candidates_batch( $root_real, $job, $results, $deadline, $checkpoint );
 		}
 
@@ -116,10 +116,12 @@ class Day_One_Importer_Parser {
 			$job['archive_photo_dir_candidate_index'] = 0;
 			$job['archive_video_dir_candidate_index'] = 0;
 			$job['archive_audio_dir_candidate_index'] = 0;
+			$job['archive_pdf_dir_candidate_index']   = 0;
 			$job['json_files']                        = array();
 			$job['photo_dirs']                        = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? array_values( $job['photo_dirs'] ) : array();
 			$job['video_dirs']                        = isset( $job['video_dirs'] ) && is_array( $job['video_dirs'] ) ? array_values( $job['video_dirs'] ) : array();
 			$job['audio_dirs']                        = isset( $job['audio_dirs'] ) && is_array( $job['audio_dirs'] ) ? array_values( $job['audio_dirs'] ) : array();
+			$job['pdf_dirs']                          = isset( $job['pdf_dirs'] ) && is_array( $job['pdf_dirs'] ) ? array_values( $job['pdf_dirs'] ) : array();
 			$job['archive_discovery_initialized']     = true;
 		}
 
@@ -127,14 +129,17 @@ class Day_One_Importer_Parser {
 		$photo_candidates = isset( $job['zip_photo_dirs'] ) && is_array( $job['zip_photo_dirs'] ) ? array_values( $job['zip_photo_dirs'] ) : array();
 		$video_candidates = isset( $job['zip_video_dirs'] ) && is_array( $job['zip_video_dirs'] ) ? array_values( $job['zip_video_dirs'] ) : array();
 		$audio_candidates = isset( $job['zip_audio_dirs'] ) && is_array( $job['zip_audio_dirs'] ) ? array_values( $job['zip_audio_dirs'] ) : array();
+		$pdf_candidates   = isset( $job['zip_pdf_dirs'] ) && is_array( $job['zip_pdf_dirs'] ) ? array_values( $job['zip_pdf_dirs'] ) : array();
 		$files            = isset( $job['json_files'] ) && is_array( $job['json_files'] ) ? array_values( $job['json_files'] ) : array();
 		$photo_dirs       = isset( $job['photo_dirs'] ) && is_array( $job['photo_dirs'] ) ? array_values( $job['photo_dirs'] ) : array();
 		$video_dirs       = isset( $job['video_dirs'] ) && is_array( $job['video_dirs'] ) ? array_values( $job['video_dirs'] ) : array();
 		$audio_dirs       = isset( $job['audio_dirs'] ) && is_array( $job['audio_dirs'] ) ? array_values( $job['audio_dirs'] ) : array();
+		$pdf_dirs         = isset( $job['pdf_dirs'] ) && is_array( $job['pdf_dirs'] ) ? array_values( $job['pdf_dirs'] ) : array();
 		$json_i           = isset( $job['archive_json_candidate_index'] ) ? max( 0, (int) $job['archive_json_candidate_index'] ) : 0;
 		$photo_i          = isset( $job['archive_photo_dir_candidate_index'] ) ? max( 0, (int) $job['archive_photo_dir_candidate_index'] ) : 0;
 		$video_i          = isset( $job['archive_video_dir_candidate_index'] ) ? max( 0, (int) $job['archive_video_dir_candidate_index'] ) : 0;
 		$audio_i          = isset( $job['archive_audio_dir_candidate_index'] ) ? max( 0, (int) $job['archive_audio_dir_candidate_index'] ) : 0;
+		$pdf_i            = isset( $job['archive_pdf_dir_candidate_index'] ) ? max( 0, (int) $job['archive_pdf_dir_candidate_index'] ) : 0;
 		$processed        = 0;
 		$limit            = $this->discovery_node_limit();
 
@@ -142,6 +147,7 @@ class Day_One_Importer_Parser {
 		$photo_candidate_count = count( $photo_candidates );
 		$video_candidate_count = count( $video_candidates );
 		$audio_candidate_count = count( $audio_candidates );
+		$pdf_candidate_count   = count( $pdf_candidates );
 
 		while ( $processed < $limit && $json_i < $json_candidate_count ) {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
@@ -195,13 +201,28 @@ class Day_One_Importer_Parser {
 			$job['archive_audio_dir_candidate_index'] = $audio_i;
 		}
 
+		// #59 R3.4 — PDF directory candidates resolve after json/photo/video/audio.
+		while ( $processed < $limit && $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count && $video_i >= $video_candidate_count && $audio_i >= $audio_candidate_count && $pdf_i < $pdf_candidate_count ) {
+			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
+				break;
+			}
+			$path = $this->archive_relative_to_real_path( $root_real, (string) $pdf_candidates[ $pdf_i ], true );
+			if ( $path && is_dir( $path ) && ! in_array( $path, $pdf_dirs, true ) ) {
+				$pdf_dirs[] = $path;
+			}
+			++$pdf_i;
+			++$processed;
+			$job['archive_pdf_dir_candidate_index'] = $pdf_i;
+		}
+
 		$job['json_files']       = $files;
 		$job['json_files_found'] = count( $files );
 		$job['photo_dirs']       = $photo_dirs;
 		$job['video_dirs']       = $video_dirs;
 		$job['audio_dirs']       = $audio_dirs;
+		$job['pdf_dirs']         = $pdf_dirs;
 
-		if ( $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count && $video_i >= $video_candidate_count && $audio_i >= $audio_candidate_count ) {
+		if ( $json_i >= $json_candidate_count && $photo_i >= $photo_candidate_count && $video_i >= $video_candidate_count && $audio_i >= $audio_candidate_count && $pdf_i >= $pdf_candidate_count ) {
 			$job['json_discovery_done'] = true;
 			$job['json_file_index']     = 0;
 			$job['json_entry_index']    = 0;
@@ -1043,6 +1064,16 @@ class Day_One_Importer_Parser {
 			}
 		}
 
+		// #59 R1.1 — normalize entry.pdfAttachments[].
+		$pdf_attachments = array();
+		if ( isset( $raw_entry['pdfAttachments'] ) && is_array( $raw_entry['pdfAttachments'] ) ) {
+			foreach ( $raw_entry['pdfAttachments'] as $pdf ) {
+				if ( is_array( $pdf ) ) {
+					$pdf_attachments[] = $this->normalize_pdf_attachment( $pdf );
+				}
+			}
+		}
+
 		$rich_text = null;
 		if ( isset( $raw_entry['richText'] ) ) {
 			$raw_rich = $raw_entry['richText'];
@@ -1077,6 +1108,7 @@ class Day_One_Importer_Parser {
 			'photos'              => $photos,
 			'videos'              => $videos,
 			'audios'              => $audios,
+			'pdfAttachments'      => $pdf_attachments,
 			'starred'             => ! empty( $raw_entry['starred'] ),
 			'isPinned'            => ! empty( $raw_entry['isPinned'] ),
 			'creationDeviceType'  => isset( $raw_entry['creationDeviceType'] ) && is_scalar( $raw_entry['creationDeviceType'] ) ? day_one_importer_sanitize_text( $raw_entry['creationDeviceType'] ) : '',
@@ -1174,6 +1206,27 @@ class Day_One_Importer_Parser {
 			'orderInEntry' => isset( $audio['orderInEntry'] ) && is_numeric( $audio['orderInEntry'] ) ? (int) $audio['orderInEntry'] : null,
 			'duration'     => $duration,
 			'title'        => isset( $audio['title'] ) && is_scalar( $audio['title'] ) ? day_one_importer_sanitize_text( $audio['title'] ) : '',
+		);
+	}
+
+	/**
+	 * Normalize pdf attachment metadata.
+	 *
+	 * Mirrors normalize_audio() for the shared keys. PDFs deviate by using a
+	 * `pdfName` field for the human-readable label (no `type`/`format` field,
+	 * no `duration`, no `width`/`height` -- all invariant or zeroed in Day One
+	 * exports). See spec R1.2 + R1.3 + R1.4.
+	 *
+	 * @param array<string,mixed> $pdf Raw PDF attachment.
+	 * @return array<string,mixed>
+	 */
+	private function normalize_pdf_attachment( $pdf ) {
+		return array(
+			'identifier'   => isset( $pdf['identifier'] ) && is_scalar( $pdf['identifier'] ) ? day_one_importer_sanitize_text( $pdf['identifier'] ) : '',
+			'md5'          => isset( $pdf['md5'] ) && is_scalar( $pdf['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $pdf['md5'] ) ) : '',
+			'pdfName'      => isset( $pdf['pdfName'] ) && is_scalar( $pdf['pdfName'] ) ? day_one_importer_sanitize_text( $pdf['pdfName'] ) : '',
+			'orderInEntry' => isset( $pdf['orderInEntry'] ) && is_numeric( $pdf['orderInEntry'] ) ? (int) $pdf['orderInEntry'] : null,
+			'fileSize'     => isset( $pdf['fileSize'] ) && is_numeric( $pdf['fileSize'] ) ? (int) $pdf['fileSize'] : 0,
 		);
 	}
 }
