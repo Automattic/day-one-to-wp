@@ -9,11 +9,11 @@ Stable tag: 0.2.12
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Import Day One JSON export ZIPs as private WordPress posts with journal categories, tags, dates, supported photos, supported videos, and supported audios.
+Import Day One JSON export ZIPs as private WordPress posts with journal categories, tags, dates, supported photos, supported videos, supported audios, and supported PDF attachments.
 
 == Description ==
 
-Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, supported photos, supported videos, and supported audios.
+Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, supported photos, supported videos, supported audios, and supported PDF attachments.
 
 The importer is designed for local or private archive migration workflows:
 
@@ -21,7 +21,7 @@ The importer is designed for local or private archive migration workflows:
 * Large exports run as resumable jobs advanced by short browser requests with a WP-Cron fallback, reducing gateway timeout risk.
 * Re-importing the same export skips completed entries using Day One UUID metadata.
 * Interrupted, failed, or older-schema imports can be retried, continued, or refreshed in place without duplicating completed posts or media.
-* Supported photos, videos, and audios are imported into the Media Library and attached to their posts. Videos render inline as `core/video` blocks and audios render inline as `core/audio` blocks (with the Day One audio `title` as the block caption when set) at their original `richText` position when present.
+* Supported photos, videos, audios, and PDFs are imported into the Media Library and attached to their posts. Videos render inline as `core/video` blocks, audios render inline as `core/audio` blocks (with the Day One audio `title` as the block caption when set), and PDFs render inline as `core/file` blocks (with the Day One `pdfName` as the link text when set, falling back to the basename without extension and finally to a literal `[PDF]` floor) at their original `richText` position when present.
 * New Day One media is stored in a protected uploads subfolder and served through a nonce- and permission-checked WordPress endpoint.
 * Generated image sub-sizes are skipped during import to reduce timeout risk on large exports.
 * Result screens report counts, UUIDs, dates, filenames, and generic warnings rather than full journal content.
@@ -46,7 +46,7 @@ For development and testing, the repository includes a wholly fictional sample D
 
 = What Day One export format is supported? =
 
-Export your journal from Day One as JSON and keep the original ZIP intact. The importer expects a ZIP containing one or more journal JSON files with an `entries` array and, when photos, videos, or audios are present, `photos/`, `videos/`, and/or `audios/` directories.
+Export your journal from Day One as JSON and keep the original ZIP intact. The importer expects a ZIP containing one or more journal JSON files with an `entries` array and, when photos, videos, audios, or PDFs are present, `photos/`, `videos/`, `audios/`, and/or `pdfs/` directories.
 
 = Are imported entries public? =
 
@@ -58,7 +58,7 @@ Yes. The importer stores Day One UUID metadata and skips entries that were alrea
 
 = What media types are imported? =
 
-The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Day One videos (`.mov`, `.mp4`) and Day One audios (`.mp3`, `.m4a`, `.aac`) are imported when the site's MIME allowlist accepts them (`video/quicktime`, `video/mp4`, `audio/mpeg`, `audio/mp4`, and `audio/aac` are enabled by default for Administrator-role users on most WordPress sites). Embedded PDF references are recognized but not yet sideloaded. Unsupported or missing media generates warnings without stopping unrelated entries; video and audio embeds whose MIME the site refuses (most notably `.lpcm` linear-PCM audio on default WordPress allowlists) are dropped with a privacy-safe warning (no `core/file` fallback is emitted). To support additional video or audio MIMEs, extend the uploader allowlist via the standard `upload_mimes` filter. New imported media is stored in a protected uploads subfolder and served through a nonce- and permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
+The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Day One videos (`.mov`, `.mp4`), Day One audios (`.mp3`, `.m4a`, `.aac`), and Day One PDFs (`application/pdf`) are imported when the site's MIME allowlist accepts them (`video/quicktime`, `video/mp4`, `audio/mpeg`, `audio/mp4`, `audio/aac`, and `application/pdf` are enabled by default for Administrator-role users on most WordPress sites). PDF preview / thumbnail rendering is intentionally out of scope: the emitted `core/file` block is link + Download button only. Unsupported or missing media generates warnings without stopping unrelated entries; video, audio, and PDF embeds whose MIME the site refuses (most notably `.lpcm` linear-PCM audio on default WordPress allowlists, or sites that have explicitly stripped `application/pdf` from `upload_mimes`) are dropped with a privacy-safe warning (no `core/file` fallback is emitted). To support additional video, audio, or PDF MIMEs, extend the uploader allowlist via the standard `upload_mimes` filter. New imported media is stored in a protected uploads subfolder and served through a nonce- and permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
 
 = Does the plugin contact external services? =
 
