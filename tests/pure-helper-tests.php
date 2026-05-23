@@ -273,13 +273,51 @@ if ( ! function_exists( 'wp_get_attachment_url' ) ) {
 		if ( 304 === $id ) {
 			return 'https://example.test/304-fallback.mp3';
 		}
+		// #59 PDF stubs: emulate private-uploads URLs for IDs with various pdfName / basename setups.
+		if ( in_array( $id, array( 701, 702, 703, 704 ), true ) ) {
+			return 'https://example.test/wp-content/uploads/day-one-importer-private/sample-' . $id . '.pdf';
+		}
+		// #59 R6.5 tier 3 (basename) coverage: URL with a parseable basename, attachment is Day One (meta says so).
+		if ( 705 === $id ) {
+			return 'https://example.test/wp-content/uploads/day-one-importer-private/Tier3-Basename.pdf';
+		}
+		// #59 R6.5 tier 4 ([PDF] floor) coverage: URL has no path (only authority) so
+		// basename-without-extension is '' and the [PDF] floor fires. The
+		// attachment IS Day One (meta says so) so the defensive guard accepts
+		// the URL even though it lacks the private uploads subdir.
+		if ( 706 === $id ) {
+			return 'https://example.test';
+		}
+		// #59 R6.5 defensive: ID 305 returns a non-private URL so serialize_file_block refuses to emit.
+		if ( 305 === $id ) {
+			return 'https://example.test/305-fallback.pdf';
+		}
 		return false;
 	}
 }
 
-// #58 R6.2: minimal get_post_meta stub keyed by attachment ID + meta key.
+if ( ! function_exists( 'wp_parse_url' ) ) {
+	function wp_parse_url( $url, $component = -1 ) {
+		if ( -1 === $component ) {
+			return parse_url( $url );
+		}
+		return parse_url( $url, $component );
+	}
+}
+
+if ( ! function_exists( 'esc_html__' ) ) {
+	function esc_html__( $text, $domain = 'default' ) {
+		unset( $domain );
+		return htmlspecialchars( (string) $text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
+	}
+}
+
+// #58 R6.2 + #59 R6.2 / R6.5: minimal get_post_meta stub keyed by attachment ID + meta key.
 // IDs 601/603 have a non-empty _day_one_audio_title; ID 602 has an empty title.
 // ID 304 has no _day_one_source marker (used to verify the defensive guard).
+// IDs 701/703/704 (Day One PDFs) carry _day_one_pdf_name; ID 702 omits it (basename fallback).
+// ID 705 has no _day_one_pdf_name (basename tier coverage); ID 706 forces the [PDF] floor.
+// ID 305 has no _day_one_source marker (PDF defensive guard).
 if ( ! function_exists( 'get_post_meta' ) ) {
 	function get_post_meta( $post_id, $key, $single = false ) {
 		$post_id = (int) $post_id;
@@ -295,6 +333,36 @@ if ( ! function_exists( 'get_post_meta' ) ) {
 			603 => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_audio_title' => 'mixed-sequence audio',
+			),
+			701 => array(
+				'_day_one_source'      => 'day-one-export',
+				'_day_one_pdf_name'    => 'Fictional PDF Sample',
+				'_day_one_media_kind'  => 'pdf',
+			),
+			702 => array(
+				'_day_one_source'      => 'day-one-export',
+				'_day_one_pdf_name'    => '',
+				'_day_one_media_kind'  => 'pdf',
+			),
+			703 => array(
+				'_day_one_source'      => 'day-one-export',
+				'_day_one_pdf_name'    => 'Tier 2 Meta Name',
+				'_day_one_media_kind'  => 'pdf',
+			),
+			704 => array(
+				'_day_one_source'      => 'day-one-export',
+				'_day_one_pdf_name'    => 'mixed-sequence pdf',
+				'_day_one_media_kind'  => 'pdf',
+			),
+			705 => array(
+				'_day_one_source'      => 'day-one-export',
+				'_day_one_pdf_name'    => '',
+				'_day_one_media_kind'  => 'pdf',
+			),
+			706 => array(
+				'_day_one_source'      => 'day-one-export',
+				'_day_one_pdf_name'    => '',
+				'_day_one_media_kind'  => 'pdf',
 			),
 		);
 		if ( isset( $store[ $post_id ][ $key ] ) ) {
@@ -1275,7 +1343,8 @@ assert_true( false !== strpos( $ac6_warning_blob, 'Skipping embedded video in Da
 assert_true( false === strpos( $ac6_warning_blob, 'video import is not yet supported' ), '#57 AC7 — #56 placeholder "video import is not yet supported" warning is no longer emitted.' );
 assert_true( false !== strpos( $ac6_warning_blob, 'Skipping embedded audio in Day One entry: referenced media file is unsupported or missing.' ), '#58 R5.3 — unresolved audio uses the privacy-safe warning text.' );
 assert_true( false === strpos( $ac6_warning_blob, 'audio import is not yet supported' ), '#58 AC7 — #56 placeholder "audio import is not yet supported" warning is no longer emitted.' );
-assert_true( false !== strpos( $ac6_warning_blob, 'PDF import is not yet supported' ), '#56 AC6 — PDF warning text still present (closes with #59).' );
+assert_true( false !== strpos( $ac6_warning_blob, 'Skipping embedded PDF in Day One entry: referenced media file is unsupported or missing.' ), '#59 R5.3 — unresolved PDF uses the privacy-safe warning text.' );
+assert_true( false === strpos( $ac6_warning_blob, 'PDF import is not yet supported' ), '#59 AC7 — #56 placeholder "PDF import is not yet supported" warning is no longer emitted.' );
 assert_true( false === strpos( $ac6_warning_blob, '#57' ), '#56 AC6 — warnings do not leak issue number #57.' );
 assert_true( false === strpos( $ac6_warning_blob, '#58' ), '#56 AC6 — warnings do not leak issue number #58.' );
 assert_true( false === strpos( $ac6_warning_blob, '#59' ), '#56 AC6 — warnings do not leak issue number #59.' );
@@ -3553,6 +3622,250 @@ $c4_aud_kses_html   = wp_kses_post( $c4_aud_single_html );
 $c4_aud_kses_blocks = parse_blocks( $c4_aud_kses_html );
 assert_true( 1 === count( $c4_aud_kses_blocks ) && 'core/audio' === $c4_aud_kses_blocks[0]['blockName'], '#58 R6.5 — wp_kses_post() round-trip preserves the core/audio block.' );
 assert_true( false !== strpos( $c4_aud_kses_html, 'wp-block-audio' ), '#58 R6.5 — wp_kses_post() preserves the wp-block-audio class.' );
+
+// --- #59 C4 — emit_media_group PDF branch + serialize_file_block (R6 / AC6, AC7, AC8, AC9). ---
+
+// Single PDF resolves to one core/file block with the expected attrs and link text from _day_one_pdf_name.
+$c4_pdf_single_results = new Day_One_Importer_Results();
+$c4_pdf_single_html    = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'pdfAttachment', 'identifier' => 'P-1' ),
+				),
+			),
+		),
+	),
+	$c4_pdf_single_results,
+	array(),
+	array(),
+	array(),
+	array( 'P-1' => 701 )
+);
+$c4_pdf_single_blocks = parse_blocks( $c4_pdf_single_html );
+assert_true( 1 === count( $c4_pdf_single_blocks ) && 'core/file' === $c4_pdf_single_blocks[0]['blockName'], '#59 AC6 — single resolved PDF embed emits one core/file block.' );
+assert_true( isset( $c4_pdf_single_blocks[0]['attrs']['id'] ) && 701 === (int) $c4_pdf_single_blocks[0]['attrs']['id'], '#59 AC6 — core/file block carries the resolved attachment ID.' );
+assert_true( isset( $c4_pdf_single_blocks[0]['attrs']['href'] ) && 'https://example.test/wp-content/uploads/day-one-importer-private/sample-701.pdf' === $c4_pdf_single_blocks[0]['attrs']['href'], '#59 AC6 — core/file block carries href = wp_get_attachment_url() (R6.5).' );
+assert_true( isset( $c4_pdf_single_blocks[0]['attrs']['showDownloadButton'] ) && true === $c4_pdf_single_blocks[0]['attrs']['showDownloadButton'], '#59 AC6 — showDownloadButton is true (R6.5).' );
+assert_true( false !== strpos( $c4_pdf_single_html, 'wp-block-file' ), '#59 R6.5 — emitted markup contains the wp-block-file class.' );
+assert_true( false !== strpos( $c4_pdf_single_html, 'wp-block-file__button' ), '#59 R6.5 — emitted markup contains the wp-block-file__button class.' );
+assert_true( false !== strpos( $c4_pdf_single_html, 'day-one-importer-private' ), '#59 R6.5 — emitted file URL points at the private uploads subdir.' );
+assert_true( false !== strpos( $c4_pdf_single_html, 'Download' ), '#59 R6.5 — emitted markup contains the literal "Download" label.' );
+assert_true( false !== strpos( $c4_pdf_single_html, 'Fictional PDF Sample' ), '#59 R6.2 — link text uses the non-empty _day_one_pdf_name meta value (tier 2).' );
+assert_true( 0 === count( $c4_pdf_single_results->get_warnings() ), '#59 AC7 — resolved PDF does not trigger the #56 placeholder warning.' );
+
+// Link-text precedence tier 2: _day_one_pdf_name meta wins over basename when explicit $name omitted (covered above by ID 701).
+// Link-text precedence tier 3: basename-without-extension when both $name and _day_one_pdf_name empty.
+$c4_pdf_tier3_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'pdfAttachment', 'identifier' => 'P-T3' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array(),
+	array(),
+	array(),
+	array( 'P-T3' => 705 )
+);
+assert_true( false !== strpos( $c4_pdf_tier3_html, 'Tier3-Basename' ), '#59 R6.5 tier 3 — basename-without-extension fallback (URL ".../Tier3-Basename.pdf" yields "Tier3-Basename").' );
+assert_true( false === strpos( $c4_pdf_tier3_html, 'Tier3-Basename.pdf</a>' ), '#59 R6.5 tier 3 — extension is stripped from the link text.' );
+
+// Link-text precedence tier 4: [PDF] floor when basename is empty.
+$c4_pdf_tier4_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'pdfAttachment', 'identifier' => 'P-T4' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array(),
+	array(),
+	array(),
+	array( 'P-T4' => 706 )
+);
+assert_true( false !== strpos( $c4_pdf_tier4_html, '[PDF]' ), '#59 R6.5 tier 4 — [PDF] floor when basename-without-extension is empty.' );
+
+// Two consecutive PDFs produce two separate core/file blocks (no gallery aggregation).
+$c4_pdf_consec_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'pdfAttachment', 'identifier' => 'P-1' ),
+					array( 'type' => 'pdfAttachment', 'identifier' => 'P-2' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array(),
+	array(),
+	array(),
+	array( 'P-1' => 701, 'P-2' => 702 )
+);
+$c4_pdf_consec_blocks = parse_blocks( $c4_pdf_consec_html );
+assert_true( 2 === count( $c4_pdf_consec_blocks ), '#59 R11.4 — two consecutive PDFs produce exactly two top-level blocks.' );
+assert_true( 'core/file' === $c4_pdf_consec_blocks[0]['blockName'] && 'core/file' === $c4_pdf_consec_blocks[1]['blockName'], '#59 R11.4 — both consecutive blocks are core/file (no gallery aggregation).' );
+assert_true( 701 === (int) $c4_pdf_consec_blocks[0]['attrs']['id'] && 702 === (int) $c4_pdf_consec_blocks[1]['attrs']['id'], '#59 R11.4 — consecutive PDFs preserve scan order in attrs[id].' );
+
+// Mixed photo, pdf, photo -- gallery splits around the PDF (K12).
+$c4_pdf_mixed_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'photo', 'identifier' => 'P-1' ),
+					array( 'type' => 'pdfAttachment', 'identifier' => 'PDF-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-2' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array( 'P-1' => 101, 'P-2' => 102 ),
+	array(),
+	array(),
+	array( 'PDF-1' => 701 )
+);
+$c4_pdf_mixed_blocks = parse_blocks( $c4_pdf_mixed_html );
+$c4_pdf_mixed_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $c4_pdf_mixed_blocks );
+assert_true( array( 'core/image', 'core/file', 'core/image' ) === $c4_pdf_mixed_names, '#59 AC9 — photo,pdf,photo sequence emits core/image, core/file, core/image in order.' );
+
+// Mixed photo, photo, pdf, video, audio, photo -- gallery splitting edge case (K12).
+$c4_pdf_split_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'photo', 'identifier' => 'P-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-2' ),
+					array( 'type' => 'pdfAttachment', 'identifier' => 'PDF-1' ),
+					array( 'type' => 'video', 'identifier' => 'V-1' ),
+					array( 'type' => 'audio', 'identifier' => 'A-1' ),
+					array( 'type' => 'photo', 'identifier' => 'P-3' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array( 'P-1' => 101, 'P-2' => 102, 'P-3' => 202 ),
+	array( 'V-1' => 502 ),
+	array( 'A-1' => 601 ),
+	array( 'PDF-1' => 701 )
+);
+$c4_pdf_split_blocks = parse_blocks( $c4_pdf_split_html );
+$c4_pdf_split_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $c4_pdf_split_blocks );
+assert_true( array( 'core/gallery', 'core/file', 'core/video', 'core/audio', 'core/image' ) === $c4_pdf_split_names, '#59 K12 — photo,photo,pdf,video,audio,photo splits into gallery,file,video,audio,image.' );
+
+// Mixed photo, video, audio, pdf -- interleaved scan order (AC9 pure-helper layer).
+$c4_pdf_quad_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'photo', 'identifier' => 'P-1' ),
+					array( 'type' => 'video', 'identifier' => 'V-1' ),
+					array( 'type' => 'audio', 'identifier' => 'A-1' ),
+					array( 'type' => 'pdfAttachment', 'identifier' => 'PDF-1' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array( 'P-1' => 101 ),
+	array( 'V-1' => 501 ),
+	array( 'A-1' => 601 ),
+	array( 'PDF-1' => 701 )
+);
+$c4_pdf_quad_blocks = parse_blocks( $c4_pdf_quad_html );
+$c4_pdf_quad_names  = array_map( static function ( $b ) {
+	return $b['blockName'];
+}, $c4_pdf_quad_blocks );
+assert_true( array( 'core/image', 'core/video', 'core/audio', 'core/file' ) === $c4_pdf_quad_names, '#59 AC9 — photo,video,audio,pdf sequence emits core/image, core/video, core/audio, core/file in order.' );
+
+// Unresolved PDF identifier (not in $pdf_map) emits no block and ONE warning per missing identifier.
+$c4_pdf_miss_results = new Day_One_Importer_Results();
+$c4_pdf_miss_html    = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'pdfAttachment', 'identifier' => 'PDF-MISS' ),
+				),
+			),
+		),
+	),
+	$c4_pdf_miss_results,
+	array(),
+	array(),
+	array(),
+	array() // empty PDF map
+);
+assert_true( '' === $c4_pdf_miss_html, '#59 AC8 — unresolved PDF emits no block.' );
+$c4_pdf_miss_warnings = $c4_pdf_miss_results->get_warnings();
+assert_true( 1 === count( $c4_pdf_miss_warnings ), '#59 AC8 — unresolved PDF records exactly one warning.' );
+assert_true( $c4_pdf_miss_warnings[0] === 'Skipping embedded PDF in Day One entry: referenced media file is unsupported or missing.', '#59 R5.3 — warning text is privacy-safe (no identifier).' );
+assert_true( false === strpos( $c4_pdf_miss_warnings[0], 'PDF-MISS' ), '#59 R5.3 — warning does not leak the embed identifier.' );
+
+// Two distinct unresolved PDFs produce TWO warnings (per-identifier, NOT deduped).
+$c4_pdf_n_results = new Day_One_Importer_Results();
+Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'pdfAttachment', 'identifier' => 'PDF-MISS-A' ),
+					array( 'type' => 'pdfAttachment', 'identifier' => 'PDF-MISS-B' ),
+				),
+			),
+		),
+	),
+	$c4_pdf_n_results,
+	array(),
+	array(),
+	array(),
+	array()
+);
+assert_true( 2 === count( $c4_pdf_n_results->get_warnings() ), '#59 AC8 — two distinct unresolved PDFs produce two warnings (per-identifier, not deduped).' );
+
+// serialize_file_block defensive guard: an attachment URL outside the private uploads subdir is skipped.
+$c4_pdf_guard_html = Day_One_Importer_Content::convert_rich_text_to_content(
+	array(
+		'contents' => array(
+			array(
+				'embeddedObjects' => array(
+					array( 'type' => 'pdfAttachment', 'identifier' => 'PDF-OUTSIDE' ),
+				),
+			),
+		),
+	),
+	new Day_One_Importer_Results(),
+	array(),
+	array(),
+	array(),
+	array( 'PDF-OUTSIDE' => 305 ) // stub returns a non-private URL and no Day One meta for ID 305.
+);
+assert_true( '' === $c4_pdf_guard_html, '#59 R6.5 — emitter refuses to serialize a file block when the attachment is not Day One and the URL is not from the private uploads subdir.' );
+
+// wp_kses_post() round-trip on the file block: wp-block-file class survives, parse_blocks still recognizes core/file.
+$c4_pdf_kses_html   = wp_kses_post( $c4_pdf_single_html );
+$c4_pdf_kses_blocks = parse_blocks( $c4_pdf_kses_html );
+assert_true( 1 === count( $c4_pdf_kses_blocks ) && 'core/file' === $c4_pdf_kses_blocks[0]['blockName'], '#59 R6.5 — wp_kses_post() round-trip preserves the core/file block.' );
+assert_true( false !== strpos( $c4_pdf_kses_html, 'wp-block-file' ), '#59 R6.5 — wp_kses_post() preserves the wp-block-file class.' );
 
 // --- #59 R1 / R11.4 — Parser normalizes entry.pdfAttachments[] (issue #59 C1). ---
 

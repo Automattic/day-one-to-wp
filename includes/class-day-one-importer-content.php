@@ -724,8 +724,9 @@ class Day_One_Importer_Content {
 	 * @return string
 	 */
 	private static function emit_media_group( array $items, array $photo_map, array $video_map, array $audio_map, array $pdf_map, ?Day_One_Importer_Results $results ) {
-		$resolved     = array(); // Scan-ordered tagged records: ['type' => 'photo'|'video', 'attachment_id' => int].
-		$warned_types = array(); // Per-entry-per-type dedupe for unsupported media (#56 R8 / Risk 5).
+		// Scan-ordered tagged records. Each entry maps a `type` token (photo,
+		// video, audio, or pdf) to its resolved attachment_id integer.
+		$resolved = array();
 
 		foreach ( $items as $item ) {
 			$embeds = isset( $item['embeddedObjects'] ) && is_array( $item['embeddedObjects'] ) ? $item['embeddedObjects'] : array();
@@ -787,12 +788,19 @@ class Day_One_Importer_Content {
 				}
 
 				if ( 'pdfAttachment' === $type ) {
-					if ( ! isset( $warned_types['pdfAttachment'] ) ) {
-						$warned_types['pdfAttachment'] = true;
-						if ( null !== $results ) {
-							// Tracked by issue #59 (internal traceability only).
-							$results->add_warning( __( 'Skipping embedded PDF attachment; PDF import is not yet supported.', 'day-one-importer' ) );
-						}
+					// #59 R6.2 — resolve against $pdf_map; missing identifier OR MIME-rejected
+					// surfaces here as "not in map" (the media stage already dropped the embed).
+					// Emit one warning per missing identifier (no per-type dedupe; matches the
+					// audio precedent).
+					if ( '' !== $identifier && isset( $pdf_map[ $identifier ] ) ) {
+						$resolved[] = array(
+							'type'          => 'pdf',
+							'attachment_id' => (int) $pdf_map[ $identifier ],
+						);
+					} elseif ( null !== $results ) {
+						$results->add_warning(
+							__( 'Skipping embedded PDF in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+						);
 					}
 					continue;
 				}
@@ -806,8 +814,8 @@ class Day_One_Importer_Content {
 		}
 
 		// #57 R6.4 — walk the scan-ordered list. Accumulate consecutive photo
-		// records into an image (n=1) or gallery (n>=2). Video records flush the
-		// pending photo run and then emit one core/video block each.
+		// records into an image (n=1) or gallery (n>=2). Video / audio / pdf
+		// records flush the pending photo run and then emit one block each.
 		$output       = '';
 		$photo_run    = array();
 		$flush_photos = static function () use ( &$photo_run, &$output ) {
@@ -844,6 +852,11 @@ class Day_One_Importer_Content {
 			if ( 'audio' === $record['type'] ) {
 				$flush_photos();
 				$output .= self::serialize_audio_block( (int) $record['attachment_id'] );
+				continue;
+			}
+			if ( 'pdf' === $record['type'] ) {
+				$flush_photos();
+				$output .= self::serialize_file_block( (int) $record['attachment_id'] );
 			}
 		}
 		$flush_photos();
@@ -1403,6 +1416,91 @@ class Day_One_Importer_Content {
 		$inner_html .= '</figure>';
 
 		return self::serialize_block( 'audio', $attrs, $inner_html );
+	}
+
+	/**
+	 * Serialize a core/file Gutenberg block for a Day One PDF attachment.
+	 *
+	 * Producer contract pinned by spec R6.5:
+	 *   <!-- wp:file {"id":<id>,"href":"<url>","showDownloadButton":true} -->
+	 *   <div class="wp-block-file"><a href="<url>"><link-text-escaped></a><a href="<url>" class="wp-block-file__button wp-element-button" download aria-describedby="wp-block-file--media-<id>">Download</a></div>
+	 *   <!-- /wp:file -->
+	 *
+	 * Link-text precedence chain (resolved at block-emit time):
+	 *   1. Explicit `$name` argument when non-empty (test-only injection path).
+	 *   2. `_day_one_pdf_name` post meta when non-empty.
+	 *   3. Basename of the attached file with extension stripped.
+	 *   4. Final fallback: literal string `[PDF]`.
+	 *
+	 * Tests assert semantically via parse_blocks() + substring match, never
+	 * byte-equality.
+	 *
+	 * @param int    $attachment_id Attachment ID.
+	 * @param string $name          Optional explicit link text (test-only injection).
+	 * @return string Empty string when the attachment URL is unavailable or not
+	 *                served from the Day One private uploads directory.
+	 */
+	private static function serialize_file_block( $attachment_id, $name = '' ) {
+		$attachment_id = (int) $attachment_id;
+		if ( ! $attachment_id || ! function_exists( 'wp_get_attachment_url' ) ) {
+			return '';
+		}
+
+		$url = wp_get_attachment_url( $attachment_id );
+		if ( ! is_string( $url ) || '' === $url ) {
+			return '';
+		}
+
+		// Defensive check (#59 R6.5): refuse to emit a block for an attachment
+		// the importer did not create. Same two-tier check as
+		// serialize_audio_block: prefer `_day_one_source = day-one-export`
+		// post meta; fall back to URL substring match for pure-helper mode.
+		$is_day_one_attachment = false;
+		if ( function_exists( 'get_post_meta' ) ) {
+			$is_day_one_attachment = ( 'day-one-export' === (string) get_post_meta( $attachment_id, '_day_one_source', true ) );
+		}
+		if ( ! $is_day_one_attachment ) {
+			if ( ! class_exists( 'Day_One_Importer_Media' ) || false === strpos( $url, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ) ) {
+				return '';
+			}
+		}
+
+		// #59 R6.5 — link-text precedence chain.
+		$link_text = (string) $name;
+		if ( '' === $link_text && function_exists( 'get_post_meta' ) ) {
+			$link_text = (string) get_post_meta( $attachment_id, '_day_one_pdf_name', true );
+		}
+		if ( '' === $link_text ) {
+			$basename = '';
+			if ( function_exists( 'wp_parse_url' ) ) {
+				$path = wp_parse_url( $url, PHP_URL_PATH );
+			} else {
+				$parts = parse_url( $url );
+				$path  = is_array( $parts ) && isset( $parts['path'] ) ? $parts['path'] : '';
+			}
+			if ( is_string( $path ) && '' !== $path ) {
+				$basename = pathinfo( basename( $path ), PATHINFO_FILENAME );
+			}
+			if ( '' !== $basename ) {
+				$link_text = $basename;
+			}
+		}
+		if ( '' === $link_text ) {
+			$link_text = '[PDF]';
+		}
+
+		$attrs       = array(
+			'id'                 => $attachment_id,
+			'href'               => $url,
+			'showDownloadButton' => true,
+		);
+		$escaped_url = esc_url( $url );
+		$inner_html  = '<div class="wp-block-file"><a href="' . $escaped_url . '">' . esc_html( $link_text ) . '</a>'
+			. '<a href="' . $escaped_url . '" class="wp-block-file__button wp-element-button" download'
+			. ' aria-describedby="wp-block-file--media-' . $attachment_id . '">'
+			. esc_html__( 'Download', 'day-one-importer' ) . '</a></div>';
+
+		return self::serialize_block( 'file', $attrs, $inner_html );
 	}
 
 	/**
