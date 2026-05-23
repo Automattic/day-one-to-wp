@@ -24,6 +24,26 @@
  * Verify size <= 50 KB (#58 R11.2 / K1). If over, lower the bitrate further
  * (-b:a 24k) or drop sample rate to 16000. Output MUST remain .mp3.
  *
+ * PDF fixture regeneration (spec #59 R11.2). The canonical path is a
+ * hand-crafted minimal one-page PDF (path 1; ~300 bytes; no embedded fonts;
+ * blank MediaBox). The structure is:
+ *   %PDF-1.4
+ *   1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+ *   2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
+ *   3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj
+ *   xref
+ *   0 4
+ *   <byte offsets per object, formatted as `nnnnnnnnnn 00000 n \n`>
+ *   trailer<</Size 4/Root 1 0 R>>
+ *   startxref
+ *   <byte offset of xref>
+ *   %%EOF
+ * Commit the file as tests/fixtures/day-one-fictional/pdfs/<lowercase md5>.pdf
+ * (rename after computing md5_file()). Verify size <= 5 KB (#59 R11.2 / K1).
+ * A pandoc-based fallback path is documented in spec R11.2 but is NOT used
+ * by CI -- the implementer commits the file pre-made; this build tool
+ * validates the committed md5 only.
+ *
  * @package Day_One_Importer
  */
 
@@ -175,6 +195,39 @@ function day_one_fixture_validate_json_file( $json_file, $source_dir ) {
 				$size = filesize( $audio_path );
 				if ( $size > 50 * 1024 ) {
 					day_one_fixture_fail( "Audio fixture {$md5}.{$format} exceeds the 50 KB cap ({$size} bytes); see header for regeneration command." );
+				}
+			}
+		}
+
+		if ( ! empty( $entry['pdfAttachments'] ) ) {
+			if ( ! is_array( $entry['pdfAttachments'] ) ) {
+				day_one_fixture_fail( "pdfAttachments for entry {$entry_index} must be an array." );
+			}
+
+			foreach ( $entry['pdfAttachments'] as $pdf_index => $pdf ) {
+				if ( ! is_array( $pdf ) ) {
+					day_one_fixture_fail( "PDF {$pdf_index} for entry {$entry_index} is not an object." );
+				}
+
+				// #59 R1.3 — PDF records have no `type`/`format` field; extension is hardcoded.
+				$md5 = isset( $pdf['md5'] ) && is_scalar( $pdf['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $pdf['md5'] ) ) : '';
+				if ( '' === $md5 ) {
+					day_one_fixture_fail( "PDF {$pdf_index} for entry {$entry_index} needs md5 metadata." );
+				}
+
+				$pdf_path = $source_dir . '/pdfs/' . $md5 . '.pdf';
+				if ( ! is_file( $pdf_path ) ) {
+					day_one_fixture_fail( "PDF file missing for metadata {$md5}.pdf." );
+				}
+
+				$actual_md5 = md5_file( $pdf_path );
+				if ( $actual_md5 !== $md5 ) {
+					day_one_fixture_fail( "PDF file MD5 mismatch for {$md5}.pdf; actual hash is {$actual_md5}." );
+				}
+
+				$size = filesize( $pdf_path );
+				if ( $size > 5 * 1024 ) {
+					day_one_fixture_fail( "PDF fixture {$md5}.pdf exceeds the 5 KB cap ({$size} bytes); see header for hand-crafted minimal-PDF skeleton (#59 R11.2)." );
 				}
 			}
 		}

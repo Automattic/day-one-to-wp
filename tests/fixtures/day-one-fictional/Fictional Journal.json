@@ -1201,6 +1201,158 @@
           "title": "mixed-sequence audio"
         }
       ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0024",
+      "creationDate": "2031-05-07T08:00:00Z",
+      "modifiedDate": "2031-05-07T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Inline PDF embed.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Before the PDF.\n"
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "pdfAttachment",
+                "identifier": "F1C7100A00000000000000000059PD01"
+              }
+            ]
+          },
+          {
+            "attributes": {},
+            "text": "After the PDF."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "pdf",
+        "embed"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [],
+      "videos": [],
+      "audios": [],
+      "pdfAttachments": [
+        {
+          "identifier": "F1C7100A00000000000000000059PD01",
+          "md5": "65206568723b92ce9a928d0fb0ebed49",
+          "pdfName": "Fictional PDF Sample",
+          "orderInEntry": 0,
+          "fileSize": 303
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0025",
+      "creationDate": "2031-05-08T08:00:00Z",
+      "modifiedDate": "2031-05-08T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Interleaved photo, video, audio, pdf.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0001"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "video",
+                "identifier": "36AFEC058A8640F98420344B2CCCD145"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "audio",
+                "identifier": "A1B2C3D400000000000000000058AU01"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "pdfAttachment",
+                "identifier": "F1C7100A00000000000000000059PD01"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "pdf",
+        "interleaved"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0001",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-05-08T08:00:00Z",
+          "orderInEntry": 0,
+          "width": 64,
+          "height": 64
+        }
+      ],
+      "videos": [
+        {
+          "identifier": "36AFEC058A8640F98420344B2CCCD145",
+          "md5": "9278c8334f6b4af7bbb1a5dd9a6545f6",
+          "type": "mov",
+          "filename": "lantern-clip.mov",
+          "date": "2031-05-08T08:00:00Z",
+          "orderInEntry": 1,
+          "width": 320,
+          "height": 180,
+          "duration": 1.0
+        }
+      ],
+      "audios": [
+        {
+          "identifier": "A1B2C3D400000000000000000058AU01",
+          "md5": "19f9bc2c348dd7d9615641233a845728",
+          "format": "mp3",
+          "filename": "sample-1s.mp3",
+          "date": "2031-05-08T08:00:00Z",
+          "orderInEntry": 2,
+          "duration": 1.0,
+          "title": "mixed-sequence audio"
+        }
+      ],
+      "pdfAttachments": [
+        {
+          "identifier": "F1C7100A00000000000000000059PD01",
+          "md5": "65206568723b92ce9a928d0fb0ebed49",
+          "pdfName": "Fictional PDF Sample",
+          "orderInEntry": 3,
+          "fileSize": 303
+        }
+      ]
     }
   ]
 }
