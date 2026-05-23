@@ -968,9 +968,72 @@ if ( $using_default_zip ) {
 		day_one_importer_wp_env_assert( array( 'core/image', 'core/video', 'core/audio' ) === $entry_0023_top_names, '#58 AC9 / AC16 — entry 0023 emits core/image, core/video, core/audio in inline order.' );
 	}
 
+	// --- #59 — PDF embed assertions (entries 0024 + 0025). ---
+
+	$day_one_importer_59_pdf_attachment_id = 0;
+	$entry_0024_post_id                    = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0024'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0024'] : 0;
+	day_one_importer_wp_env_assert( $entry_0024_post_id > 0, '#59 AC6 — fictional entry 0024 (PDF embed) was imported.' );
+	if ( $entry_0024_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0024_content = (string) get_post_field( 'post_content', $entry_0024_post_id );
+		$entry_0024_blocks  = parse_blocks( $entry_0024_content );
+		$entry_0024_files   = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0024_blocks, 'core/file', $entry_0024_files );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0024_files ), '#59 AC6 / AC16 — entry 0024 contains exactly one core/file block.' );
+
+		$entry_0024_pdf_id = isset( $entry_0024_files[0]['attrs']['id'] ) ? (int) $entry_0024_files[0]['attrs']['id'] : 0;
+		day_one_importer_wp_env_assert( $entry_0024_pdf_id > 0, '#59 AC6 — entry 0024 file block carries a positive attachment ID.' );
+		$day_one_importer_59_pdf_attachment_id = $entry_0024_pdf_id;
+
+		// #59 AC16 — block href matches wp_get_attachment_url().
+		$expected_pdf_url = (string) wp_get_attachment_url( $entry_0024_pdf_id );
+		$entry_0024_href  = isset( $entry_0024_files[0]['attrs']['href'] ) ? (string) $entry_0024_files[0]['attrs']['href'] : '';
+		day_one_importer_wp_env_assert( $expected_pdf_url === $entry_0024_href, '#59 AC6 — entry 0024 core/file href equals wp_get_attachment_url().' );
+		day_one_importer_wp_env_assert( isset( $entry_0024_files[0]['attrs']['showDownloadButton'] ) && true === $entry_0024_files[0]['attrs']['showDownloadButton'], '#59 AC6 / AC16 — entry 0024 core/file showDownloadButton is true.' );
+
+		// #59 AC16 — attachment parent linkage + private uploads URL + media_kind marker.
+		day_one_importer_wp_env_assert( (int) get_post( $entry_0024_pdf_id )->post_parent === $entry_0024_post_id, '#59 AC16 — entry 0024 PDF attachment is parented to its post.' );
+		day_one_importer_wp_env_assert( 'pdf' === (string) get_post_meta( $entry_0024_pdf_id, '_day_one_media_kind', true ), '#59 AC4 — entry 0024 PDF attachment carries _day_one_media_kind = "pdf".' );
+		$entry_0024_pdf_file = (string) get_attached_file( $entry_0024_pdf_id );
+		day_one_importer_wp_env_assert( '' !== $entry_0024_pdf_file && false !== strpos( $entry_0024_pdf_file, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ), '#59 AC16 — entry 0024 PDF file lives under the private uploads subdir on disk.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0024_href, 'action=' . Day_One_Importer_Media::PRIVATE_MEDIA_ACTION ), '#59 AC16 — entry 0024 PDF URL routes through the authenticated private-media endpoint.' );
+
+		// #59 AC6 / AC16 — link text matches the fixture's pdfName.
+		$entry_0024_pdf_name_meta = (string) get_post_meta( $entry_0024_pdf_id, '_day_one_pdf_name', true );
+		day_one_importer_wp_env_assert( 'Fictional PDF Sample' === $entry_0024_pdf_name_meta, '#59 R11.5 / AC4 — entry 0024 _day_one_pdf_name matches the fixture pdfName "Fictional PDF Sample".' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0024_content, esc_html( 'Fictional PDF Sample' ) ), '#59 AC6 / AC16 — entry 0024 post body contains the fixture pdfName as link text.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0024_content, 'wp-block-file__button' ), '#59 AC16 — entry 0024 post body contains a wp-block-file__button Download button.' );
+		day_one_importer_wp_env_assert( false !== strpos( $entry_0024_content, 'Download' ), '#59 AC16 — entry 0024 post body contains the literal "Download" label.' );
+	}
+
+	// #59 AC16 — media_imported on the first pass includes the PDF attachment.
+	day_one_importer_wp_env_assert( $media >= 4, '#59 AC16 — first-pass media_imported includes the photo, video, audio, and PDF attachments from the fixture.' );
+
+	// #59 AC7 — the obsolete #56 placeholder warning is gone.
+	$first_warnings_pdf = is_object( $first ) && method_exists( $first, 'get_warnings' ) ? (array) $first->get_warnings() : array();
+	foreach ( $first_warnings_pdf as $warning ) {
+		day_one_importer_wp_env_assert( false === strpos( (string) $warning, 'PDF import is not yet supported' ), '#59 AC7 — the #56 placeholder "PDF import is not yet supported" warning is no longer emitted.' );
+	}
+
+	// #59 AC9 / AC16 — entry 0025 emits core/image, core/video, core/audio, core/file in inline order.
+	$entry_0025_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0025'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0025'] : 0;
+	day_one_importer_wp_env_assert( $entry_0025_post_id > 0, '#59 AC9 — fictional entry 0025 (interleaved photo+video+audio+pdf) was imported.' );
+	if ( $entry_0025_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0025_content   = (string) get_post_field( 'post_content', $entry_0025_post_id );
+		$entry_0025_blocks    = parse_blocks( $entry_0025_content );
+		$entry_0025_top_names = array();
+		foreach ( $entry_0025_blocks as $entry_0025_block ) {
+			$entry_0025_block_name = isset( $entry_0025_block['blockName'] ) ? (string) $entry_0025_block['blockName'] : '';
+			if ( '' !== $entry_0025_block_name ) {
+				$entry_0025_top_names[] = $entry_0025_block_name;
+			}
+		}
+		day_one_importer_wp_env_assert( array( 'core/image', 'core/video', 'core/audio', 'core/file' ) === $entry_0025_top_names, '#59 AC9 / AC16 — entry 0025 emits core/image, core/video, core/audio, core/file in inline order.' );
+	}
+
 	// Stash for rerun-identity check below.
 	$GLOBALS['day_one_importer_57_video_attachment_id'] = $day_one_importer_57_video_attachment_id;
 	$GLOBALS['day_one_importer_58_audio_attachment_id'] = $day_one_importer_58_audio_attachment_id;
+	$GLOBALS['day_one_importer_59_pdf_attachment_id']   = $day_one_importer_59_pdf_attachment_id;
 }
 
 $second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
@@ -1019,6 +1082,28 @@ if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_58_audio_attachme
 		day_one_importer_wp_env_collect_blocks_by_name( $rerun_audio_blocks, 'core/audio', $rerun_audio_records );
 		$rerun_audio_id = ! empty( $rerun_audio_records ) && isset( $rerun_audio_records[0]['attrs']['id'] ) ? (int) $rerun_audio_records[0]['attrs']['id'] : 0;
 		day_one_importer_wp_env_assert( $rerun_audio_id === $expected_audio_id, '#58 AC10 / AC16 — entry 0022 audio attachment ID is identical across the first import and the rerun (no duplicate attachment).' );
+	}
+}
+
+// #59 AC10 / AC16 — rerun identity: the entry-24 PDF attachment ID is stable
+// across the first import and this rerun (no duplicate attachment created).
+if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_59_pdf_attachment_id'] ) ) {
+	$expected_pdf_id    = (int) $GLOBALS['day_one_importer_59_pdf_attachment_id'];
+	$pdf_post_id_lookup = 0;
+	foreach ( $imported_posts as $maybe_pid ) {
+		if ( 'FICTIONAL-SAMPLE-ENTRY-0024' === (string) get_post_meta( (int) $maybe_pid, '_day_one_uuid', true ) ) {
+			$pdf_post_id_lookup = (int) $maybe_pid;
+			break;
+		}
+	}
+	day_one_importer_wp_env_assert( $pdf_post_id_lookup > 0, '#59 AC10 — entry 0024 post is still discoverable after the rerun.' );
+	if ( $pdf_post_id_lookup > 0 && function_exists( 'parse_blocks' ) ) {
+		$rerun_pdf_content = (string) get_post_field( 'post_content', $pdf_post_id_lookup );
+		$rerun_pdf_blocks  = parse_blocks( $rerun_pdf_content );
+		$rerun_pdf_records = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $rerun_pdf_blocks, 'core/file', $rerun_pdf_records );
+		$rerun_pdf_id = ! empty( $rerun_pdf_records ) && isset( $rerun_pdf_records[0]['attrs']['id'] ) ? (int) $rerun_pdf_records[0]['attrs']['id'] : 0;
+		day_one_importer_wp_env_assert( $rerun_pdf_id === $expected_pdf_id, '#59 AC10 / AC16 — entry 0024 PDF attachment ID is identical across the first import and the rerun (no duplicate attachment).' );
 	}
 }
 
