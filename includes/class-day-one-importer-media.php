@@ -1267,6 +1267,16 @@ class Day_One_Importer_Media {
 	/**
 	 * Apply Day One marker metadata as early as possible after attachment creation.
 	 *
+	 * Writes the following attachment meta when the corresponding Day One photo
+	 * record carries the underlying value:
+	 *  - `_day_one_media_identifier`, `_day_one_media_md5`, `_day_one_uuid`,
+	 *    `_day_one_source` (always written)
+	 *  - `_day_one_media_date`, `_day_one_original_filename`,
+	 *    `_day_one_width`, `_day_one_height` (only when present in `$photo`)
+	 *  - `_day_one_photo_format` (issue #60 R1): lowercased `$photo['type']`.
+	 *    When `type` is missing or empty the key is left untouched, preserving
+	 *    any pre-existing value across a resume/refetch (R1.1 second clause).
+	 *
 	 * @param int                 $attachment_id Attachment ID.
 	 * @param string              $uuid Entry UUID.
 	 * @param string              $identifier Media identifier.
@@ -1295,6 +1305,14 @@ class Day_One_Importer_Media {
 		}
 		if ( ! empty( $photo['height'] ) ) {
 			update_post_meta( $attachment_id, '_day_one_height', absint( $photo['height'] ) );
+		}
+
+		// #60 R1.1 — Uniform photo-format marker. Skip the write entirely when
+		// `type` is missing/empty so a refetch/resume call cannot wipe a prior
+		// value (no update_post_meta with '', no delete_post_meta).
+		$photo_format = isset( $photo['type'] ) ? strtolower( (string) $photo['type'] ) : '';
+		if ( '' !== $photo_format ) {
+			update_post_meta( $attachment_id, '_day_one_photo_format', $photo_format );
 		}
 	}
 
