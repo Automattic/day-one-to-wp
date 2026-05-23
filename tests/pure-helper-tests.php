@@ -2715,6 +2715,17 @@ Day_One_Importer_Cleanup::remove( $public_upload_root );
 $private_media_url = Day_One_Importer_Media::private_media_url( 123 );
 assert_true( 'https://example.test/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=123&nonce=day-one-nonce' === $private_media_url, 'Private media URL uses the authenticated AJAX endpoint with a nonce.' );
 
+// #79 — serve_private_media() must emit the hardened header set on success.
+// header() is a global side effect that calls exit on the real path, so we
+// assert the source-level contract is present in the function body instead of
+// invoking it. This codifies the header set against accidental regression.
+$media_source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/class-day-one-importer-media.php' );
+assert_true( false !== strpos( $media_source, "header( 'Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0' );" ), '#79 — serve_private_media() emits Cache-Control: private, no-store after nocache_headers().' );
+assert_true( false !== strpos( $media_source, "header( 'X-Content-Type-Options: nosniff' );" ), '#79 — serve_private_media() emits X-Content-Type-Options: nosniff.' );
+assert_true( false !== strpos( $media_source, "header( 'Referrer-Policy: same-origin' );" ), '#79 — serve_private_media() emits Referrer-Policy: same-origin.' );
+assert_true( false !== strpos( $media_source, "sanitize_file_name( basename( \$file ) )" ), '#79 — serve_private_media() builds the Content-Disposition filename through sanitize_file_name( basename() ).' );
+assert_true( false !== strpos( $media_source, "header( 'Content-Disposition: inline; filename=\"' . \$disposition_filename . '\"' );" ), '#79 — serve_private_media() emits Content-Disposition: inline with the sanitized basename.' );
+
 $tmp = sys_get_temp_dir() . '/day-one-importer-test-' . uniqid();
 mkdir( $tmp . '/Export/photos', 0777, true );
 file_put_contents( $tmp . '/Export/photos/abcdef0123456789abcdef0123456789.jpeg', 'fake' );

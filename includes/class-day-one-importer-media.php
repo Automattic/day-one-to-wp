@@ -1738,9 +1738,17 @@ class Day_One_Importer_Media {
 		}
 
 		nocache_headers();
+		header( 'Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0' );
 		header( 'Content-Type: ' . $mime );
 		header( 'Content-Length: ' . absint( filesize( $file ) ) );
 		header( 'X-Content-Type-Options: nosniff' );
+		header( 'Referrer-Policy: same-origin' );
+
+		$disposition_filename = sanitize_file_name( basename( $file ) );
+		if ( '' !== $disposition_filename ) {
+			header( 'Content-Disposition: inline; filename="' . $disposition_filename . '"' );
+		}
+
 		readfile( $file );
 		exit;
 	}

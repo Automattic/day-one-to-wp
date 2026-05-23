@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.20
+Stable tag: 0.2.21
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,9 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.21 =
+* Harden private-media response headers. `Day_One_Importer_Media::serve_private_media()` now emits `Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0` (augmenting `nocache_headers()` with `private` and `no-store` so downstream proxies cannot retain the nonce'd response), `Referrer-Policy: same-origin` (so the auth-nonce'd URL is not leaked via `Referer` when an embedded `<img>` is followed off-site), and `Content-Disposition: inline; filename="<sanitized basename>"` (explicit intent + a sensible Save As filename, with the on-disk basename run through `sanitize_file_name()` so it cannot be tampered with via header injection). The existing `Content-Type`, `Content-Length`, and `X-Content-Type-Options: nosniff` headers are unchanged. The `<img>` src URL is unchanged, so existing posts continue to render. No `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
 
 = 0.2.20 =
 * Defer admin-only files on non-admin requests. `day-one-importer.php` now wraps the two heaviest admin/AJAX-only requires (`class-day-one-importer-admin.php`, `class-day-one-importer-jobs-controller.php`, ~750 LOC combined) in an `is_admin() || DOING_AJAX || WP_CLI` gate, so a front-end pageview no longer parses those files. `Day_One_Importer_Plugin::init()` mirrors the same condition for hook registration. The WP-Cron job-processing callback (`Day_One_Importer_Job_Store::CRON_HOOK`) and the daily cleanup callback are now registered unconditionally from `Day_One_Importer_Plugin` so cron still fires on front-end pageviews without loading the admin-only controller — the controller's previous `cron_process` method moved into `Day_One_Importer_Plugin::cron_process_job()` and lazy-loads the store and job processor only when cron actually fires. The private-media front-end endpoint (`wp_get_attachment_url` filter + `wp_ajax_day_one_importer_media`) remains registered on every request. No site-visible behaviour change for admin imports, AJAX polling, cron-driven job processing, or front-end private media serving; no `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
