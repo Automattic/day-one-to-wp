@@ -116,6 +116,23 @@ function day_one_importer_wp_env_collect_blocks_by_name( $blocks, $name, &$found
 	}
 }
 
+/**
+ * Collect the set of block names appearing anywhere in $blocks, including
+ * inside innerBlocks recursively. Mutates $found_names with one entry per
+ * unique block name (string keys, true values) so callers can isset() check
+ * cheaply. Used by the #63 consolidated block-type regression assertion.
+ */
+function day_one_importer_wp_env_collect_block_names( $blocks, array &$found_names ) {
+	foreach ( (array) $blocks as $block ) {
+		if ( ! empty( $block['blockName'] ) ) {
+			$found_names[ (string) $block['blockName'] ] = true;
+		}
+		if ( ! empty( $block['innerBlocks'] ) ) {
+			day_one_importer_wp_env_collect_block_names( $block['innerBlocks'], $found_names );
+		}
+	}
+}
+
 function day_one_importer_wp_env_import_from_zip( $zip_path ) {
 	$run_dir = Day_One_Importer_Cleanup::create_run_directory();
 	day_one_importer_wp_env_assert( $run_dir, 'Run directory created.' );
@@ -227,8 +244,8 @@ $created = isset( $first_counts['posts_created'] ) ? (int) $first_counts['posts_
 $media   = isset( $first_counts['media_imported'] ) ? (int) $first_counts['media_imported'] : 0;
 if ( $using_default_zip ) {
 	$entries_found = isset( $first_counts['entries_found'] ) ? (int) $first_counts['entries_found'] : 0;
-	day_one_importer_wp_env_assert( 28 === $entries_found, 'Fictional fixture parsed twenty-eight entries.' );
-	day_one_importer_wp_env_assert( 28 === $created, 'Fictional fixture created exactly twenty-eight private posts.' );
+	day_one_importer_wp_env_assert( 29 === $entries_found, 'Fictional fixture parsed twenty-nine entries.' );
+	day_one_importer_wp_env_assert( 29 === $created, 'Fictional fixture created exactly twenty-nine private posts.' );
 } else {
 	day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
 }
@@ -255,6 +272,10 @@ foreach ( $imported_post_candidates as $post_id ) {
 day_one_importer_wp_env_assert( count( $imported_posts ) === $created, 'Created post count matches query count.' );
 $found_fixture_tag      = false;
 $found_fixture_category = false;
+// #63 consolidated block-type regression accumulator: collects the set of
+// block names emitted across every imported post so the smoke can verify
+// the curated fixture exercises every supported block type at least once.
+$day_one_importer_63_all_block_names = array();
 foreach ( $imported_posts as $post_id ) {
 	$post_id = (int) $post_id;
 	day_one_importer_wp_env_assert( 'private' === get_post_status( $post_id ), 'Imported post is private.' );
@@ -277,6 +298,11 @@ foreach ( $imported_posts as $post_id ) {
 		day_one_importer_wp_env_assert( day_one_importer_wp_env_blocks_have_core_block( $blocks ), 'Imported post content parses as core blocks.' );
 		day_one_importer_wp_env_collect_blocks_by_name( $blocks, 'core/image', $image_blocks );
 		day_one_importer_wp_env_collect_blocks_by_name( $blocks, 'core/gallery', $gallery_blocks );
+		// #63 — accumulate every block name seen on this post into the
+		// fixture-wide set so the consolidated regression assertion below
+		// can verify the curated fixture exercises every supported block
+		// type at least once across the entire import.
+		day_one_importer_wp_env_collect_block_names( $blocks, $day_one_importer_63_all_block_names );
 
 		if ( function_exists( 'serialize_blocks' ) ) {
 			$reserialized = serialize_blocks( $blocks );
@@ -339,6 +365,32 @@ foreach ( $imported_posts as $post_id ) {
 if ( $using_default_zip ) {
 	day_one_importer_wp_env_assert( $found_fixture_tag, 'Expected fictional fixture tag exists on imported posts.' );
 	day_one_importer_wp_env_assert( $found_fixture_category, 'Expected fictional journal category exists on imported posts.' );
+
+	// --- #63 consolidated block-type regression assertion. ---
+	// The curated fictional fixture must exercise every block type the
+	// importer can emit today. Walk the accumulator built during the
+	// per-post loop above and fail with a clear message naming any
+	// missing block type, so adding a new emitter without a fixture
+	// entry that triggers it surfaces as a smoke failure rather than
+	// silent under-coverage.
+	$day_one_importer_63_expected_block_types = array(
+		'core/paragraph',
+		'core/heading',
+		'core/list',
+		'core/code',
+		'core/quote',
+		'core/image',
+		'core/gallery',
+		'core/video',
+		'core/audio',
+		'core/file',
+	);
+	foreach ( $day_one_importer_63_expected_block_types as $day_one_importer_63_expected_block ) {
+		day_one_importer_wp_env_assert(
+			isset( $day_one_importer_63_all_block_names[ $day_one_importer_63_expected_block ] ),
+			'#63 — block-type regression: the fictional fixture exercises ' . $day_one_importer_63_expected_block . ' at least once across the imported posts.'
+		);
+	}
 
 	// --- richText scaffold assertions (issue #53) ---
 	// Locate each scaffold fixture entry by its known UUID via post meta.
@@ -1158,6 +1210,40 @@ if ( $using_default_zip ) {
 				day_one_importer_wp_env_assert( '' === (string) get_post_meta( $entry_0001_post_id_for_62, $weather_key, true ), '#62 AC4 — entry 0001 (no source weather) carries zero rows for ' . $weather_key . '.' );
 			}
 		}
+	}
+
+	// #63 — entry 0029: two consecutive inline photo embeds with distinct
+	// identifiers and distinct md5s collapse into a single core/gallery (#56 R8
+	// cardinality: 2+ resolved photo IDs → core/gallery). The generic gallery
+	// branch in the per-post loop above (lines ~306-330) covers ordering, IDs,
+	// and nested child Image blocks; this block adds entry-specific shape
+	// assertions so the curated #63 gallery fixture is exercised by name.
+	$entry_0029_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0029'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0029'] : 0;
+	day_one_importer_wp_env_assert( $entry_0029_post_id > 0, '#63 — fictional entry 0029 (two inline photo embeds) was imported.' );
+	if ( $entry_0029_post_id > 0 && function_exists( 'parse_blocks' ) ) {
+		$entry_0029_content   = (string) get_post_field( 'post_content', $entry_0029_post_id );
+		$entry_0029_blocks    = parse_blocks( $entry_0029_content );
+		$entry_0029_galleries = array();
+		$entry_0029_images    = array();
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0029_blocks, 'core/gallery', $entry_0029_galleries );
+		day_one_importer_wp_env_collect_blocks_by_name( $entry_0029_blocks, 'core/image', $entry_0029_images );
+		day_one_importer_wp_env_assert( 1 === count( $entry_0029_galleries ), '#63 — entry 0029 emits exactly one core/gallery block.' );
+		if ( ! empty( $entry_0029_galleries ) ) {
+			$gallery_ids_0029 = isset( $entry_0029_galleries[0]['attrs']['ids'] ) && is_array( $entry_0029_galleries[0]['attrs']['ids'] ) ? array_map( 'intval', $entry_0029_galleries[0]['attrs']['ids'] ) : array();
+			day_one_importer_wp_env_assert( 2 === count( $gallery_ids_0029 ), '#63 — entry 0029 gallery carries exactly two attachment IDs in inline order.' );
+			day_one_importer_wp_env_assert( $gallery_ids_0029[0] !== $gallery_ids_0029[1], '#63 — entry 0029 gallery IDs are distinct (two photos with different md5s sideload to two attachments).' );
+		}
+		// Inline-positioning: the lead paragraph appears before the gallery.
+		$entry_0029_top_names = array();
+		foreach ( $entry_0029_blocks as $entry_0029_block ) {
+			if ( ! empty( $entry_0029_block['blockName'] ) ) {
+				$entry_0029_top_names[] = (string) $entry_0029_block['blockName'];
+			}
+		}
+		day_one_importer_wp_env_assert(
+			array( 'core/paragraph', 'core/gallery' ) === $entry_0029_top_names,
+			'#63 — entry 0029 top-level block order is paragraph, gallery (inline-positioned gallery after the lead paragraph).'
+		);
 	}
 
 	// Stash for rerun-identity check below.
