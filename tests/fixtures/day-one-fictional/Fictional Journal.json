@@ -1454,6 +1454,71 @@
         "windSpeedKPH": 9.8500003814697266,
         "weatherCode": "clear"
       }
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0029",
+      "creationDate": "2031-05-12T09:30:00Z",
+      "modifiedDate": "2031-05-12T09:30:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Two consecutive inline photo embeds for the imaginary gallery.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Two consecutive inline photo embeds for the imaginary gallery.\n"
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0029A"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0029B"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "gallery",
+        "inline-positioning"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0029A",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-05-12T09:30:00Z",
+          "orderInEntry": 0,
+          "width": 2,
+          "height": 2
+        },
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0029B",
+          "md5": "20a943a863b66c168e6fa53c83fb3320",
+          "type": "png",
+          "filename": "fictional-second-tile.png",
+          "date": "2031-05-12T09:30:00Z",
+          "orderInEntry": 1,
+          "width": 1,
+          "height": 1
+        }
+      ]
     }
   ]
 }

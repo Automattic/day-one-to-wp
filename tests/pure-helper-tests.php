@@ -2740,8 +2740,8 @@ Day_One_Importer_Cleanup::remove( $parser_dir );
 $fixture_dir     = __DIR__ . '/fixtures/day-one-fictional';
 $fixture_results = new Day_One_Importer_Results();
 $fixture_entries = $parser->parse_export( $fixture_dir, $fixture_results );
-assert_true( 28 === count( $fixture_entries ), 'Committed fictional fixture parses twenty-eight entries.' );
-assert_true( 28 === $fixture_results->get_count( 'entries_found' ), 'Committed fictional fixture reports twenty-eight found entries.' );
+assert_true( 29 === count( $fixture_entries ), 'Committed fictional fixture parses twenty-nine entries.' );
+assert_true( 29 === $fixture_results->get_count( 'entries_found' ), 'Committed fictional fixture reports twenty-nine found entries.' );
 assert_true( empty( $fixture_results->get_warnings() ), 'Committed fictional fixture parses without warnings.' );
 assert_true( ! empty( $fixture_entries[0]['photos'] ), 'Committed fictional fixture includes photo metadata.' );
 $fixture_photo_path = Day_One_Importer_Media::resolve_photo_path( $fixture_dir, $fixture_entries[0]['photos'][0] );
@@ -2764,7 +2764,7 @@ $checkpoint       = static function () use ( &$checkpoint_count ) {
 	++$checkpoint_count;
 };
 $batch_index = $parser->index_export_batch( $fixture_dir, $batch_job, $batch_results, 1.0E+30, $checkpoint );
-assert_true( ! empty( $batch_index['done'] ) && 28 === $batch_job['entries_total'], 'Batch parser indexes fixture entries into a manifest.' );
+assert_true( ! empty( $batch_index['done'] ) && 29 === $batch_job['entries_total'], 'Batch parser indexes fixture entries into a manifest.' );
 assert_true( $checkpoint_count >= 3, 'Batch parser checkpoints after safe manifest units.' );
 $manifest_entry = $parser->read_manifest_entry( $batch_job['manifest_path'], 0 );
 assert_true( is_array( $manifest_entry ) && 'FICTIONAL-SAMPLE-ENTRY-0001' === $manifest_entry['uuid'], 'Batch parser can read a manifest entry by cursor.' );
@@ -2795,7 +2795,7 @@ do {
 	$bounded_index = $parser->index_export_batch( $fixture_dir, $bounded_job, $bounded_results, 1.0E+30 );
 	++$bounded_batches;
 } while ( empty( $bounded_index['done'] ) && $bounded_batches < 100 );
-assert_true( 28 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
+assert_true( 29 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
 Day_One_Importer_Cleanup::remove( dirname( $bounded_job['manifest_path'] ) );
 $GLOBALS['day_one_importer_test_filters'] = array();
 
