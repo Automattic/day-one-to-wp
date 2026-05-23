@@ -1117,6 +1117,26 @@ class Day_One_Importer_Parser {
 			}
 		}
 
+		// #62 R1 — extract and sanitize weather alongside other normalizers.
+		$weather = null;
+		if ( isset( $raw_entry['weather'] ) ) {
+			$raw_weather = $raw_entry['weather'];
+			if ( is_array( $raw_weather ) && ! empty( $raw_weather ) ) {
+				$normalized_weather = $this->normalize_weather( $raw_weather );
+				if ( ! empty( $normalized_weather ) ) {
+					$weather = $normalized_weather;
+				}
+			} elseif ( ! is_array( $raw_weather ) ) {
+				$results->add_warning(
+					sprintf(
+						/* translators: %s: Day One entry UUID. */
+						__( 'Malformed weather for UUID %s; entry imported without weather.', 'day-one-importer' ),
+						$uuid
+					)
+				);
+			}
+		}
+
 		$normalized = array(
 			'uuid'                => $uuid,
 			'creationDate'        => isset( $raw_entry['creationDate'] ) && is_scalar( $raw_entry['creationDate'] ) ? (string) $raw_entry['creationDate'] : '',
@@ -1142,6 +1162,10 @@ class Day_One_Importer_Parser {
 
 		if ( is_array( $location ) && ! empty( $location ) ) {
 			$normalized['location'] = $location;
+		}
+
+		if ( is_array( $weather ) && ! empty( $weather ) ) {
+			$normalized['weather'] = $weather;
 		}
 
 		return $normalized;
@@ -1292,5 +1316,58 @@ class Day_One_Importer_Parser {
 		$location['raw'] = false === $encoded ? '' : $encoded;
 
 		return $location;
+	}
+
+	/**
+	 * Normalize entry weather metadata.
+	 *
+	 * Extracts the typed scalar fields (temperatureCelsius/relativeHumidity/
+	 * pressureMB/windSpeedKPH/windBearing/visibilityKM/moonPhase/moonPhaseCode/
+	 * weatherCode/conditionsDescription/weatherServiceName) when each is present
+	 * and valid, plus a `raw` JSON snapshot of the full original weather payload
+	 * (preserves extended fields like sunrise/sunset without exposing them as
+	 * separate normalized fields). See spec #62 R1.3 — each key is independently
+	 * optional; the caller drops the entire `weather` key when this method
+	 * returns an empty array. Numeric `0`/`0.0` are preserved via `isset()` gate
+	 * (spec R3.3, RK5 — `relativeHumidity: 0`, `windBearing: 0`, `moonPhase: 0`).
+	 *
+	 * @param array<string,mixed> $raw Raw weather subtree.
+	 * @return array<string,mixed>
+	 */
+	private function normalize_weather( $raw ) {
+		$weather = array();
+
+		$float_fields = array(
+			'temperatureCelsius',
+			'relativeHumidity',
+			'pressureMB',
+			'windSpeedKPH',
+			'visibilityKM',
+			'moonPhase',
+		);
+		foreach ( $float_fields as $field ) {
+			if ( isset( $raw[ $field ] ) && is_numeric( $raw[ $field ] ) ) {
+				$weather[ $field ] = (float) $raw[ $field ];
+			}
+		}
+
+		if ( isset( $raw['windBearing'] ) && is_numeric( $raw['windBearing'] ) ) {
+			$weather['windBearing'] = (int) $raw['windBearing'];
+		}
+
+		$string_fields = array( 'moonPhaseCode', 'weatherCode', 'conditionsDescription', 'weatherServiceName' );
+		foreach ( $string_fields as $field ) {
+			if ( isset( $raw[ $field ] ) && is_scalar( $raw[ $field ] ) ) {
+				$sanitized = day_one_importer_sanitize_text( (string) $raw[ $field ] );
+				if ( '' !== $sanitized ) {
+					$weather[ $field ] = $sanitized;
+				}
+			}
+		}
+
+		$encoded        = wp_json_encode( $raw, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		$weather['raw'] = false === $encoded ? '' : $encoded;
+
+		return $weather;
 	}
 }
