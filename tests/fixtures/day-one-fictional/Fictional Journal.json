@@ -1396,6 +1396,36 @@
           "height": 1
         }
       ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0027",
+      "creationDate": "2031-05-10T17:45:00Z",
+      "modifiedDate": "2031-05-10T17:45:00Z",
+      "timeZone": "America/Boise",
+      "text": "# Departure notes\n\nA fictional traveler scribbles notes about a windswept fictional airfield. The location subtree below is the canonical sample from issue #61 and is preserved verbatim so the importer can prove every location meta key round-trips.",
+      "tags": [
+        "fictional",
+        "location",
+        "travel"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "location": {
+        "region": {
+          "center": { "longitude": -112.0715115, "latitude": 43.5109408 },
+          "identifier": "<+43.51094080,-112.07151150> radius 70.70",
+          "radius": 70.698295006150417
+        },
+        "localityName": "Idaho Falls",
+        "country": "United States",
+        "timeZoneName": "America/Boise",
+        "administrativeArea": "ID",
+        "longitude": -112.07170104980469,
+        "placeName": "Idaho Falls Regional Airport",
+        "latitude": 43.511299133300781
+      }
     }
   ]
 }
