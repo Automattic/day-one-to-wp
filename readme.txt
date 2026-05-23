@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.15
+Stable tag: 0.2.16
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,11 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.16 =
+* Document the curated fictional fixture journal in `tests/fixtures/README.md`. The new doc lists every entry by UUID with the block type / parser path it exercises and the GitHub issue that introduced it, explains how to regenerate the lock-step ZIP via `php tools/build-fictional-sample-zip.php`, and walks through the six hard-coded count assertions that must be bumped when a new fixture entry is added. The fixture grows by one final entry (`FICTIONAL-SAMPLE-ENTRY-0029`, twenty-ninth) so `core/gallery` is exercised by name (two consecutive inline photo embeds with distinct identifiers and distinct md5s collapse into a single gallery, matching the #56 R8 cardinality contract: 2+ resolved photo IDs → `core/gallery`).
+* Add a consolidated block-type regression assertion to the wp-env smoke. After every imported post is walked, the smoke aggregates the set of block names emitted across the entire fixture and fails with a clear "missing block type" message if any of `core/paragraph`, `core/heading`, `core/list`, `core/code`, `core/quote`, `core/image`, `core/gallery`, `core/video`, `core/audio`, or `core/file` is absent. Adding a new emitter to the importer without a fixture entry that triggers it now surfaces as a smoke failure rather than silent under-coverage.
+* No `IMPORT_SCHEMA_VERSION` bump (still `11`) — no manifest, parser, or runner contract change. No site-visible behaviour change for existing imports.
 
 = 0.2.15 =
 * Preserve Day One `entry.weather` as post meta. The streaming parser sanitizes the weather subtree (temperatureCelsius, relativeHumidity, pressureMB, windSpeedKPH, windBearing, visibilityKM, moonPhase, moonPhaseCode, weatherCode, conditionsDescription, weatherServiceName) and stores it on the entry; the runner writes twelve `_day_one_weather_*` post meta keys during `finalize_imported_entry()` (`_day_one_weather_temperature_celsius`, `_day_one_weather_humidity`, `_day_one_weather_pressure_mb`, `_day_one_weather_wind_kph`, `_day_one_weather_wind_bearing`, `_day_one_weather_visibility_km`, `_day_one_weather_moon_phase`, `_day_one_weather_moon_phase_code`, `_day_one_weather_code`, `_day_one_weather_conditions`, `_day_one_weather_service`, and a `_day_one_weather_raw` JSON snapshot of the original payload so additional fields like sunrise/sunset are preserved without exposing them as separate fields). The full meta map is exposed through a new `day_one_importer_weather_meta` filter so downstream code can mutate values, add related keys, or skip writes by returning `null` or `false`. All writes use `update_post_meta` so reruns are idempotent. Entries with no `weather` field write zero `_day_one_weather_*` rows; a non-array `weather` value emits a single warning and the entry continues importing without weather meta. Numeric `0` / `0.0` for `relativeHumidity`, `windBearing` (due north), and `moonPhase` (new moon) is preserved (the gate is `isset()` rather than truthiness). No block-level rendering, icon mapping, or unit conversion is added in this release — meta only.
@@ -156,6 +161,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.16 =
+Documents the curated fictional fixture journal in `tests/fixtures/README.md` (per-entry table, regeneration command, extension instructions) and adds a consolidated wp-env smoke assertion that verifies every supported block type (`core/paragraph`, `core/heading`, `core/list`, `core/code`, `core/quote`, `core/image`, `core/gallery`, `core/video`, `core/audio`, `core/file`) is exercised at least once across the imported fixture. The fixture gains one final entry exercising `core/gallery`. Internal-only release — no manifest changes, no schema bump, no site-visible behaviour change for existing imports.
 
 = 0.2.15 =
 Preserves Day One `entry.weather` as twelve `_day_one_weather_*` post meta keys (temperatureCelsius, relativeHumidity, pressureMB, windSpeedKPH, windBearing, visibilityKM, moonPhase, moonPhaseCode, weatherCode, conditionsDescription, weatherServiceName, plus a `_day_one_weather_raw` JSON snapshot for the original payload). A new `day_one_importer_weather_meta` filter lets downstream code mutate the meta map or skip writes by returning `null` or `false`. Entries without a `weather` field write zero new meta rows. Numeric `0` / `0.0` values (relativeHumidity, windBearing, moonPhase) are preserved. All writes use `update_post_meta` so reruns are idempotent. Bumps the internal import schema (`10` → `11`) so re-imports refresh existing posts; posts whose source JSON includes a `weather` gain the twelve new meta keys on the next rerun.
