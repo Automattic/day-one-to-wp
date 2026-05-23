@@ -2740,8 +2740,8 @@ Day_One_Importer_Cleanup::remove( $parser_dir );
 $fixture_dir     = __DIR__ . '/fixtures/day-one-fictional';
 $fixture_results = new Day_One_Importer_Results();
 $fixture_entries = $parser->parse_export( $fixture_dir, $fixture_results );
-assert_true( 26 === count( $fixture_entries ), 'Committed fictional fixture parses twenty-six entries.' );
-assert_true( 26 === $fixture_results->get_count( 'entries_found' ), 'Committed fictional fixture reports twenty-six found entries.' );
+assert_true( 27 === count( $fixture_entries ), 'Committed fictional fixture parses twenty-seven entries.' );
+assert_true( 27 === $fixture_results->get_count( 'entries_found' ), 'Committed fictional fixture reports twenty-seven found entries.' );
 assert_true( empty( $fixture_results->get_warnings() ), 'Committed fictional fixture parses without warnings.' );
 assert_true( ! empty( $fixture_entries[0]['photos'] ), 'Committed fictional fixture includes photo metadata.' );
 $fixture_photo_path = Day_One_Importer_Media::resolve_photo_path( $fixture_dir, $fixture_entries[0]['photos'][0] );
@@ -2764,7 +2764,7 @@ $checkpoint       = static function () use ( &$checkpoint_count ) {
 	++$checkpoint_count;
 };
 $batch_index = $parser->index_export_batch( $fixture_dir, $batch_job, $batch_results, 1.0E+30, $checkpoint );
-assert_true( ! empty( $batch_index['done'] ) && 26 === $batch_job['entries_total'], 'Batch parser indexes fixture entries into a manifest.' );
+assert_true( ! empty( $batch_index['done'] ) && 27 === $batch_job['entries_total'], 'Batch parser indexes fixture entries into a manifest.' );
 assert_true( $checkpoint_count >= 3, 'Batch parser checkpoints after safe manifest units.' );
 $manifest_entry = $parser->read_manifest_entry( $batch_job['manifest_path'], 0 );
 assert_true( is_array( $manifest_entry ) && 'FICTIONAL-SAMPLE-ENTRY-0001' === $manifest_entry['uuid'], 'Batch parser can read a manifest entry by cursor.' );
@@ -2795,7 +2795,7 @@ do {
 	$bounded_index = $parser->index_export_batch( $fixture_dir, $bounded_job, $bounded_results, 1.0E+30 );
 	++$bounded_batches;
 } while ( empty( $bounded_index['done'] ) && $bounded_batches < 100 );
-assert_true( 26 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
+assert_true( 27 === $bounded_job['entries_total'] && $bounded_batches > 3, 'Batch parser can complete fixture indexing across multiple bounded requests.' );
 Day_One_Importer_Cleanup::remove( dirname( $bounded_job['manifest_path'] ) );
 $GLOBALS['day_one_importer_test_filters'] = array();
 
@@ -4215,5 +4215,206 @@ assert_true( 0 === $rt_pdf['orderInEntry'], '#59 pdfAttachments manifest round-t
 assert_true( 4096 === $rt_pdf['fileSize'], '#59 pdfAttachments manifest round-trip preserves fileSize (int).' );
 Day_One_Importer_Cleanup::remove( dirname( $pdf_roundtrip_job['manifest_path'] ) );
 Day_One_Importer_Cleanup::remove( $pdf_roundtrip_dir );
+
+// --- #61 — location normalization + filter contract ---------------------------------------
+
+// AC1, R1.3 — sample-shape entry normalizes into the 7 typed fields plus a non-empty `raw` JSON snapshot.
+$location_sample = array(
+	'region'             => array(
+		'center'     => array( 'longitude' => -112.0715115, 'latitude' => 43.5109408 ),
+		'identifier' => '<+43.51094080,-112.07151150> radius 70.70',
+		'radius'     => 70.698295006150417,
+	),
+	'localityName'       => 'Idaho Falls',
+	'country'            => 'United States',
+	'timeZoneName'       => 'America/Boise',
+	'administrativeArea' => 'ID',
+	'longitude'          => -112.07170104980469,
+	'placeName'          => 'Idaho Falls Regional Airport',
+	'latitude'           => 43.511299133300781,
+);
+$location_results = new Day_One_Importer_Results();
+$location_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-LOCATION-SAMPLE',
+		'creationDate' => '2031-05-10T17:45:00Z',
+		'timeZone'     => 'America/Boise',
+		'location'     => $location_sample,
+	),
+	'fictional.json',
+	0,
+	$location_results
+);
+assert_true( is_array( $location_entry ) && isset( $location_entry['location'] ), '#61 R1.2 — normalize_entry sets a location key when raw entry carries a sample-shape location.' );
+assert_true( is_array( $location_entry['location'] ) && abs( $location_entry['location']['latitude'] - 43.511299133300781 ) < 1e-9, '#61 R1.3 — latitude is cast to float and round-trips to within 1e-9.' );
+assert_true( abs( $location_entry['location']['longitude'] - ( -112.07170104980469 ) ) < 1e-9, '#61 R1.3 — longitude is cast to float and round-trips to within 1e-9.' );
+assert_true( 'Idaho Falls Regional Airport' === $location_entry['location']['placeName'], '#61 R1.3 — placeName is sanitized + preserved verbatim.' );
+assert_true( 'Idaho Falls' === $location_entry['location']['localityName'], '#61 R1.3 — localityName is sanitized + preserved verbatim.' );
+assert_true( 'ID' === $location_entry['location']['administrativeArea'], '#61 R1.3 — administrativeArea is sanitized + preserved verbatim.' );
+assert_true( 'United States' === $location_entry['location']['country'], '#61 R1.3 — country is sanitized + preserved verbatim.' );
+assert_true( 'America/Boise' === $location_entry['location']['timeZoneName'], '#61 R1.3 — timeZoneName is sanitized + preserved verbatim.' );
+assert_true( isset( $location_entry['location']['raw'] ) && is_string( $location_entry['location']['raw'] ) && '' !== $location_entry['location']['raw'], '#61 R1.3 — raw field is a non-empty JSON string snapshot of the source location.' );
+assert_true( false !== strpos( $location_entry['location']['raw'], 'region' ), '#61 R1.4 — raw JSON preserves the `region` subtree (center/identifier/radius).' );
+assert_true( false !== strpos( $location_entry['location']['raw'], '"identifier":"<+43.51094080,-112.07151150> radius 70.70"' ), '#61 R1.3 — raw JSON uses JSON_UNESCAPED_SLASHES (no `\\/` escapes).' );
+assert_true( 0 === count( $location_results->get_warnings() ), '#61 R1.5 — well-formed sample-shape location emits no warnings.' );
+
+// AC2, R1.2 — entry without `location` key: no `location` key in normalized output, no warning.
+$loc_missing_results = new Day_One_Importer_Results();
+$loc_missing_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-LOCATION-MISSING',
+		'creationDate' => '2031-05-10T17:45:00Z',
+	),
+	'fictional.json',
+	1,
+	$loc_missing_results
+);
+assert_true( is_array( $loc_missing_entry ) && ! isset( $loc_missing_entry['location'] ), '#61 R1.2 — normalize_entry omits the `location` key entirely when raw entry has no location.' );
+assert_true( 0 === count( $loc_missing_results->get_warnings() ), '#61 R1.5 — entry without location emits no warnings.' );
+
+// AC2, R1.2 — entry with empty-array `location`: dropped, no warning.
+$loc_empty_results = new Day_One_Importer_Results();
+$loc_empty_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-LOCATION-EMPTY',
+		'creationDate' => '2031-05-10T17:45:00Z',
+		'location'     => array(),
+	),
+	'fictional.json',
+	2,
+	$loc_empty_results
+);
+assert_true( is_array( $loc_empty_entry ) && ! isset( $loc_empty_entry['location'] ), '#61 R1.2 — normalize_entry omits the `location` key when raw entry has an empty-array location.' );
+assert_true( 0 === count( $loc_empty_results->get_warnings() ), '#61 R1.5 — empty-array location emits no warnings.' );
+
+// AC2, R1.5 — non-array `location`: dropped AND a single warning is emitted.
+$loc_bad_results = new Day_One_Importer_Results();
+$loc_bad_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-LOCATION-BAD',
+		'creationDate' => '2031-05-10T17:45:00Z',
+		'location'     => 'oops',
+	),
+	'fictional.json',
+	3,
+	$loc_bad_results
+);
+assert_true( is_array( $loc_bad_entry ) && ! isset( $loc_bad_entry['location'] ), '#61 R1.2 — non-array `location` produces no `location` key.' );
+$loc_bad_warnings = $loc_bad_results->get_warnings();
+assert_true( 1 === count( $loc_bad_warnings ), '#61 R1.5 — non-array `location` emits exactly one warning.' );
+assert_true( false !== strpos( (string) $loc_bad_warnings[0], 'TEST-LOCATION-BAD' ), '#61 R1.5 — malformed-location warning includes the entry UUID.' );
+
+// AC2, R1.2 — array-but-no-recognizable-fields location: dropped without warning (raw is always written but the
+// caller's non-empty check is on the assembled array; with only an unknown scalar field the array still has `raw`, so
+// it survives. Confirm the meaningful-fields path: an array with ONLY an unknown field still keeps raw so the entry
+// reports location — but with empty scalars only, the location array is `raw`-only and parser keeps it. This mirrors
+// R1.4 — region/unknown subtrees ride in `raw`.).
+$loc_rawonly_results = new Day_One_Importer_Results();
+$loc_rawonly_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-LOCATION-RAW-ONLY',
+		'creationDate' => '2031-05-10T17:45:00Z',
+		'location'     => array(
+			'region' => array( 'identifier' => '<+0,0> radius 0' ),
+		),
+	),
+	'fictional.json',
+	4,
+	$loc_rawonly_results
+);
+assert_true( is_array( $loc_rawonly_entry ) && isset( $loc_rawonly_entry['location'] ) && isset( $loc_rawonly_entry['location']['raw'] ), '#61 R1.4 — a location with only a `region` subtree is preserved through `raw` (region-only payload survives).' );
+assert_true( ! isset( $loc_rawonly_entry['location']['latitude'] ), '#61 R1.3 — region-only payload yields no `latitude` field (independently optional).' );
+assert_true( ! isset( $loc_rawonly_entry['location']['placeName'] ), '#61 R1.3 — region-only payload yields no `placeName` field (independently optional).' );
+
+// AC7, R3.3 — float 0.0 latitude / longitude survive normalization (gated on isset(), not truthiness).
+$loc_zero_results = new Day_One_Importer_Results();
+$loc_zero_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-LOCATION-ZERO',
+		'creationDate' => '2031-05-10T17:45:00Z',
+		'location'     => array(
+			'latitude'  => 0,
+			'longitude' => 0.0,
+		),
+	),
+	'fictional.json',
+	5,
+	$loc_zero_results
+);
+assert_true( isset( $loc_zero_entry['location']['latitude'] ), '#61 R3.3 — latitude=0 is preserved (isset gate, not truthiness).' );
+assert_true( 0.0 === $loc_zero_entry['location']['latitude'], '#61 R3.3 — latitude=0 round-trips as float 0.0.' );
+assert_true( isset( $loc_zero_entry['location']['longitude'] ), '#61 R3.3 — longitude=0.0 is preserved (isset gate, not truthiness).' );
+assert_true( 0.0 === $loc_zero_entry['location']['longitude'], '#61 R3.3 — longitude=0.0 round-trips as float 0.0.' );
+
+// R3.3 — empty / whitespace-only string fields are dropped (so the runner won't write empty meta).
+$loc_empties_results = new Day_One_Importer_Results();
+$loc_empties_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-LOCATION-EMPTIES',
+		'creationDate' => '2031-05-10T17:45:00Z',
+		'location'     => array(
+			'placeName'    => '',
+			'localityName' => '   ',
+			'country'      => 'Anywhere',
+		),
+	),
+	'fictional.json',
+	6,
+	$loc_empties_results
+);
+assert_true( ! isset( $loc_empties_entry['location']['placeName'] ), '#61 R3.3 — empty-string placeName is dropped after sanitization.' );
+assert_true( ! isset( $loc_empties_entry['location']['localityName'] ), '#61 R3.3 — whitespace-only localityName is dropped after sanitization.' );
+assert_true( 'Anywhere' === $loc_empties_entry['location']['country'], '#61 R3.3 — non-empty sibling fields survive when others are empty.' );
+
+// AC6, AC8, R4.1, R4.2 — filter contract sanity: apply_filters() with registered callbacks returns the
+// transformed value. (The runner's contract — write on array, skip on null/false, warn on other — is
+// covered by the wp-env smoke; here we assert the filter is invocable and stable in the value-flow path.)
+$loc_filter_meta = array(
+	'_day_one_location_latitude'  => '43.5113',
+	'_day_one_location_longitude' => '-112.0717',
+	'_day_one_location_country'   => 'United States',
+);
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_location_meta'] = static function ( $meta ) {
+	if ( is_array( $meta ) && isset( $meta['_day_one_location_country'] ) ) {
+		$meta['_day_one_location_country'] = strtoupper( (string) $meta['_day_one_location_country'] );
+	}
+	return $meta;
+};
+$loc_filter_mutated = apply_filters( 'day_one_importer_location_meta', $loc_filter_meta, array(), 123, array() );
+assert_true( is_array( $loc_filter_mutated ) && 'UNITED STATES' === $loc_filter_mutated['_day_one_location_country'], '#61 R4.1 — filter callback can mutate values (uppercased country example).' );
+
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_location_meta'] = static function () {
+	return null;
+};
+$loc_filter_null = apply_filters( 'day_one_importer_location_meta', $loc_filter_meta, array(), 123, array() );
+assert_true( null === $loc_filter_null, '#61 R4.2 — filter returning null is observable to the runner skip branch.' );
+
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_location_meta'] = static function () {
+	return false;
+};
+$loc_filter_false = apply_filters( 'day_one_importer_location_meta', $loc_filter_meta, array(), 123, array() );
+assert_true( false === $loc_filter_false, '#61 R4.2 — filter returning false is observable to the runner skip branch (review-1 mirror).' );
+
+$GLOBALS['day_one_importer_test_filters']['day_one_importer_location_meta'] = static function () {
+	return 'nope';
+};
+$loc_filter_string = apply_filters( 'day_one_importer_location_meta', $loc_filter_meta, array(), 123, array() );
+assert_true( 'nope' === $loc_filter_string, '#61 R4.2 — filter returning a non-array non-null value reaches the runner (which then warns + skips).' );
+
+// Clean up the filter registration so later tests / re-runs see a known state.
+unset( $GLOBALS['day_one_importer_test_filters']['day_one_importer_location_meta'] );
+
+// AC6, R4.3 — filter-not-fired mirror: entries without a `location` key never enter the meta-write branch.
+$loc_no_branch_results = new Day_One_Importer_Results();
+$loc_no_branch_entry   = $parser->normalize_entry(
+	array(
+		'uuid'         => 'TEST-LOCATION-NO-BRANCH',
+		'creationDate' => '2031-05-10T17:45:00Z',
+	),
+	'fictional.json',
+	7,
+	$loc_no_branch_results
+);
+assert_true( ! isset( $loc_no_branch_entry['location'] ), '#61 R4.3 — entries without a location have no `location` key, so the runner skips the filter-fire branch.' );
 
 echo "All pure helper tests passed.\n";
