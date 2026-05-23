@@ -3654,6 +3654,25 @@ $pdf_entry_nonnumeric   = $parser->normalize_entry(
 );
 assert_true( 0 === $pdf_entry_nonnumeric['pdfAttachments'][0]['fileSize'], '#59 normalize_pdf_attachment stores fileSize=0 when raw value is non-numeric (R11.4).' );
 
+// --- #59 C3 — signature smoke for render_entry_body / convert_rich_text_to_content with $pdf_map (R7.5, R7.6). ---
+
+$c3_pdf_entry   = array(
+	'text'     => 'Legacy fallback text.',
+	'richText' => array(
+		'meta'     => array( 'version' => 1 ),
+		'contents' => array(
+			array( 'text' => 'Hello pdf world.' ),
+		),
+	),
+);
+$c3_pdf_results = new Day_One_Importer_Results();
+$c3_pdf_body    = Day_One_Importer_Content::render_entry_body( $c3_pdf_entry, $c3_pdf_results, array(), array(), array(), array() );
+assert_true( false !== strpos( $c3_pdf_body, '<p>Hello pdf world.</p>' ), '#59 render_entry_body accepts the new $pdf_map argument and preserves richText rendering (R7.5).' );
+$c3_pdf_body_default = Day_One_Importer_Content::render_entry_body( $c3_pdf_entry, $c3_pdf_results, array(), array(), array() );
+assert_true( $c3_pdf_body === $c3_pdf_body_default, '#59 render_entry_body produces identical output whether $pdf_map is omitted (default array) or passed explicitly.' );
+$c3_pdf_convert = Day_One_Importer_Content::convert_rich_text_to_content( $c3_pdf_entry['richText'], $c3_pdf_results, array(), array(), array(), array() );
+assert_true( false !== strpos( $c3_pdf_convert, '<p>Hello pdf world.</p>' ), '#59 convert_rich_text_to_content accepts the new $pdf_map argument and preserves rendering (R7.6).' );
+
 // --- #59 C2 — Media helpers for PDFs. ---
 
 // sort_pdfs() orders by orderInEntry then original index (R11.4).

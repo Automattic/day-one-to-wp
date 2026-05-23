@@ -433,7 +433,8 @@ class Day_One_Importer_Job_Processor {
 					isset( $job['current_photo_identifier_map'] ) && is_array( $job['current_photo_identifier_map'] ) ? $job['current_photo_identifier_map'] : array(),
 					$results,
 					isset( $job['current_video_identifier_map'] ) && is_array( $job['current_video_identifier_map'] ) ? $job['current_video_identifier_map'] : array(),
-					isset( $job['current_audio_identifier_map'] ) && is_array( $job['current_audio_identifier_map'] ) ? $job['current_audio_identifier_map'] : array()
+					isset( $job['current_audio_identifier_map'] ) && is_array( $job['current_audio_identifier_map'] ) ? $job['current_audio_identifier_map'] : array(),
+					isset( $job['current_pdf_identifier_map'] ) && is_array( $job['current_pdf_identifier_map'] ) ? $job['current_pdf_identifier_map'] : array()
 				);
 				if ( ! $finalized ) {
 					$this->fail_job( $job, $results, __( 'The import could not finalize an entry after importing media. Retry is safe.', 'day-one-importer' ) );
@@ -553,15 +554,19 @@ class Day_One_Importer_Job_Processor {
 		$job['current_video_total']            = 0;
 		$job['current_audio_media_index']      = 0;
 		$job['current_audio_total']            = 0;
+		$job['current_pdf_media_index']        = 0;
+		$job['current_pdf_total']              = 0;
 		$job['current_attachment_ids']         = array();
 		$job['current_photo_identifier_map']   = array();
 		$job['current_video_identifier_map']   = array();
 		$job['current_audio_identifier_map']   = array();
+		$job['current_pdf_identifier_map']     = array();
 		$job['current_entry_post_prepared']    = false;
 		$job['current_entry_media_complete']   = false;
 		$job['current_entry_media_counted']    = false;
 		$job['current_entry_video_counted']    = false;
 		$job['current_entry_audio_counted']    = false;
+		$job['current_entry_pdf_counted']      = false;
 		$job['current_entry_content_appended'] = false;
 	}
 }
