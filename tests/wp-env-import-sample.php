@@ -233,7 +233,7 @@ if ( $using_default_zip ) {
 	day_one_importer_wp_env_assert( $created > 0, 'Created private posts from sample.' );
 }
 day_one_importer_wp_env_assert( $media > 0, 'Imported sample media attachments.' );
-day_one_importer_wp_env_assert( '9' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 9 for PDF embeds (issue #59).' );
+day_one_importer_wp_env_assert( '10' === Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION, 'Import schema version is 10 for entry location meta (issue #61).' );
 
 $imported_post_candidates = get_posts(
 	array(
@@ -1094,10 +1094,40 @@ if ( $using_default_zip ) {
 		}
 	}
 
+	// #61 — entry 0027 carries the canonical Idaho Falls location sample. Assert all
+	// 8 `_day_one_location_*` meta keys are written by the runner with the expected
+	// sanitized values, plus that lat/long round-trip through (string)(float) cast.
+	$entry_0027_post_id = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0027'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0027'] : 0;
+	day_one_importer_wp_env_assert( $entry_0027_post_id > 0, '#61 AC9 — fictional entry 0027 (location sample) was imported.' );
+	if ( $entry_0027_post_id > 0 ) {
+		$loc_lat = (string) get_post_meta( $entry_0027_post_id, '_day_one_location_latitude', true );
+		$loc_lng = (string) get_post_meta( $entry_0027_post_id, '_day_one_location_longitude', true );
+		day_one_importer_wp_env_assert( '' !== $loc_lat, '#61 AC3 — entry 0027 carries _day_one_location_latitude meta.' );
+		day_one_importer_wp_env_assert( '' !== $loc_lng, '#61 AC3 — entry 0027 carries _day_one_location_longitude meta.' );
+		day_one_importer_wp_env_assert( $loc_lat === (string) (float) 43.511299133300781, '#61 R3.2 — _day_one_location_latitude meta equals (string)(float) of the source latitude.' );
+		day_one_importer_wp_env_assert( $loc_lng === (string) (float) -112.07170104980469, '#61 R3.2 — _day_one_location_longitude meta equals (string)(float) of the source longitude.' );
+		day_one_importer_wp_env_assert( 'Idaho Falls Regional Airport' === (string) get_post_meta( $entry_0027_post_id, '_day_one_location_place_name', true ), '#61 AC3 — entry 0027 _day_one_location_place_name equals the sanitized source value.' );
+		day_one_importer_wp_env_assert( 'Idaho Falls' === (string) get_post_meta( $entry_0027_post_id, '_day_one_location_locality', true ), '#61 AC3 — entry 0027 _day_one_location_locality equals the sanitized source value.' );
+		day_one_importer_wp_env_assert( 'ID' === (string) get_post_meta( $entry_0027_post_id, '_day_one_location_administrative_area', true ), '#61 AC3 — entry 0027 _day_one_location_administrative_area equals the sanitized source value.' );
+		day_one_importer_wp_env_assert( 'United States' === (string) get_post_meta( $entry_0027_post_id, '_day_one_location_country', true ), '#61 AC3 — entry 0027 _day_one_location_country equals the sanitized source value.' );
+		day_one_importer_wp_env_assert( 'America/Boise' === (string) get_post_meta( $entry_0027_post_id, '_day_one_location_timezone', true ), '#61 AC3 — entry 0027 _day_one_location_timezone equals the sanitized source value.' );
+		$loc_raw = (string) get_post_meta( $entry_0027_post_id, '_day_one_location_raw', true );
+		day_one_importer_wp_env_assert( '' !== $loc_raw && false !== strpos( $loc_raw, '"region"' ), '#61 AC3 — entry 0027 _day_one_location_raw is non-empty JSON containing the region subtree.' );
+
+		// AC4 — pick a pre-existing fixture entry without `location` (entry 0001) and assert zero `_day_one_location_*` rows.
+		$entry_0001_post_id_for_61 = isset( $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0001'] ) ? $day_one_importer_uuid_to_post_id['FICTIONAL-SAMPLE-ENTRY-0001'] : 0;
+		if ( $entry_0001_post_id_for_61 > 0 ) {
+			foreach ( array( '_day_one_location_latitude', '_day_one_location_longitude', '_day_one_location_place_name', '_day_one_location_locality', '_day_one_location_administrative_area', '_day_one_location_country', '_day_one_location_timezone', '_day_one_location_raw' ) as $loc_key ) {
+				day_one_importer_wp_env_assert( '' === (string) get_post_meta( $entry_0001_post_id_for_61, $loc_key, true ), '#61 AC4 — entry 0001 (no source location) carries zero rows for ' . $loc_key . '.' );
+			}
+		}
+	}
+
 	// Stash for rerun-identity check below.
 	$GLOBALS['day_one_importer_57_video_attachment_id'] = $day_one_importer_57_video_attachment_id;
 	$GLOBALS['day_one_importer_58_audio_attachment_id'] = $day_one_importer_58_audio_attachment_id;
 	$GLOBALS['day_one_importer_59_pdf_attachment_id']   = $day_one_importer_59_pdf_attachment_id;
+	$GLOBALS['day_one_importer_61_entry_0027_post_id']  = $entry_0027_post_id;
 }
 
 $second_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
@@ -1149,6 +1179,19 @@ if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_58_audio_attachme
 	}
 }
 
+// #61 AC5 — rerun idempotency: the entry-27 `_day_one_location_*` meta values are
+// identical after the second async import, and each meta row is single-valued (no
+// duplicates from add_post_meta).
+if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_61_entry_0027_post_id'] ) ) {
+	$loc_rerun_post_id = (int) $GLOBALS['day_one_importer_61_entry_0027_post_id'];
+	foreach ( array( '_day_one_location_latitude', '_day_one_location_longitude', '_day_one_location_place_name', '_day_one_location_locality', '_day_one_location_administrative_area', '_day_one_location_country', '_day_one_location_timezone', '_day_one_location_raw' ) as $loc_key ) {
+		$rows = get_post_meta( $loc_rerun_post_id, $loc_key, false );
+		day_one_importer_wp_env_assert( is_array( $rows ) && 1 === count( $rows ), '#61 AC5 — entry 0027 ' . $loc_key . ' is a single row after rerun (no duplicates).' );
+	}
+	day_one_importer_wp_env_assert( 'Idaho Falls' === (string) get_post_meta( $loc_rerun_post_id, '_day_one_location_locality', true ), '#61 AC5 — entry 0027 locality meta is identical after the rerun.' );
+	day_one_importer_wp_env_assert( 'United States' === (string) get_post_meta( $loc_rerun_post_id, '_day_one_location_country', true ), '#61 AC5 — entry 0027 country meta is identical after the rerun.' );
+}
+
 // #59 AC10 / AC16 — rerun identity: the entry-24 PDF attachment ID is stable
 // across the first import and this rerun (no duplicate attachment created).
 if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_59_pdf_attachment_id'] ) ) {
@@ -1190,6 +1233,70 @@ $recreated           = isset( $fourth_counts['posts_created'] ) ? (int) $fourth_
 $skipped_after_trash = isset( $fourth_counts['posts_skipped'] ) ? (int) $fourth_counts['posts_skipped'] : 0;
 day_one_importer_wp_env_assert( 1 === $recreated, 'Trashed imported post was recreated on rerun.' );
 day_one_importer_wp_env_assert( ( $created - 1 ) === $skipped_after_trash, 'Non-trashed completed posts were still skipped.' );
+
+// #61 AC6 — filter mutation, null skip, and false skip. Drive each via a re-finalize
+// (set entry-0027's _day_one_import_version to an old value before each import so the
+// runner runs through finalize_imported_entry() again and fires the filter).
+if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_61_entry_0027_post_id'] ) ) {
+	$filter_post_id = (int) $GLOBALS['day_one_importer_61_entry_0027_post_id'];
+
+	// --- AC6 mutate: filter uppercases the country meta. ---
+	$day_one_importer_61_uppercase_filter = static function ( $meta ) {
+		if ( is_array( $meta ) && isset( $meta['_day_one_location_country'] ) ) {
+			$meta['_day_one_location_country'] = strtoupper( (string) $meta['_day_one_location_country'] );
+		}
+		return $meta;
+	};
+	add_filter( 'day_one_importer_location_meta', $day_one_importer_61_uppercase_filter );
+	update_post_meta( $filter_post_id, '_day_one_import_version', '1' );
+	$filter_run_mutate = day_one_importer_wp_env_import_from_zip( $sample_zip );
+	day_one_importer_wp_env_assert( 'UNITED STATES' === (string) get_post_meta( $filter_post_id, '_day_one_location_country', true ), '#61 AC6 mutate — filter uppercases _day_one_location_country during re-finalize.' );
+	remove_filter( 'day_one_importer_location_meta', $day_one_importer_61_uppercase_filter );
+
+	// Restore baseline country meta via another re-finalize without the filter so the
+	// subsequent null/false tests start from a known sanitized state. (Idempotency:
+	// the runner rewrites all meta via update_post_meta on every re-finalize.)
+	update_post_meta( $filter_post_id, '_day_one_import_version', '1' );
+	day_one_importer_wp_env_import_from_zip( $sample_zip );
+	day_one_importer_wp_env_assert( 'United States' === (string) get_post_meta( $filter_post_id, '_day_one_location_country', true ), '#61 AC6 mutate cleanup — country meta is restored to "United States" after the filter is removed and the entry re-finalizes.' );
+
+	// --- AC6 null skip: filter returns null → zero `_day_one_location_*` rows written by the runner. ---
+	// Pre-delete all location meta so the test can observe zero rows after the run.
+	foreach ( array( '_day_one_location_latitude', '_day_one_location_longitude', '_day_one_location_place_name', '_day_one_location_locality', '_day_one_location_administrative_area', '_day_one_location_country', '_day_one_location_timezone', '_day_one_location_raw' ) as $loc_key_pre ) {
+		delete_post_meta( $filter_post_id, $loc_key_pre );
+	}
+	$day_one_importer_61_null_filter = static function () {
+		return null;
+	};
+	add_filter( 'day_one_importer_location_meta', $day_one_importer_61_null_filter );
+	update_post_meta( $filter_post_id, '_day_one_import_version', '1' );
+	day_one_importer_wp_env_import_from_zip( $sample_zip );
+	foreach ( array( '_day_one_location_latitude', '_day_one_location_longitude', '_day_one_location_place_name', '_day_one_location_locality', '_day_one_location_administrative_area', '_day_one_location_country', '_day_one_location_timezone', '_day_one_location_raw' ) as $loc_key_null ) {
+		day_one_importer_wp_env_assert( '' === (string) get_post_meta( $filter_post_id, $loc_key_null, true ), '#61 AC6 null skip — filter returning null writes zero rows for ' . $loc_key_null . '.' );
+	}
+	remove_filter( 'day_one_importer_location_meta', $day_one_importer_61_null_filter );
+
+	// --- AC6 false skip (review-1 mirror): filter returns false → zero rows written. ---
+	foreach ( array( '_day_one_location_latitude', '_day_one_location_longitude', '_day_one_location_place_name', '_day_one_location_locality', '_day_one_location_administrative_area', '_day_one_location_country', '_day_one_location_timezone', '_day_one_location_raw' ) as $loc_key_pre_false ) {
+		delete_post_meta( $filter_post_id, $loc_key_pre_false );
+	}
+	$day_one_importer_61_false_filter = static function () {
+		return false;
+	};
+	add_filter( 'day_one_importer_location_meta', $day_one_importer_61_false_filter );
+	update_post_meta( $filter_post_id, '_day_one_import_version', '1' );
+	day_one_importer_wp_env_import_from_zip( $sample_zip );
+	foreach ( array( '_day_one_location_latitude', '_day_one_location_longitude', '_day_one_location_place_name', '_day_one_location_locality', '_day_one_location_administrative_area', '_day_one_location_country', '_day_one_location_timezone', '_day_one_location_raw' ) as $loc_key_false ) {
+		day_one_importer_wp_env_assert( '' === (string) get_post_meta( $filter_post_id, $loc_key_false, true ), '#61 AC6 false skip — filter returning false writes zero rows for ' . $loc_key_false . '.' );
+	}
+	remove_filter( 'day_one_importer_location_meta', $day_one_importer_61_false_filter );
+
+	// Final restore: re-finalize once more without any filter so the suite leaves a
+	// clean, repeatable state in the database for any downstream tests.
+	update_post_meta( $filter_post_id, '_day_one_import_version', '1' );
+	day_one_importer_wp_env_import_from_zip( $sample_zip );
+	day_one_importer_wp_env_assert( 'United States' === (string) get_post_meta( $filter_post_id, '_day_one_location_country', true ), '#61 AC6 final cleanup — country meta is restored to "United States" after all filter scenarios.' );
+}
 
 echo wp_json_encode(
 	array(

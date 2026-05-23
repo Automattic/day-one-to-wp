@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
 Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.13
+Stable tag: 0.2.14
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,10 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.14 =
+* Preserve Day One `entry.location` as post meta. The streaming parser sanitizes the location subtree (latitude, longitude, placeName, localityName, administrativeArea, country, timeZoneName) and stores it on the entry; the runner writes eight `_day_one_location_*` post meta keys during `finalize_imported_entry()` (`_day_one_location_latitude`, `_day_one_location_longitude`, `_day_one_location_place_name`, `_day_one_location_locality`, `_day_one_location_administrative_area`, `_day_one_location_country`, `_day_one_location_timezone`, and a `_day_one_location_raw` JSON snapshot of the original payload so the `region` center/identifier/radius subtree is preserved without exposing it as separate fields). The full meta map is exposed through a new `day_one_importer_location_meta` filter so downstream code can mutate values, add related keys, or skip writes by returning `null` or `false`. All writes use `update_post_meta` so reruns are idempotent. Entries with no `location` field write zero `_day_one_location_*` rows; a non-array `location` value emits a single warning and the entry continues importing without location meta. Float `0.0` for latitude or longitude (equator / prime meridian) is preserved (the gate is `isset()` rather than truthiness). No block-level rendering is added in this release — meta only.
+* Bump the internal `IMPORT_SCHEMA_VERSION` from `9` to `10` so existing imported posts gain location meta the next time the same export is re-imported. Posts whose source JSON has no `location` re-finalize but produce zero new meta rows; posts whose source JSON has a `location` re-finalize and gain the eight new meta rows. The reprocessing cost is the same shape as previous schema bumps; large existing imports pay it once on the next rerun.
 
 = 0.2.13 =
 * Preserve animated GIF photos from Day One exports. Photo attachments now carry a uniform `_day_one_photo_format` meta marker (lowercased Day One `photo.type`, for example `gif`, `jpeg`, `png`, `heic`), and the `core/image` block emitted for a GIF photo uses the original full-size file URL (`wp_get_attachment_url()`) with `sizeSlug: "full"` and a `wp-block-image size-full` figure class instead of the `large` derivative WordPress generates during sub-size creation. Non-GIF photos keep the existing `large` ladder unchanged, so JPEG and PNG posts render identically to prior releases. Mixed galleries (GIF + JPEG in the same entry) get per-image correct `sizeSlug` automatically because the gallery serializer delegates to the per-image block builder. The fictional fixture journal grows from 25 to 26 entries with one new GIF-only entry (a hand-crafted 2-frame 1x1 GIF89a) so the wp-env smoke can assert md5 round-trip equality between the export's `photo.md5` and the saved attachment file on disk. Hosts running image-optimization plugins that transcode GIFs post-upload (Jetpack Image CDN, EWWW) may still flatten animation — that path is out of this plugin's control and documented as a known risk. The internal `IMPORT_SCHEMA_VERSION` is intentionally unchanged at `9` because the manifest shape is identical; only new attachment meta is written.
@@ -148,6 +152,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.14 =
+Preserves Day One `entry.location` as eight `_day_one_location_*` post meta keys (latitude, longitude, place name, locality, administrative area, country, timezone, plus a `_day_one_location_raw` JSON snapshot for the original payload including the `region` subtree). A new `day_one_importer_location_meta` filter lets downstream code mutate the meta map or skip writes by returning `null` or `false`. Entries without a `location` field write zero new meta rows. All writes use `update_post_meta` so reruns are idempotent. Bumps the internal import schema (`9` → `10`) so re-imports refresh existing posts; posts whose source JSON includes a `location` gain the eight new meta keys on the next rerun.
 
 = 0.2.13 =
 Preserves animated GIF photos from Day One exports. The `core/image` block emitted for a GIF photo now references the original full-size file URL with `sizeSlug: "full"` instead of WordPress's flattened `large` derivative, so animation survives. A new `_day_one_photo_format` attachment meta marker is written for every photo (gif, jpeg, png, heic, ...). Non-GIF photos render identically to prior releases. Hosts running image-optimization plugins that transcode GIFs post-upload (Jetpack Image CDN, EWWW) may still flatten animation. The internal import schema is unchanged at `9` — no rerun is required.
