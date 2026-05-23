@@ -225,6 +225,16 @@ if ( ! function_exists( 'esc_html' ) ) {
 if ( ! function_exists( 'wp_get_attachment_image_src' ) ) {
 	function wp_get_attachment_image_src( $id, $size, $icon = false ) {
 		$id = (int) $id;
+		// #60 R5.1 — ID 1001 simulates a GIF attachment. The `large` derivative
+		// is intentionally a DIFFERENT URL than wp_get_attachment_url() so a
+		// failing test would visibly leak the derivative into the block.
+		if ( 1001 === $id ) {
+			return array( 'https://example.test/wp-content/uploads/2026/05/animated-1024x1024.jpg', 1024, 1024, true );
+		}
+		// #60 R5.1 — ID 1002 simulates a JPEG attachment.
+		if ( 1002 === $id ) {
+			return array( 'https://example.test/wp-content/uploads/2026/05/photo-1024x768.jpg', 1024, 768, true );
+		}
 		if ( ! in_array( $id, array( 101, 102, 202 ), true ) ) {
 			return false;
 		}
@@ -258,6 +268,18 @@ if ( ! function_exists( 'wp_get_attachment_image' ) ) {
 if ( ! function_exists( 'wp_get_attachment_url' ) ) {
 	function wp_get_attachment_url( $id ) {
 		$id = (int) $id;
+		// #60 R5.1 — ID 1001 GIF stub returns the ORIGINAL file URL (no
+		// derivative suffix); GIF branch MUST resolve to this string exactly.
+		if ( 1001 === $id ) {
+			return 'https://example.test/wp-content/uploads/2026/05/animated.gif';
+		}
+		// #60 R5.1 — ID 1002 JPEG stub. The JPEG branch resolves to the
+		// `large` derivative (see wp_get_attachment_image_src stub) — this
+		// URL is only used if the ladder falls through, which MUST NOT
+		// happen for a JPEG record under the new code path.
+		if ( 1002 === $id ) {
+			return 'https://example.test/wp-content/uploads/2026/05/photo.jpg';
+		}
 		if ( 303 === $id ) {
 			return 'https://example.test/303-fallback.jpg';
 		}
@@ -318,51 +340,63 @@ if ( ! function_exists( 'esc_html__' ) ) {
 // IDs 701/703/704 (Day One PDFs) carry _day_one_pdf_name; ID 702 omits it (basename fallback).
 // ID 705 has no _day_one_pdf_name (basename tier coverage); ID 706 forces the [PDF] floor.
 // ID 305 has no _day_one_source marker (PDF defensive guard).
+// #60 R5.1 — ID 1001 carries _day_one_photo_format='gif'; ID 1002 carries 'jpeg'.
+// Alt text is stubbed for both so build_attachment_image_record() resolves an alt.
 if ( ! function_exists( 'get_post_meta' ) ) {
 	function get_post_meta( $post_id, $key, $single = false ) {
 		$post_id = (int) $post_id;
 		$store   = array(
-			601 => array(
+			601  => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_audio_title' => 'sample-1s',
 			),
-			602 => array(
+			602  => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_audio_title' => '',
 			),
-			603 => array(
+			603  => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_audio_title' => 'mixed-sequence audio',
 			),
-			701 => array(
+			701  => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_pdf_name'    => 'Fictional PDF Sample',
 				'_day_one_media_kind'  => 'pdf',
 			),
-			702 => array(
+			702  => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_pdf_name'    => '',
 				'_day_one_media_kind'  => 'pdf',
 			),
-			703 => array(
+			703  => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_pdf_name'    => 'Tier 2 Meta Name',
 				'_day_one_media_kind'  => 'pdf',
 			),
-			704 => array(
+			704  => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_pdf_name'    => 'mixed-sequence pdf',
 				'_day_one_media_kind'  => 'pdf',
 			),
-			705 => array(
+			705  => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_pdf_name'    => '',
 				'_day_one_media_kind'  => 'pdf',
 			),
-			706 => array(
+			706  => array(
 				'_day_one_source'      => 'day-one-export',
 				'_day_one_pdf_name'    => '',
 				'_day_one_media_kind'  => 'pdf',
+			),
+			1001 => array(
+				'_day_one_source'           => 'day-one-export',
+				'_day_one_photo_format'     => 'gif',
+				'_wp_attachment_image_alt'  => 'animated lantern',
+			),
+			1002 => array(
+				'_day_one_source'           => 'day-one-export',
+				'_day_one_photo_format'     => 'jpeg',
+				'_wp_attachment_image_alt'  => 'photo of a lantern',
 			),
 		);
 		if ( isset( $store[ $post_id ][ $key ] ) ) {
@@ -2558,6 +2592,40 @@ assert_true( strpos( $gallery_content, 'wp-image-101' ) < strpos( $gallery_conte
 assert_no_runtime_img_attrs( $gallery_content, 'Gallery content' );
 assert_true( false === strpos( $gallery_content, '404' ) && false === strpos( $gallery_content, '/tmp/' ), 'Skipped invalid images do not leak IDs or filesystem paths.' );
 assert_true( false === strpos( $gallery_content, 'day-one-importer-photos' ) && false === strpos( $gallery_content, 'Imported photos' ), 'Old imported photo wrapper is not emitted.' );
+
+// #60 R5.1 — GIF branch: build_attachment_image_record() must resolve `url` to
+// wp_get_attachment_url() (the original file) and serialize_image_block() must
+// emit sizeSlug=full + class=wp-block-image size-full. The stub for ID 1001
+// returns a DIFFERENT `large` derivative URL via wp_get_attachment_image_src()
+// — if that string ever leaks into the block markup the test fails loudly.
+$gif_block_content = Day_One_Importer_Content::append_image_section( '', array( 1001 ) );
+assert_true( false !== strpos( $gif_block_content, '<!-- wp:image {"id":1001,"sizeSlug":"full","linkDestination":"none"} -->' ), '#60 R5.1 — GIF image block emits sizeSlug=full and id=1001.' );
+assert_true( false !== strpos( $gif_block_content, '<figure class="wp-block-image size-full">' ), '#60 R5.1 — GIF image block figure carries size-full class.' );
+assert_true( false !== strpos( $gif_block_content, 'src="https://example.test/wp-content/uploads/2026/05/animated.gif"' ), '#60 R5.1 — GIF image block src is wp_get_attachment_url() (original file), not the `large` derivative.' );
+assert_true( false === strpos( $gif_block_content, 'animated-1024x1024.jpg' ), '#60 R5.1 — GIF image block does not leak the `large` derivative URL.' );
+assert_true( false === strpos( $gif_block_content, '"sizeSlug":"large"' ), '#60 R5.1 — GIF image block does not emit sizeSlug=large.' );
+assert_true( false === strpos( $gif_block_content, 'size-large' ), '#60 R5.1 — GIF image block figure does not carry size-large class.' );
+assert_true( false !== strpos( $gif_block_content, 'alt="animated lantern"' ), '#60 R5.1 — GIF image block carries alt from _wp_attachment_image_alt meta.' );
+
+// #60 R5.1 — non-GIF (jpeg) branch: existing `large` ladder is unchanged.
+// sizeSlug=large is preserved and the `large` derivative URL is used.
+$jpeg_block_content = Day_One_Importer_Content::append_image_section( '', array( 1002 ) );
+assert_true( false !== strpos( $jpeg_block_content, '<!-- wp:image {"id":1002,"sizeSlug":"large","linkDestination":"none"} -->' ), '#60 R5.1 — non-GIF (jpeg) image block keeps sizeSlug=large.' );
+assert_true( false !== strpos( $jpeg_block_content, '<figure class="wp-block-image size-large">' ), '#60 R5.1 — non-GIF (jpeg) image block figure keeps size-large class.' );
+assert_true( false !== strpos( $jpeg_block_content, 'src="https://example.test/wp-content/uploads/2026/05/photo-1024x768.jpg"' ), '#60 R5.1 — non-GIF (jpeg) image block uses the `large` derivative URL.' );
+assert_true( false === strpos( $jpeg_block_content, '"sizeSlug":"full"' ), '#60 R5.1 — non-GIF (jpeg) image block does not emit sizeSlug=full.' );
+
+// #60 R5.1 K2 — mixed gallery: per-image sizeSlug MUST be preserved through
+// serialize_gallery_block() -> serialize_image_block() delegation. One GIF
+// (1001) + one JPEG (1002) — both inner blocks must carry their own slug.
+$mixed_gallery_content = Day_One_Importer_Content::append_image_section( '', array( 1001, 1002 ) );
+assert_true( false !== strpos( $mixed_gallery_content, '<!-- wp:gallery {"linkTo":"none","ids":[1001,1002]} -->' ), '#60 R5.1 K2 — mixed gallery emits both ids in order.' );
+assert_true( false !== strpos( $mixed_gallery_content, '"sizeSlug":"full"' ), '#60 R5.1 K2 — mixed gallery contains a sizeSlug=full inner block (the GIF).' );
+assert_true( false !== strpos( $mixed_gallery_content, '"sizeSlug":"large"' ), '#60 R5.1 K2 — mixed gallery contains a sizeSlug=large inner block (the JPEG).' );
+assert_true( false !== strpos( $mixed_gallery_content, '<figure class="wp-block-image size-full">' ), '#60 R5.1 K2 — mixed gallery contains a size-full inner figure (the GIF).' );
+assert_true( false !== strpos( $mixed_gallery_content, '<figure class="wp-block-image size-large">' ), '#60 R5.1 K2 — mixed gallery contains a size-large inner figure (the JPEG).' );
+assert_true( 2 === substr_count( $mixed_gallery_content, '<!-- wp:image' ), '#60 R5.1 K2 — mixed gallery contains exactly two nested image blocks.' );
+assert_true( strpos( $mixed_gallery_content, 'wp-image-1001' ) < strpos( $mixed_gallery_content, 'wp-image-1002' ), '#60 R5.1 K2 — mixed gallery preserves attachment order (GIF before JPEG).' );
 
 $title = Day_One_Importer_Content::derive_title( "# A safe title\nBody", '2026-05-08 12:00:00' );
 assert_true( 'A safe title' === $title, 'Title is derived from first heading.' );
