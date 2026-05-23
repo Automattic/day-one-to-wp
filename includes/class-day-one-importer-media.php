@@ -63,6 +63,13 @@ class Day_One_Importer_Media {
 	private $audio_dirs = null;
 
 	/**
+	 * Cached pdf directories for async jobs, or null to discover synchronously.
+	 *
+	 * @var string[]|null
+	 */
+	private $pdf_dirs = null;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param string                   $root Extraction root.
@@ -70,13 +77,15 @@ class Day_One_Importer_Media {
 	 * @param string[]|null            $photo_dirs Cached photo directories, or null to discover.
 	 * @param string[]|null            $video_dirs Cached video directories, or null to discover.
 	 * @param string[]|null            $audio_dirs Cached audio directories, or null to discover.
+	 * @param string[]|null            $pdf_dirs   Cached pdf directories, or null to discover.
 	 */
-	public function __construct( $root, Day_One_Importer_Results $results, $photo_dirs = null, $video_dirs = null, $audio_dirs = null ) {
+	public function __construct( $root, Day_One_Importer_Results $results, $photo_dirs = null, $video_dirs = null, $audio_dirs = null, $pdf_dirs = null ) {
 		$this->root       = $root;
 		$this->results    = $results;
 		$this->photo_dirs = is_array( $photo_dirs ) ? array_values( array_filter( array_map( 'strval', $photo_dirs ) ) ) : null;
 		$this->video_dirs = is_array( $video_dirs ) ? array_values( array_filter( array_map( 'strval', $video_dirs ) ) ) : null;
 		$this->audio_dirs = is_array( $audio_dirs ) ? array_values( array_filter( array_map( 'strval', $audio_dirs ) ) ) : null;
+		$this->pdf_dirs   = is_array( $pdf_dirs ) ? array_values( array_filter( array_map( 'strval', $pdf_dirs ) ) ) : null;
 	}
 
 	/**
@@ -175,6 +184,40 @@ class Day_One_Importer_Media {
 	}
 
 	/**
+	 * Import all PDFs for an entry.
+	 *
+	 * Mirrors import_entry_audios(). Used by tests and as a convenience wrapper;
+	 * the runner's per-entry batch loop calls import_or_reuse_pdf() directly so
+	 * it can checkpoint between PDFs.
+	 *
+	 * @param array<string,mixed> $entry Entry.
+	 * @param int                 $post_id Post ID.
+	 * @return array<int,array{identifier:string,attachment_id:int}> Records in scan order.
+	 */
+	public function import_entry_pdfs( $entry, $post_id ) {
+		$pdfs = isset( $entry['pdfAttachments'] ) && is_array( $entry['pdfAttachments'] ) ? $entry['pdfAttachments'] : array();
+		if ( empty( $pdfs ) ) {
+			return array();
+		}
+
+		$this->results->increment( 'media_found', count( $pdfs ) );
+		$pdfs = self::sort_pdfs( $pdfs );
+
+		$records = array();
+		foreach ( $pdfs as $pdf ) {
+			$attachment_id = $this->import_or_reuse_pdf( $pdf, $entry, $post_id );
+			if ( $attachment_id ) {
+				$records[] = array(
+					'identifier'    => isset( $pdf['identifier'] ) ? (string) $pdf['identifier'] : '',
+					'attachment_id' => (int) $attachment_id,
+				);
+			}
+		}
+
+		return $records;
+	}
+
+	/**
 	 * Sort videos by orderInEntry then original index. Mirrors sort_photos().
 	 *
 	 * @param array<int,array<string,mixed>> $videos Videos.
@@ -228,6 +271,34 @@ class Day_One_Importer_Media {
 		);
 
 		return $audios;
+	}
+
+	/**
+	 * Sort PDF attachments by orderInEntry then original index. Mirrors sort_audios().
+	 *
+	 * @param array<int,array<string,mixed>> $pdfs PDF attachments.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function sort_pdfs( $pdfs ) {
+		foreach ( $pdfs as $index => &$pdf ) {
+			$pdf['_original_index'] = $index;
+		}
+		unset( $pdf );
+
+		usort(
+			$pdfs,
+			static function ( $a, $b ) {
+				$a_order = isset( $a['orderInEntry'] ) && null !== $a['orderInEntry'] ? (int) $a['orderInEntry'] : PHP_INT_MAX;
+				$b_order = isset( $b['orderInEntry'] ) && null !== $b['orderInEntry'] ? (int) $b['orderInEntry'] : PHP_INT_MAX;
+				if ( $a_order === $b_order ) {
+					return (int) $a['_original_index'] <=> (int) $b['_original_index'];
+				}
+
+				return $a_order <=> $b_order;
+			}
+		);
+
+		return $pdfs;
 	}
 
 	/**
@@ -458,6 +529,71 @@ class Day_One_Importer_Media {
 		}
 
 		$this->apply_audio_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $audio );
+		$this->results->increment( 'media_imported' );
+		return $attachment_id;
+	}
+
+	/**
+	 * Import or reuse one PDF attachment.
+	 *
+	 * Mirrors import_or_reuse_audio(). On MIME rejection (validate_media_file()
+	 * sentinel), the embed is dropped with a privacy-safe warning per spec R5.2.
+	 *
+	 * @param array<string,mixed> $pdf PDF metadata.
+	 * @param array<string,mixed> $entry Entry.
+	 * @param int                 $post_id Post ID.
+	 * @return int Attachment ID, or 0.
+	 */
+	public function import_or_reuse_pdf( $pdf, $entry, $post_id ) {
+		$uuid       = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
+		$identifier = isset( $pdf['identifier'] ) ? (string) $pdf['identifier'] : '';
+		$md5        = isset( $pdf['md5'] ) ? (string) $pdf['md5'] : '';
+
+		$existing = $this->find_existing_attachment( $post_id, $uuid, $identifier, $md5 );
+		if ( $existing ) {
+			$this->results->increment( 'media_reused' );
+			return $existing;
+		}
+
+		$source = self::resolve_pdf_path( $this->root, $pdf, $this->pdf_dirs );
+		if ( ! $source ) {
+			$this->results->increment( 'media_missing' );
+			$this->results->add_warning(
+				__( 'Skipping embedded PDF in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+			);
+			return 0;
+		}
+
+		$partial = $this->find_partial_attachment_by_source( $post_id, $uuid, $pdf, $source );
+		if ( $partial ) {
+			$this->apply_pdf_marker_metadata( $partial, $uuid, $identifier, $md5, $pdf );
+			$this->results->increment( 'media_reused' );
+			return $partial;
+		}
+
+		$valid = $this->validate_media_file( $source, 'pdf' );
+		if ( true !== $valid ) {
+			if ( 'unsupported' === $valid ) {
+				$this->results->increment( 'media_unsupported' );
+			} else {
+				$this->results->increment( 'media_failed' );
+			}
+			$this->results->add_warning(
+				__( 'Skipping embedded PDF in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+			);
+			return 0;
+		}
+
+		$attachment_id = $this->sideload_media( $source, $pdf, $entry, $post_id );
+		if ( ! $attachment_id ) {
+			$this->results->increment( 'media_failed' );
+			$this->results->add_warning(
+				__( 'Skipping embedded PDF in Day One entry: referenced media file is unsupported or missing.', 'day-one-importer' )
+			);
+			return 0;
+		}
+
+		$this->apply_pdf_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $pdf );
 		$this->results->increment( 'media_imported' );
 		return $attachment_id;
 	}
@@ -807,6 +943,112 @@ class Day_One_Importer_Media {
 	}
 
 	/**
+	 * Resolve a Day One PDF to an exported file path. Mirrors resolve_audio_path().
+	 *
+	 * The extension is hardcoded to `.pdf` per spec R1.3 (Day One only ships
+	 * `.pdf` files in pdfs/ and the normalized record carries no `type`/`format`
+	 * field).
+	 *
+	 * @param string              $root Extraction root.
+	 * @param array<string,mixed> $pdf  PDF metadata.
+	 * @param string[]|null       $pdf_dirs Cached PDF directories, or null to discover.
+	 * @return string Empty if unresolved.
+	 */
+	public static function resolve_pdf_path( $root, $pdf, $pdf_dirs = null ) {
+		$root_real = realpath( $root );
+		if ( false === $root_real ) {
+			return '';
+		}
+
+		if ( null !== $pdf_dirs ) {
+			$pdf_dirs = self::sanitize_pdf_dirs( $root_real, $pdf_dirs );
+		} else {
+			$pdf_dirs = self::find_pdf_dirs( $root_real );
+		}
+		if ( empty( $pdf_dirs ) ) {
+			return '';
+		}
+
+		$candidates = array();
+		$md5        = isset( $pdf['md5'] ) ? strtolower( preg_replace( '/[^a-fA-F0-9]/', '', (string) $pdf['md5'] ) ) : '';
+		$filename   = isset( $pdf['filename'] ) ? basename( (string) $pdf['filename'] ) : '';
+
+		if ( $md5 ) {
+			// #59 R1.3 — the only extension probed for PDFs is `.pdf`.
+			$candidates[] = $md5 . '.pdf';
+		}
+
+		if ( $filename ) {
+			$candidates[] = $filename;
+		}
+
+		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+		foreach ( $pdf_dirs as $dir ) {
+			foreach ( array_unique( $candidates ) as $candidate ) {
+				$path = $dir . DIRECTORY_SEPARATOR . $candidate;
+				if ( is_file( $path ) ) {
+					$real = realpath( $path );
+					if ( $real && ( $real === $root_real || 0 === strpos( $real, $root_prefix ) ) ) {
+						return $real;
+					}
+				}
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Sanitize cached PDF directories against the extraction root.
+	 *
+	 * @param string   $root_real Real extraction root.
+	 * @param string[] $pdf_dirs Cached directories.
+	 * @return string[]
+	 */
+	private static function sanitize_pdf_dirs( $root_real, $pdf_dirs ) {
+		$dirs        = array();
+		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+		foreach ( (array) $pdf_dirs as $dir ) {
+			$real = realpath( (string) $dir );
+			if ( false === $real || ! is_dir( $real ) ) {
+				continue;
+			}
+			if ( $real === $root_real || 0 === strpos( $real, $root_prefix ) ) {
+				$dirs[] = $real;
+			}
+		}
+
+		return array_values( array_unique( $dirs ) );
+	}
+
+	/**
+	 * Find pdfs directories in an export. Mirrors find_audio_dirs().
+	 *
+	 * @param string $root Root.
+	 * @return string[]
+	 */
+	public static function find_pdf_dirs( $root ) {
+		$dirs = array();
+		if ( ! is_dir( $root ) ) {
+			return $dirs;
+		}
+
+		$iterator = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator( $root, FilesystemIterator::SKIP_DOTS ),
+			RecursiveIteratorIterator::SELF_FIRST
+		);
+
+		foreach ( $iterator as $item ) {
+			if ( $item->isDir() && 'pdfs' === strtolower( $item->getFilename() ) ) {
+				$dirs[] = $item->getPathname();
+			}
+		}
+
+		sort( $dirs );
+		return $dirs;
+	}
+
+	/**
 	 * Candidate extensions for a Day One audio format. Mirrors candidate_extensions_video().
 	 *
 	 * @param string $format Format (normalized: no leading dot, lowercased).
@@ -880,11 +1122,13 @@ class Day_One_Importer_Media {
 	 *
 	 * For kind 'photo' (default) the MIME must start with `image/`; for kind
 	 * 'video' it must start with `video/`; for kind 'audio' it must start with
-	 * `audio/`. In all cases the MIME must also be present in
+	 * `audio/`; for kind 'pdf' the MIME must equal `application/pdf` exactly
+	 * (the only MIME under the application/ tree this importer accepts; see
+	 * spec R5.1). In all cases the MIME must also be present in
 	 * get_allowed_mime_types(), otherwise sideload would refuse it.
 	 *
 	 * @param string $path Path.
-	 * @param string $kind 'photo' (default), 'video', or 'audio'.
+	 * @param string $kind 'photo' (default), 'video', 'audio', or 'pdf'.
 	 * @return true|string True or reason ('unreadable'|'unsupported'|'mime-not-allowed').
 	 */
 	private function validate_media_file( $path, $kind = 'photo' ) {
@@ -901,6 +1145,12 @@ class Day_One_Importer_Media {
 			}
 		} elseif ( 'audio' === $kind ) {
 			if ( ! $mime || 0 !== strpos( $mime, 'audio/' ) ) {
+				return 'unsupported';
+			}
+		} elseif ( 'pdf' === $kind ) {
+			// #59 R5.1 — exact equality, not a prefix; application/pdf is the
+			// only MIME under application/ this importer accepts.
+			if ( 'application/pdf' !== $mime ) {
 				return 'unsupported';
 			}
 		} elseif ( ! $mime || 0 !== strpos( $mime, 'image/' ) ) {
@@ -1132,6 +1382,41 @@ class Day_One_Importer_Media {
 		}
 		if ( isset( $audio['title'] ) && '' !== (string) $audio['title'] ) {
 			update_post_meta( $attachment_id, '_day_one_audio_title', (string) $audio['title'] );
+		}
+	}
+
+	/**
+	 * Apply Day One marker metadata for a PDF attachment.
+	 *
+	 * Mirrors apply_audio_marker_metadata() for the shared keys. Adds:
+	 *  - `_day_one_media_kind = 'pdf'` (always)
+	 *  - `_day_one_pdf_name` (string) only when non-empty after sanitization.
+	 *    Used by serialize_file_block() link-text precedence (spec R6.2 + R6.5).
+	 *
+	 * Width / height / duration are intentionally NOT persisted for PDFs (spec
+	 * R4.1) -- Day One ships zeros and they carry no signal. The PDF record
+	 * carries no `date` or `filename` either, so those keys are skipped.
+	 *
+	 * @param int                 $attachment_id Attachment ID.
+	 * @param string              $uuid Entry UUID.
+	 * @param string              $identifier Media identifier.
+	 * @param string              $md5 Media MD5.
+	 * @param array<string,mixed> $pdf PDF metadata.
+	 * @return void
+	 */
+	private function apply_pdf_marker_metadata( $attachment_id, $uuid, $identifier, $md5, $pdf ) {
+		$attachment_id = (int) $attachment_id;
+		if ( ! $attachment_id ) {
+			return;
+		}
+
+		update_post_meta( $attachment_id, '_day_one_media_identifier', $identifier );
+		update_post_meta( $attachment_id, '_day_one_media_md5', $md5 );
+		update_post_meta( $attachment_id, '_day_one_uuid', $uuid );
+		update_post_meta( $attachment_id, '_day_one_source', 'day-one-export' );
+		update_post_meta( $attachment_id, '_day_one_media_kind', 'pdf' );
+		if ( isset( $pdf['pdfName'] ) && '' !== (string) $pdf['pdfName'] ) {
+			update_post_meta( $attachment_id, '_day_one_pdf_name', (string) $pdf['pdfName'] );
 		}
 	}
 

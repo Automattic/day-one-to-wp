@@ -3654,6 +3654,74 @@ $pdf_entry_nonnumeric   = $parser->normalize_entry(
 );
 assert_true( 0 === $pdf_entry_nonnumeric['pdfAttachments'][0]['fileSize'], '#59 normalize_pdf_attachment stores fileSize=0 when raw value is non-numeric (R11.4).' );
 
+// --- #59 C2 — Media helpers for PDFs. ---
+
+// sort_pdfs() orders by orderInEntry then original index (R11.4).
+$pdf_sort_input  = array(
+	array( 'identifier' => 'A', 'orderInEntry' => 2 ),
+	array( 'identifier' => 'B', 'orderInEntry' => 0 ),
+	array( 'identifier' => 'C', 'orderInEntry' => null ),
+	array( 'identifier' => 'D', 'orderInEntry' => 0 ),
+);
+$pdf_sort_output = Day_One_Importer_Media::sort_pdfs( $pdf_sort_input );
+assert_true(
+	'B' === $pdf_sort_output[0]['identifier']
+	&& 'D' === $pdf_sort_output[1]['identifier']
+	&& 'A' === $pdf_sort_output[2]['identifier']
+	&& 'C' === $pdf_sort_output[3]['identifier'],
+	'#59 sort_pdfs orders by orderInEntry then original index (null sinks to end).'
+);
+
+// resolve_pdf_path() locates an md5-named .pdf in pdfs/.
+$pdf_resolve_root = sys_get_temp_dir() . '/day-one-importer-pdf-resolve-' . uniqid();
+mkdir( $pdf_resolve_root . '/pdfs', 0777, true );
+$pdf_resolve_md5 = '99998888777766665555444433332222';
+
+$pdf_resolve_file = $pdf_resolve_root . '/pdfs/' . $pdf_resolve_md5 . '.pdf';
+file_put_contents( $pdf_resolve_file, 'placeholder' );
+$pdf_resolved = Day_One_Importer_Media::resolve_pdf_path(
+	$pdf_resolve_root,
+	array(
+		'md5'      => $pdf_resolve_md5,
+		'filename' => '',
+	)
+);
+assert_true( '' !== $pdf_resolved && realpath( $pdf_resolve_file ) === $pdf_resolved, '#59 resolve_pdf_path locates an md5-named .pdf in pdfs/ (R4.1).' );
+
+// resolve_pdf_path() probes ONLY .pdf -- it does not fall back to .mp3 / .mov / etc.
+$pdf_no_ext_md5 = '11112222333344445555666677778888';
+$pdf_only_mp3   = $pdf_resolve_root . '/pdfs/' . $pdf_no_ext_md5 . '.mp3';
+file_put_contents( $pdf_only_mp3, 'audio data' );
+$pdf_resolve_no = Day_One_Importer_Media::resolve_pdf_path(
+	$pdf_resolve_root,
+	array(
+		'md5'      => $pdf_no_ext_md5,
+		'filename' => '',
+	)
+);
+assert_true( '' === $pdf_resolve_no, '#59 resolve_pdf_path probes only .pdf -- does not fall back to .mp3 / .mov etc. (R1.3).' );
+
+// resolve_pdf_path() falls back to the filename hint when md5 lookup fails.
+$pdf_filename_only = $pdf_resolve_root . '/pdfs/named-document.pdf';
+file_put_contents( $pdf_filename_only, '%PDF' );
+$pdf_resolve_named = Day_One_Importer_Media::resolve_pdf_path(
+	$pdf_resolve_root,
+	array(
+		'md5'      => '',
+		'filename' => 'named-document.pdf',
+	)
+);
+assert_true( '' !== $pdf_resolve_named && realpath( $pdf_filename_only ) === $pdf_resolve_named, '#59 resolve_pdf_path falls back to filename when md5 absent.' );
+Day_One_Importer_Cleanup::remove( $pdf_resolve_root );
+
+// find_pdf_dirs() discovers a top-level pdfs/ directory (R4.1).
+$pdf_discover_root = sys_get_temp_dir() . '/day-one-importer-pdf-discover-' . uniqid();
+mkdir( $pdf_discover_root . '/pdfs', 0777, true );
+mkdir( $pdf_discover_root . '/photos', 0777, true );
+$pdf_found_dirs = Day_One_Importer_Media::find_pdf_dirs( $pdf_discover_root );
+assert_true( 1 === count( $pdf_found_dirs ) && false !== strpos( $pdf_found_dirs[0], DIRECTORY_SEPARATOR . 'pdfs' ), '#59 find_pdf_dirs picks up a top-level pdfs directory.' );
+Day_One_Importer_Cleanup::remove( $pdf_discover_root );
+
 // JSONL manifest round-trip: pdfAttachments field travels through the manifest unchanged.
 $pdf_roundtrip_payload = array(
 	array(
