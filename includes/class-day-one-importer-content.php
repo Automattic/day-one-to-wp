@@ -1393,6 +1393,15 @@ class Day_One_Importer_Content {
 			}
 		}
 
+		if ( $is_day_one_attachment && class_exists( 'Day_One_Importer_Media' ) ) {
+			// Stored markup keeps the stable nonce-less endpoint URL so imported
+			// posts never expire; render-time filtering injects fresh nonces.
+			$stable_url = Day_One_Importer_Media::private_media_url( $attachment_id, false );
+			if ( is_string( $stable_url ) && '' !== $stable_url ) {
+				$url = $stable_url;
+			}
+		}
+
 		$attrs      = array( 'id' => $attachment_id );
 		$inner_html = '<figure class="wp-block-video"><video controls src="' . esc_url( $url ) . '"></video></figure>';
 
@@ -1437,6 +1446,15 @@ class Day_One_Importer_Content {
 		if ( ! $is_day_one_attachment ) {
 			if ( ! class_exists( 'Day_One_Importer_Media' ) || false === strpos( $url, Day_One_Importer_Media::PRIVATE_UPLOAD_SUBDIR ) ) {
 				return '';
+			}
+		}
+
+		if ( $is_day_one_attachment && class_exists( 'Day_One_Importer_Media' ) ) {
+			// Stored markup keeps the stable nonce-less endpoint URL so imported
+			// posts never expire; render-time filtering injects fresh nonces.
+			$stable_url = Day_One_Importer_Media::private_media_url( $attachment_id, false );
+			if ( is_string( $stable_url ) && '' !== $stable_url ) {
+				$url = $stable_url;
 			}
 		}
 
@@ -1506,6 +1524,15 @@ class Day_One_Importer_Content {
 			}
 		}
 
+		if ( $is_day_one_attachment && class_exists( 'Day_One_Importer_Media' ) ) {
+			// Stored markup keeps the stable nonce-less endpoint URL so imported
+			// posts never expire; render-time filtering injects fresh nonces.
+			$stable_url = Day_One_Importer_Media::private_media_url( $attachment_id, false );
+			if ( is_string( $stable_url ) && '' !== $stable_url ) {
+				$url = $stable_url;
+			}
+		}
+
 		// #59 R6.5 — link-text precedence chain.
 		$link_text = (string) $name;
 		if ( '' === $link_text && function_exists( 'get_post_meta' ) ) {
@@ -1513,14 +1540,17 @@ class Day_One_Importer_Content {
 		}
 		if ( '' === $link_text ) {
 			$basename = '';
-			if ( function_exists( 'wp_parse_url' ) ) {
-				$path = wp_parse_url( $url, PHP_URL_PATH );
-			} else {
-				$parts = parse_url( $url );
-				$path  = is_array( $parts ) && isset( $parts['path'] ) ? $parts['path'] : '';
+			if ( function_exists( 'get_attached_file' ) ) {
+				$attached_path = get_attached_file( $attachment_id );
+				if ( is_string( $attached_path ) && '' !== $attached_path ) {
+					$basename = pathinfo( basename( $attached_path ), PATHINFO_FILENAME );
+				}
 			}
-			if ( is_string( $path ) && '' !== $path ) {
-				$basename = pathinfo( basename( $path ), PATHINFO_FILENAME );
+			if ( '' === $basename && function_exists( 'wp_parse_url' ) ) {
+				$path = wp_parse_url( $url, PHP_URL_PATH );
+				if ( is_string( $path ) && '' !== $path && 'admin-ajax' !== pathinfo( basename( $path ), PATHINFO_FILENAME ) ) {
+					$basename = pathinfo( basename( $path ), PATHINFO_FILENAME );
+				}
 			}
 			if ( '' !== $basename ) {
 				$link_text = $basename;

@@ -317,8 +317,12 @@ foreach ( $imported_posts as $post_id ) {
 	$attachment_ids = array_map( 'intval', wp_list_pluck( $attachments, 'ID' ) );
 	if ( ! empty( $attachment_ids ) ) {
 		day_one_importer_wp_env_assert( false === strpos( $post_content, 'nonce=' ), 'Stored imported media URLs omit expiring nonces.' );
-		$rendered_content = apply_filters( 'the_content', $post_content );
-		day_one_importer_wp_env_assert( false !== strpos( $rendered_content, 'nonce=' ), 'Rendered imported media URLs receive fresh nonces.' );
+		// #56 R14 — posts whose photos stay attached-only have no media markup,
+		// so only posts that reference the private endpoint receive nonces.
+		if ( false !== strpos( $post_content, 'action=day_one_importer_media' ) ) {
+			$rendered_content = apply_filters( 'the_content', $post_content );
+			day_one_importer_wp_env_assert( false !== strpos( $rendered_content, 'nonce=' ), 'Rendered imported media URLs receive fresh nonces.' );
+		}
 	}
 	// #56 R14 — richText entries with photos but no inline embeds intentionally
 	// produce zero image/gallery blocks (photos stay attached only). Detect this
@@ -1042,10 +1046,11 @@ if ( $using_default_zip ) {
 		day_one_importer_wp_env_assert( $entry_0024_pdf_id > 0, '#59 AC6 — entry 0024 file block carries a positive attachment ID.' );
 		$day_one_importer_59_pdf_attachment_id = $entry_0024_pdf_id;
 
-		// #59 AC16 — block href matches wp_get_attachment_url().
-		$expected_pdf_url = (string) wp_get_attachment_url( $entry_0024_pdf_id );
+		// #59 AC16 — block href matches the stable nonce-less private endpoint URL
+		// (runtime wp_get_attachment_url is nonce'd; stored markup must not expire).
+		$expected_pdf_url = (string) Day_One_Importer_Media::private_media_url( $entry_0024_pdf_id, false );
 		$entry_0024_href  = isset( $entry_0024_files[0]['attrs']['href'] ) ? (string) $entry_0024_files[0]['attrs']['href'] : '';
-		day_one_importer_wp_env_assert( $expected_pdf_url === $entry_0024_href, '#59 AC6 — entry 0024 core/file href equals wp_get_attachment_url().' );
+		day_one_importer_wp_env_assert( $expected_pdf_url === $entry_0024_href, '#59 AC6 — entry 0024 core/file href equals the stable private endpoint URL.' );
 		day_one_importer_wp_env_assert( isset( $entry_0024_files[0]['attrs']['showDownloadButton'] ) && true === $entry_0024_files[0]['attrs']['showDownloadButton'], '#59 AC6 / AC16 — entry 0024 core/file showDownloadButton is true.' );
 
 		// #59 AC16 — attachment parent linkage + private uploads URL + media_kind marker.
@@ -1130,7 +1135,9 @@ if ( $using_default_zip ) {
 				// sides so we compare the URL SHAPE produced by
 				// wp_get_attachment_url(), not the per-request nonce value.
 				$day_one_importer_60_normalize_gif_url = static function ( $url ) {
-					$url = preg_replace( '/&(?:#038;)?nonce=[A-Za-z0-9]+/', '&nonce=NONCE', (string) $url );
+					// Stored markup is nonce-less by design; runtime URLs carry a
+					// per-request nonce. Strip the nonce so only the shape compares.
+					$url = preg_replace( '/&(?:#038;)?nonce=[A-Za-z0-9]+/', '', (string) $url );
 					$url = preg_replace( '/&#038;/', '&', $url );
 					return $url;
 				};

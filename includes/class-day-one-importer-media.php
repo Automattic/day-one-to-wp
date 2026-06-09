@@ -1708,19 +1708,57 @@ class Day_One_Importer_Media {
 	 * @return string Filtered content.
 	 */
 	public static function filter_private_media_content_urls( $content ) {
-		if ( false === strpos( (string) $content, 'wp-image-' ) ) {
+		$content = (string) $content;
+		if ( false === strpos( $content, 'wp-image-' ) && false === strpos( $content, 'action=' . self::PRIVATE_MEDIA_ACTION ) ) {
 			return $content;
 		}
 
+		// Pass 1 — re-nonce every quoted private-media endpoint URL (img, video,
+		// audio, and file blocks all reference the same authenticated endpoint).
+		// Matches both nonce-less stored URLs and legacy stored URLs whose baked
+		// nonce has expired; either way the whole attribute value is rebuilt.
+		$filtered = preg_replace_callback(
+			'/(["\'])[^"\']*action=' . preg_quote( self::PRIVATE_MEDIA_ACTION, '/' ) . '(?:&|&#0?38;|&amp;)attachment_id=([0-9]+)[^"\']*\1/i',
+			static function ( $matches ) {
+				return self::replace_private_media_endpoint_url( $matches );
+			},
+			$content
+		);
+		$content  = is_string( $filtered ) ? $filtered : $content;
+
+		// Pass 2 — legacy imported image markup that still points at the raw
+		// uploads path gets its src rewritten to a fresh authenticated URL.
 		$filtered = preg_replace_callback(
 			'/<img\b[^>]*\bclass=(["\'])(?:(?!\1).)*\bwp-image-([0-9]+)\b(?:(?!\1).)*\1[^>]*>/i',
 			static function ( $matches ) {
 				return self::replace_private_media_img_src( $matches );
 			},
-			(string) $content
+			$content
 		);
 
 		return is_string( $filtered ) ? $filtered : $content;
+	}
+
+	/**
+	 * Replace one quoted private-media endpoint URL with a freshly nonce'd one.
+	 *
+	 * @param array<int,string> $matches Regex matches (1: quote, 2: attachment ID).
+	 * @return string Replacement quoted URL.
+	 */
+	private static function replace_private_media_endpoint_url( $matches ) {
+		$original      = isset( $matches[0] ) ? (string) $matches[0] : '';
+		$quote         = isset( $matches[1] ) ? (string) $matches[1] : '"';
+		$attachment_id = isset( $matches[2] ) ? absint( $matches[2] ) : 0;
+		if ( ! $attachment_id || 'day-one-export' !== (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
+			return $original;
+		}
+
+		$url = self::private_media_url( $attachment_id, true );
+		if ( '' === $url ) {
+			return $original;
+		}
+
+		return $quote . esc_url( $url ) . $quote;
 	}
 
 	/**

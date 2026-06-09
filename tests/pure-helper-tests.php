@@ -277,6 +277,17 @@ if ( ! function_exists( 'wp_create_nonce' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_attached_file' ) ) {
+	function get_attached_file( $attachment_id ) {
+		$map = isset( $GLOBALS['day_one_importer_test_attached_files'] ) ? $GLOBALS['day_one_importer_test_attached_files'] : array();
+		return isset( $map[ (int) $attachment_id ] ) ? $map[ (int) $attachment_id ] : false;
+	}
+}
+
+$GLOBALS['day_one_importer_test_attached_files'] = array(
+	705 => '/tmp/day-one-importer-private/Tier3-Basename.pdf',
+);
+
 if ( ! function_exists( 'admin_url' ) ) {
 	function admin_url( $path = '' ) {
 		return 'https://example.test/wp-admin/' . ltrim( (string) $path, '/' );
@@ -3651,7 +3662,7 @@ $c4_aud_single_blocks = parse_blocks( $c4_aud_single_html );
 assert_true( 1 === count( $c4_aud_single_blocks ) && 'core/audio' === $c4_aud_single_blocks[0]['blockName'], '#58 AC6 — single resolved audio embed emits one core/audio block.' );
 assert_true( isset( $c4_aud_single_blocks[0]['attrs']['id'] ) && 601 === (int) $c4_aud_single_blocks[0]['attrs']['id'], '#58 AC6 — core/audio block carries the resolved attachment ID.' );
 assert_true( false !== strpos( $c4_aud_single_html, 'wp-block-audio' ), '#58 R6.5 — emitted markup contains the wp-block-audio class.' );
-assert_true( false !== strpos( $c4_aud_single_html, 'day-one-importer-private' ), '#58 R6.5 — emitted audio src URL points at the private uploads subdir.' );
+assert_true( false !== strpos( $c4_aud_single_html, 'action=day_one_importer_media&amp;attachment_id=601' ), '#58 R6.5 — emitted audio src URL is the stable private endpoint.' );
 assert_true( false !== strpos( $c4_aud_single_html, 'wp-element-caption' ), '#58 R6.2 — non-empty _day_one_audio_title emits a wp-element-caption figcaption.' );
 assert_true( false !== strpos( $c4_aud_single_html, 'sample-1s' ), '#58 R6.2 — figcaption contains the title text.' );
 assert_true( 0 === count( $c4_aud_single_results->get_warnings() ), '#58 AC7 — resolved audio does not trigger the #56 placeholder warning.' );
@@ -3863,11 +3874,11 @@ $c4_pdf_single_html    = Day_One_Importer_Content::convert_rich_text_to_content(
 $c4_pdf_single_blocks = parse_blocks( $c4_pdf_single_html );
 assert_true( 1 === count( $c4_pdf_single_blocks ) && 'core/file' === $c4_pdf_single_blocks[0]['blockName'], '#59 AC6 — single resolved PDF embed emits one core/file block.' );
 assert_true( isset( $c4_pdf_single_blocks[0]['attrs']['id'] ) && 701 === (int) $c4_pdf_single_blocks[0]['attrs']['id'], '#59 AC6 — core/file block carries the resolved attachment ID.' );
-assert_true( isset( $c4_pdf_single_blocks[0]['attrs']['href'] ) && 'https://example.test/wp-content/uploads/day-one-importer-private/sample-701.pdf' === $c4_pdf_single_blocks[0]['attrs']['href'], '#59 AC6 — core/file block carries href = wp_get_attachment_url() (R6.5).' );
+assert_true( isset( $c4_pdf_single_blocks[0]['attrs']['href'] ) && 'https://example.test/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=701' === $c4_pdf_single_blocks[0]['attrs']['href'], '#59 AC6 — core/file block carries href = stable private endpoint URL (R6.5).' );
 assert_true( isset( $c4_pdf_single_blocks[0]['attrs']['showDownloadButton'] ) && true === $c4_pdf_single_blocks[0]['attrs']['showDownloadButton'], '#59 AC6 — showDownloadButton is true (R6.5).' );
 assert_true( false !== strpos( $c4_pdf_single_html, 'wp-block-file' ), '#59 R6.5 — emitted markup contains the wp-block-file class.' );
 assert_true( false !== strpos( $c4_pdf_single_html, 'wp-block-file__button' ), '#59 R6.5 — emitted markup contains the wp-block-file__button class.' );
-assert_true( false !== strpos( $c4_pdf_single_html, 'day-one-importer-private' ), '#59 R6.5 — emitted file URL points at the private uploads subdir.' );
+assert_true( false !== strpos( $c4_pdf_single_html, 'action=day_one_importer_media&amp;attachment_id=701' ), '#59 R6.5 — emitted file URL is the stable private endpoint.' );
 assert_true( false !== strpos( $c4_pdf_single_html, 'Download' ), '#59 R6.5 — emitted markup contains the literal "Download" label.' );
 assert_true( false !== strpos( $c4_pdf_single_html, 'Fictional PDF Sample' ), '#59 R6.2 — link text uses the non-empty _day_one_pdf_name meta value (tier 2).' );
 assert_true( 0 === count( $c4_pdf_single_results->get_warnings() ), '#59 AC7 — resolved PDF does not trigger the #56 placeholder warning.' );
@@ -4843,12 +4854,6 @@ assert_true( 9999 === $found_id, '#76 — find_existing_attachment returns the m
 // #76 — `find_partial_attachment_by_source()` (private, invoked via reflection):
 // must issue a single meta_query-backed get_posts() with `_day_one_source`
 // NOT EXISTS OR != 'day-one-export', capped at posts_per_page=10.
-if ( ! function_exists( 'get_attached_file' ) ) {
-	function get_attached_file( $attachment_id ) {
-		$map = isset( $GLOBALS['day_one_importer_test_attached_files'] ) ? $GLOBALS['day_one_importer_test_attached_files'] : array();
-		return isset( $map[ (int) $attachment_id ] ) ? $map[ (int) $attachment_id ] : false;
-	}
-}
 $GLOBALS['day_one_importer_test_attached_files']   = array();
 $GLOBALS['day_one_importer_test_get_posts_calls']  = array();
 $GLOBALS['day_one_importer_test_get_posts_result'] = array();
