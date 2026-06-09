@@ -197,11 +197,15 @@ class Day_One_Importer_Job_Processor {
 			(string) $job['zip_path'],
 			isset( $job['zip_index'] ) ? (int) $job['zip_index'] : 0,
 			Day_One_Importer_Job_State::batch_zip_limit(),
-			$deadline
+			$deadline,
+			$job
 		);
 
-		$job['zip_index'] = (int) $batch['next_index'];
-		$job['zip_total'] = (int) $batch['total'];
+		$job['zip_index']                = (int) $batch['next_index'];
+		$job['zip_total']                = (int) $batch['total'];
+		$job['zip_uncompressed_total']   = isset( $batch['uncompressed_total'] ) ? (int) $batch['uncompressed_total'] : 0;
+		$job['zip_compressed_total']     = isset( $batch['compressed_total'] ) ? (int) $batch['compressed_total'] : 0;
+		$job['zip_largest_member_bytes'] = isset( $batch['largest_member_bytes'] ) ? (int) $batch['largest_member_bytes'] : 0;
 		if ( ! empty( $batch['json_candidates'] ) && is_array( $batch['json_candidates'] ) ) {
 			$existing                   = isset( $job['zip_json_candidates'] ) && is_array( $job['zip_json_candidates'] ) ? $job['zip_json_candidates'] : array();
 			$job['zip_json_candidates'] = array_values( array_unique( array_merge( $existing, $batch['json_candidates'] ) ) );
@@ -252,11 +256,13 @@ class Day_One_Importer_Job_Processor {
 			(string) $job['extract_dir'],
 			isset( $job['extract_index'] ) ? (int) $job['extract_index'] : 0,
 			Day_One_Importer_Job_State::batch_zip_limit(),
-			$deadline
+			$deadline,
+			$job
 		);
 
-		$job['extract_index'] = (int) $batch['next_index'];
-		$job['extract_total'] = (int) $batch['total'];
+		$job['extract_index']              = (int) $batch['next_index'];
+		$job['extract_total']              = (int) $batch['total'];
+		$job['extract_uncompressed_total'] = isset( $batch['extracted_uncompressed_total'] ) ? (int) $batch['extracted_uncompressed_total'] : 0;
 		if ( ! empty( $batch['error'] ) ) {
 			$this->fail_job( $job, $results, (string) $batch['error'] );
 			return false;
@@ -533,10 +539,10 @@ class Day_One_Importer_Job_Processor {
 	 * @return int
 	 */
 	private function lock_ttl( $budget ) {
-		$default = max( 120, (int) ceil( (float) $budget ) + 60 );
+		$default = max( 20, (int) ceil( (float) $budget ) + 10 );
 		$value   = function_exists( 'apply_filters' ) ? apply_filters( 'day_one_importer_job_lock_ttl', $default, $budget ) : $default;
 
-		return max( 30, (int) $value );
+		return max( 15, (int) $value );
 	}
 
 	/**

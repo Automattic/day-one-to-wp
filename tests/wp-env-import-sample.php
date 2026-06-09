@@ -79,6 +79,7 @@ $day_one_importer_admin_users = get_users(
 if ( ! empty( $day_one_importer_admin_users ) ) {
 	wp_set_current_user( (int) $day_one_importer_admin_users[0] );
 }
+$day_one_importer_original_user_id = get_current_user_id();
 
 if ( ! function_exists( 'WP_Filesystem' ) ) {
 	require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -262,7 +263,7 @@ $imported_post_candidates = get_posts(
 		'order'          => 'ASC',
 	)
 );
-$imported_posts          = array();
+$imported_posts           = array();
 foreach ( $imported_post_candidates as $post_id ) {
 	if ( 'day-one-export' === (string) get_post_meta( (int) $post_id, '_day_one_source', true ) ) {
 		$imported_posts[] = (int) $post_id;
@@ -314,6 +315,11 @@ foreach ( $imported_posts as $post_id ) {
 
 	$attachments    = get_attached_media( 'image', $post_id );
 	$attachment_ids = array_map( 'intval', wp_list_pluck( $attachments, 'ID' ) );
+	if ( ! empty( $attachment_ids ) ) {
+		day_one_importer_wp_env_assert( false === strpos( $post_content, 'nonce=' ), 'Stored imported media URLs omit expiring nonces.' );
+		$rendered_content = apply_filters( 'the_content', $post_content );
+		day_one_importer_wp_env_assert( false !== strpos( $rendered_content, 'nonce=' ), 'Rendered imported media URLs receive fresh nonces.' );
+	}
 	// #56 R14 — richText entries with photos but no inline embeds intentionally
 	// produce zero image/gallery blocks (photos stay attached only). Detect this
 	// case and skip the body-shape assertion below.
@@ -1351,6 +1357,40 @@ if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_59_pdf_attachment
 		day_one_importer_wp_env_assert( $rerun_pdf_id === $expected_pdf_id, '#59 AC10 / AC16 — entry 0024 PDF attachment ID is identical across the first import and the rerun (no duplicate attachment).' );
 	}
 }
+
+$other_user_suffix = str_replace( '.', '', uniqid( '', true ) );
+$other_user_id     = wp_insert_user(
+	array(
+		'user_login' => 'day_one_importer_other_' . $other_user_suffix,
+		'user_pass'  => wp_generate_password( 24, true ),
+		'user_email' => 'day-one-importer-other-' . $other_user_suffix . '@example.com',
+		'role'       => 'administrator',
+	)
+);
+day_one_importer_wp_env_assert( ! is_wp_error( $other_user_id ) && $other_user_id > 0, 'Second import-capable user created.' );
+wp_set_current_user( (int) $other_user_id );
+$other_async  = day_one_importer_wp_env_import_from_zip_async( $sample_zip );
+$other_counts = $other_async['results']->get_counts();
+day_one_importer_wp_env_assert( $created === (int) $other_counts['posts_created'], 'Same UUIDs imported by another user create that user’s own posts.' );
+day_one_importer_wp_env_assert( 0 === (int) $other_counts['posts_skipped'], 'Same UUIDs owned by another user are not treated as reusable existing posts.' );
+$other_user_posts = get_posts(
+	array(
+		'post_type'      => 'post',
+		'post_status'    => 'any',
+		'author'         => (int) $other_user_id,
+		'posts_per_page' => -1,
+		'fields'         => 'ids',
+		'meta_query'     => array(
+			array(
+				'key'     => '_day_one_source',
+				'value'   => 'day-one-export',
+				'compare' => '=',
+			),
+		),
+	)
+);
+day_one_importer_wp_env_assert( $created === count( $other_user_posts ), 'Second user owns a separate imported post set.' );
+wp_set_current_user( (int) $day_one_importer_original_user_id );
 
 $legacy_post_id = (int) reset( $imported_posts );
 update_post_meta( $legacy_post_id, '_day_one_import_version', '1' );

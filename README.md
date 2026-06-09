@@ -15,11 +15,11 @@ Playground runs in your browser and is useful for checking the importer screens 
 - WordPress 6.4 or newer
 - PHP 7.4 or newer
 - A user account with permissions to import, upload files, and edit posts
-- PHP `ZipArchive` extension is recommended for resumable batched imports; without it the importer falls back to a single-request synchronous import that may time out on very large or photo-heavy exports
+- PHP `ZipArchive` extension is required so ZIP exports can be inspected with safety budgets before extraction
 
 ## Install and activate
 
-1. Optionally confirm PHP has the `ZipArchive` extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
+1. Confirm PHP has the `ZipArchive` extension enabled. The importer requires it to inspect ZIP exports with safety budgets before extraction.
 2. Install the plugin ZIP through the WordPress Plugins screen, or copy this plugin directory into your site's configured plugins directory.
 3. In WordPress admin, go to **Plugins → Installed Plugins**.
 4. Activate **Day One Importer**.
@@ -217,7 +217,7 @@ Run the same required checks locally from the repository root:
 
 ```sh
 find . -path './.git' -prune -o -path './sample' -prune -o -path './prompt-images' -prune -o -path './pipelines' -prune -o -path './vendor' -prune -o -path './node_modules' -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l
-php tests/pure-helper-tests.php
+composer run lint:php
 ```
 
 Run a local WordPress smoke test with `wp-env`:

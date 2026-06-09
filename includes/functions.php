@@ -61,7 +61,7 @@ function day_one_importer_sanitize_mime_type( $value ) {
 		return sanitize_mime_type( $value );
 	}
 
-	return (string) preg_replace( '/[^A-Za-z0-9.+_-\/]/', '', $value );
+	return (string) preg_replace( '/[^A-Za-z0-9.+_\/-]/', '', $value );
 }
 
 /**

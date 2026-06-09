@@ -82,8 +82,8 @@ class Day_One_Importer_Parser {
 			);
 		}
 
-		$root_real = realpath( $root );
-		if ( false === $root_real || ! is_dir( $root_real ) ) {
+		$root = class_exists( 'Day_One_Importer_Cleanup' ) ? Day_One_Importer_Cleanup::normalize_path( $root ) : (string) $root;
+		if ( ! $this->is_dir( $root ) ) {
 			return array(
 				'done'  => false,
 				'error' => function_exists( '__' ) ? __( 'The extraction directory is invalid.', 'day-one-importer' ) : 'The extraction directory is invalid.',
@@ -91,7 +91,7 @@ class Day_One_Importer_Parser {
 		}
 
 		if ( array_key_exists( 'zip_json_candidates', $job ) || array_key_exists( 'zip_photo_dirs', $job ) || array_key_exists( 'zip_video_dirs', $job ) || array_key_exists( 'zip_audio_dirs', $job ) || array_key_exists( 'zip_pdf_dirs', $job ) ) {
-			return $this->discover_archive_candidates_batch( $root_real, $job, $results, $deadline, $checkpoint );
+			return $this->discover_archive_candidates_batch( $root, $job, $results, $deadline, $checkpoint );
 		}
 
 		return array(
@@ -103,14 +103,14 @@ class Day_One_Importer_Parser {
 	/**
 	 * Discover JSON files/photo dirs from ZIP preflight candidates in bounded chunks.
 	 *
-	 * @param string                   $root_real Real extraction root.
+	 * @param string                   $root Extraction root.
 	 * @param array<string,mixed>      $job Job state.
 	 * @param Day_One_Importer_Results $results Results.
 	 * @param float                    $deadline Deadline.
 	 * @param callable|null            $checkpoint Checkpoint callback.
 	 * @return array<string,mixed>
 	 */
-	private function discover_archive_candidates_batch( $root_real, &$job, Day_One_Importer_Results $results, $deadline, $checkpoint ) {
+	private function discover_archive_candidates_batch( $root, &$job, Day_One_Importer_Results $results, $deadline, $checkpoint ) {
 		if ( empty( $job['archive_discovery_initialized'] ) ) {
 			$job['archive_json_candidate_index']      = 0;
 			$job['archive_photo_dir_candidate_index'] = 0;
@@ -153,8 +153,8 @@ class Day_One_Importer_Parser {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
 				break;
 			}
-			$path = $this->archive_relative_to_real_path( $root_real, (string) $json_candidates[ $json_i ], false );
-			if ( $path && is_file( $path ) && ! in_array( $path, $files, true ) ) {
+			$path = $this->archive_relative_to_real_path( $root, (string) $json_candidates[ $json_i ], false );
+			if ( $path && $this->is_file( $path ) && ! in_array( $path, $files, true ) ) {
 				$files[] = $path;
 			}
 			++$json_i;
@@ -166,8 +166,8 @@ class Day_One_Importer_Parser {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
 				break;
 			}
-			$path = $this->archive_relative_to_real_path( $root_real, (string) $photo_candidates[ $photo_i ], true );
-			if ( $path && is_dir( $path ) && ! in_array( $path, $photo_dirs, true ) ) {
+			$path = $this->archive_relative_to_real_path( $root, (string) $photo_candidates[ $photo_i ], true );
+			if ( $path && $this->is_dir( $path ) && ! in_array( $path, $photo_dirs, true ) ) {
 				$photo_dirs[] = $path;
 			}
 			++$photo_i;
@@ -179,8 +179,8 @@ class Day_One_Importer_Parser {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
 				break;
 			}
-			$path = $this->archive_relative_to_real_path( $root_real, (string) $video_candidates[ $video_i ], true );
-			if ( $path && is_dir( $path ) && ! in_array( $path, $video_dirs, true ) ) {
+			$path = $this->archive_relative_to_real_path( $root, (string) $video_candidates[ $video_i ], true );
+			if ( $path && $this->is_dir( $path ) && ! in_array( $path, $video_dirs, true ) ) {
 				$video_dirs[] = $path;
 			}
 			++$video_i;
@@ -192,8 +192,8 @@ class Day_One_Importer_Parser {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
 				break;
 			}
-			$path = $this->archive_relative_to_real_path( $root_real, (string) $audio_candidates[ $audio_i ], true );
-			if ( $path && is_dir( $path ) && ! in_array( $path, $audio_dirs, true ) ) {
+			$path = $this->archive_relative_to_real_path( $root, (string) $audio_candidates[ $audio_i ], true );
+			if ( $path && $this->is_dir( $path ) && ! in_array( $path, $audio_dirs, true ) ) {
 				$audio_dirs[] = $path;
 			}
 			++$audio_i;
@@ -206,8 +206,8 @@ class Day_One_Importer_Parser {
 			if ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) {
 				break;
 			}
-			$path = $this->archive_relative_to_real_path( $root_real, (string) $pdf_candidates[ $pdf_i ], true );
-			if ( $path && is_dir( $path ) && ! in_array( $path, $pdf_dirs, true ) ) {
+			$path = $this->archive_relative_to_real_path( $root, (string) $pdf_candidates[ $pdf_i ], true );
+			if ( $path && $this->is_dir( $path ) && ! in_array( $path, $pdf_dirs, true ) ) {
 				$pdf_dirs[] = $path;
 			}
 			++$pdf_i;
@@ -244,28 +244,26 @@ class Day_One_Importer_Parser {
 	/**
 	 * Convert a safe archive-relative path to an extracted real path.
 	 *
-	 * @param string $root_real Real extraction root.
+	 * @param string $root Extraction root.
 	 * @param string $relative Archive-relative path.
 	 * @param bool   $directory Whether a directory path is expected.
 	 * @return string Empty on failure.
 	 */
-	private function archive_relative_to_real_path( $root_real, $relative, $directory ) {
-		if ( class_exists( 'Day_One_Importer_Cleanup' ) && ! Day_One_Importer_Cleanup::is_safe_relative_archive_name( $relative ) ) {
+	private function archive_relative_to_real_path( $root, $relative, $directory ) {
+		if ( ! class_exists( 'Day_One_Importer_Cleanup' ) ) {
 			return '';
 		}
 
-		$path = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR . str_replace( '/', DIRECTORY_SEPARATOR, trim( str_replace( '\\', '/', (string) $relative ), '/' ) );
-		$real = realpath( $path );
-		if ( false === $real || ( $directory && ! is_dir( $real ) ) || ( ! $directory && ! is_file( $real ) ) ) {
+		$path = Day_One_Importer_Cleanup::archive_relative_path( $root, $relative );
+		if ( '' === $path || ( $directory && ! $this->is_dir( $path ) ) || ( ! $directory && ! $this->is_file( $path ) ) ) {
 			return '';
 		}
 
-		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
-		return $real === $root_real || 0 === strpos( $real, $root_prefix ) ? $real : '';
+		return Day_One_Importer_Cleanup::path_is_inside( $path, $root ) ? $path : '';
 	}
 
 	/**
-	 * Normalize entries into a protected JSONL manifest using a streaming parser.
+	 * Normalize entries into a protected JSONL manifest using a resumable cursor parser.
 	 *
 	 * @param string                   $root Extraction root.
 	 * @param array<string,mixed>      $job Job state, updated by reference.
@@ -292,7 +290,7 @@ class Day_One_Importer_Parser {
 			);
 		}
 
-		$seen      = isset( $job['seen_uuids'] ) && is_array( $job['seen_uuids'] ) ? $job['seen_uuids'] : array();
+		$seen      = array();
 		$file_i    = isset( $job['json_file_index'] ) ? max( 0, (int) $job['json_file_index'] ) : 0;
 		$processed = 0;
 		$limit     = class_exists( 'Day_One_Importer_Job_State' ) ? Day_One_Importer_Job_State::batch_index_entry_limit() : 100;
@@ -300,7 +298,7 @@ class Day_One_Importer_Parser {
 		$file_count = count( $files );
 		while ( $file_i < $file_count ) {
 			if ( $processed >= $limit || ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) ) {
-				$job['seen_uuids']      = $seen;
+				$job['seen_uuids']      = array();
 				$job['json_file_index'] = $file_i;
 				$this->checkpoint_job( $checkpoint, $job, $results );
 				return array(
@@ -319,7 +317,6 @@ class Day_One_Importer_Parser {
 			}
 
 			$processed += isset( $batch['processed'] ) ? (int) $batch['processed'] : 0;
-			$seen       = isset( $job['seen_uuids'] ) && is_array( $job['seen_uuids'] ) ? $job['seen_uuids'] : $seen;
 
 			if ( empty( $batch['file_done'] ) ) {
 				$this->checkpoint_job( $checkpoint, $job, $results );
@@ -336,7 +333,7 @@ class Day_One_Importer_Parser {
 			$this->checkpoint_job( $checkpoint, $job, $results );
 		}
 
-		$job['seen_uuids'] = $seen;
+		$job['seen_uuids'] = array();
 		$this->checkpoint_job( $checkpoint, $job, $results );
 
 		return array(
@@ -355,14 +352,18 @@ class Day_One_Importer_Parser {
 	public function read_manifest_entry( $manifest, $index ) {
 		$manifest = (string) $manifest;
 		$index    = max( 0, (int) $index );
-		if ( '' === $manifest || ! is_readable( $manifest ) ) {
+		if ( '' === $manifest || ! $this->is_readable( $manifest ) ) {
 			return null;
 		}
 
-		$file    = new SplFileObject( $manifest, 'r' );
+		$contents = $this->read_file( $manifest );
+		if ( ! is_string( $contents ) || '' === $contents ) {
+			return null;
+		}
+
 		$current = 0;
-		while ( ! $file->eof() ) {
-			$line = trim( (string) $file->fgets() );
+		foreach ( preg_split( '/\r\n|\r|\n/', $contents ) as $line ) {
+			$line = trim( (string) $line );
 			if ( '' === $line ) {
 				continue;
 			}
@@ -377,7 +378,7 @@ class Day_One_Importer_Parser {
 	}
 
 	/**
-	 * Stream one JSON file until the request budget or entry limit is reached.
+	 * Process one JSON file until the request budget or entry limit is reached.
 	 *
 	 * @param string                   $file JSON file path.
 	 * @param array<string,mixed>      $job Job state.
@@ -393,7 +394,7 @@ class Day_One_Importer_Parser {
 		// Native fopen() is required to stream multi-MB Day One JSON exports without
 		// buffering the entire file in memory. WP_Filesystem has no chunked-read API.
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
-		$handle = fopen( $file, 'rb' );
+		$handle = $this->is_readable( $file ) ? fopen( $file, 'rb' ) : false;
 		if ( ! $handle ) {
 			return array(
 				'file_done' => true,
@@ -411,6 +412,8 @@ class Day_One_Importer_Parser {
 		$in_string       = ! empty( $job['json_stream_in_string'] );
 		$escape          = ! empty( $job['json_stream_escape'] );
 		$string_buffer   = isset( $job['json_stream_string_buffer'] ) ? (string) $job['json_stream_string_buffer'] : '';
+		$top_depth       = isset( $job['json_stream_top_depth'] ) ? max( 0, (int) $job['json_stream_top_depth'] ) : 0;
+		$expect_key      = ! empty( $job['json_stream_expect_key'] );
 		$entry_buffer    = isset( $job['json_stream_entry_buffer'] ) ? (string) $job['json_stream_entry_buffer'] : '';
 		$entry_depth     = isset( $job['json_stream_entry_depth'] ) ? max( 0, (int) $job['json_stream_entry_depth'] ) : 0;
 		$entry_in_string = ! empty( $job['json_stream_entry_in_string'] );
@@ -438,7 +441,7 @@ class Day_One_Importer_Parser {
 				++$offset;
 
 				if ( 'search_key' === $mode ) {
-					$this->stream_search_key_char( $char, $mode, $in_string, $escape, $string_buffer );
+					$this->stream_search_key_char( $char, $mode, $in_string, $escape, $string_buffer, $top_depth, $expect_key );
 					continue;
 				}
 
@@ -459,7 +462,7 @@ class Day_One_Importer_Parser {
 						if ( empty( $job['json_current_file_counted'] ) ) {
 							$results->increment( 'json_files_found' );
 							$job['json_current_file_counted'] = true;
-							$this->persist_stream_state( $job, $offset, $mode, $in_string, $escape, $string_buffer, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i );
+							$this->persist_stream_state( $job, $offset, $mode, $in_string, $escape, $string_buffer, $top_depth, $expect_key, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i );
 							$this->checkpoint_job( $checkpoint, $job, $results );
 						}
 					} else {
@@ -491,7 +494,7 @@ class Day_One_Importer_Parser {
 						$entry_in_string         = false;
 						$entry_escape            = false;
 						$job['json_entry_index'] = $entry_i;
-						$this->persist_stream_state( $job, $offset, $mode, $in_string, $escape, $string_buffer, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i );
+						$this->persist_stream_state( $job, $offset, $mode, $in_string, $escape, $string_buffer, $top_depth, $expect_key, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i );
 						$this->checkpoint_job( $checkpoint, $job, $results );
 						if ( $processed >= $limit || ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) ) {
 							$paused = true;
@@ -525,8 +528,8 @@ class Day_One_Importer_Parser {
 			$file_done = true;
 		}
 
-		$this->persist_stream_state( $job, $offset, $mode, $in_string, $escape, $string_buffer, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i );
-		$job['seen_uuids'] = $seen;
+		$this->persist_stream_state( $job, $offset, $mode, $in_string, $escape, $string_buffer, $top_depth, $expect_key, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i );
+		$job['seen_uuids'] = array();
 
 		return array(
 			'file_done' => $file_done,
@@ -543,20 +546,38 @@ class Day_One_Importer_Parser {
 	 * @param bool   $in_string In string.
 	 * @param bool   $escape Escape state.
 	 * @param string $string_buffer String buffer.
+	 * @param int    $top_depth JSON nesting depth while searching top-level keys.
+	 * @param bool   $expect_key Whether a top-level object key can start here.
 	 * @return void
 	 */
-	private function stream_search_key_char( $char, &$mode, &$in_string, &$escape, &$string_buffer ) {
+	private function stream_search_key_char( $char, &$mode, &$in_string, &$escape, &$string_buffer, &$top_depth, &$expect_key ) {
 		if ( ! $in_string ) {
 			if ( '"' === $char ) {
 				$in_string     = true;
 				$escape        = false;
-				$string_buffer = '';
+				$string_buffer = ( 1 === $top_depth && $expect_key ) ? '' : null;
+				return;
+			}
+			if ( '{' === $char || '[' === $char ) {
+				++$top_depth;
+				if ( 1 === $top_depth && '{' === $char ) {
+					$expect_key = true;
+				}
+				return;
+			}
+			if ( '}' === $char || ']' === $char ) {
+				$top_depth  = max( 0, $top_depth - 1 );
+				$expect_key = false;
+				return;
+			}
+			if ( ',' === $char && 1 === $top_depth ) {
+				$expect_key = true;
 			}
 			return;
 		}
 
 		if ( $escape ) {
-			if ( strlen( $string_buffer ) < 64 ) {
+			if ( null !== $string_buffer && strlen( $string_buffer ) < 64 ) {
 				$string_buffer .= $char;
 			}
 			$escape = false;
@@ -569,13 +590,16 @@ class Day_One_Importer_Parser {
 		}
 
 		if ( '"' === $char ) {
-			$in_string     = false;
-			$mode          = 'entries' === $string_buffer ? 'search_colon' : 'search_key';
+			$in_string = false;
+			if ( null !== $string_buffer ) {
+				$mode       = 'entries' === $string_buffer ? 'search_colon' : 'search_key';
+				$expect_key = false;
+			}
 			$string_buffer = '';
 			return;
 		}
 
-		if ( strlen( $string_buffer ) < 64 ) {
+		if ( null !== $string_buffer && strlen( $string_buffer ) < 64 ) {
 			$string_buffer .= $char;
 		}
 	}
@@ -655,8 +679,19 @@ class Day_One_Importer_Parser {
 			return false;
 		}
 
+		if ( 'exists' === $written ) {
+			$results->add_warning(
+				sprintf(
+					/* translators: %s: Day One UUID. */
+					__( 'Duplicate UUID in export skipped: %s', 'day-one-importer' ),
+					$entry['uuid']
+				)
+			);
+			return true;
+		}
+
 		$seen[ $uuid_key ]    = true;
-		$job['seen_uuids']    = $seen;
+		$job['seen_uuids']    = array();
 		$job['entries_total'] = isset( $job['entries_total'] ) ? (int) $job['entries_total'] + 1 : 1;
 
 		return true;
@@ -671,6 +706,8 @@ class Day_One_Importer_Parser {
 	 * @param bool                $in_string Search string state.
 	 * @param bool                $escape Search escape state.
 	 * @param string              $string_buffer Search buffer.
+	 * @param int                 $top_depth JSON nesting depth while searching top-level keys.
+	 * @param bool                $expect_key Whether a top-level object key can start here.
 	 * @param string              $entry_buffer Entry buffer.
 	 * @param int                 $entry_depth Entry depth.
 	 * @param bool                $entry_in_string Entry string state.
@@ -678,12 +715,14 @@ class Day_One_Importer_Parser {
 	 * @param int                 $entry_i Entry index.
 	 * @return void
 	 */
-	private function persist_stream_state( &$job, $offset, $mode, $in_string, $escape, $string_buffer, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i ) {
+	private function persist_stream_state( &$job, $offset, $mode, $in_string, $escape, $string_buffer, $top_depth, $expect_key, $entry_buffer, $entry_depth, $entry_in_string, $entry_escape, $entry_i ) {
 		$job['json_stream_offset']          = max( 0, (int) $offset );
 		$job['json_stream_mode']            = (string) $mode;
 		$job['json_stream_in_string']       = (bool) $in_string;
 		$job['json_stream_escape']          = (bool) $escape;
 		$job['json_stream_string_buffer']   = (string) $string_buffer;
+		$job['json_stream_top_depth']       = max( 0, (int) $top_depth );
+		$job['json_stream_expect_key']      = (bool) $expect_key;
 		$job['json_stream_entry_buffer']    = (string) $entry_buffer;
 		$job['json_stream_entry_depth']     = max( 0, (int) $entry_depth );
 		$job['json_stream_entry_in_string'] = (bool) $entry_in_string;
@@ -705,6 +744,8 @@ class Day_One_Importer_Parser {
 		$job['json_stream_in_string']       = false;
 		$job['json_stream_escape']          = false;
 		$job['json_stream_string_buffer']   = '';
+		$job['json_stream_top_depth']       = 0;
+		$job['json_stream_expect_key']      = false;
 		$job['json_stream_entry_buffer']    = '';
 		$job['json_stream_entry_depth']     = 0;
 		$job['json_stream_entry_in_string'] = false;
@@ -730,8 +771,9 @@ class Day_One_Importer_Parser {
 			return false;
 		}
 
-		if ( file_exists( $marker ) ) {
-			$state = trim( (string) $this->read_file( $marker ) );
+		if ( $this->exists( $marker ) ) {
+			$marker_contents = $this->read_file( $marker );
+			$state           = is_string( $marker_contents ) ? trim( $marker_contents ) : '';
 			if ( 'written' === $state ) {
 				return 'exists';
 			}
@@ -740,7 +782,7 @@ class Day_One_Importer_Parser {
 				return 'exists';
 			}
 		} elseif ( ! $this->create_manifest_marker( $marker ) ) {
-			if ( file_exists( $marker ) ) {
+			if ( $this->exists( $marker ) ) {
 				return $this->append_manifest_entry( $manifest, $entry );
 			}
 
@@ -775,7 +817,7 @@ class Day_One_Importer_Parser {
 	 * @return bool True when the marker was created.
 	 */
 	private function create_manifest_marker( $marker ) {
-		if ( file_exists( $marker ) ) {
+		if ( $this->exists( $marker ) ) {
 			return false;
 		}
 
@@ -797,25 +839,69 @@ class Day_One_Importer_Parser {
 	 * Read a complete file through WordPress' filesystem abstraction.
 	 *
 	 * @param string $path File path.
-	 * @return string File contents, or an empty string on failure.
+	 * @return string|false File contents, or false on failure.
 	 */
 	private function read_file( $path ) {
-		$contents = class_exists( 'Day_One_Importer_Cleanup' ) ? Day_One_Importer_Cleanup::read_file( $path ) : false;
-
-		return is_string( $contents ) ? $contents : '';
+		return class_exists( 'Day_One_Importer_Cleanup' ) ? Day_One_Importer_Cleanup::read_file( $path ) : false;
 	}
 
 	/**
-	 * Append one line to the manifest under an exclusive lock.
+	 * Check path existence through WordPress' filesystem abstraction.
+	 *
+	 * @param string $path Path.
+	 * @return bool True when the path exists.
+	 */
+	private function exists( $path ) {
+		return class_exists( 'Day_One_Importer_Cleanup' ) && Day_One_Importer_Cleanup::exists( $path );
+	}
+
+	/**
+	 * Check directory status through WordPress' filesystem abstraction.
+	 *
+	 * @param string $path Path.
+	 * @return bool True when the path is a directory.
+	 */
+	private function is_dir( $path ) {
+		return class_exists( 'Day_One_Importer_Cleanup' ) && Day_One_Importer_Cleanup::is_dir( $path );
+	}
+
+	/**
+	 * Check file status through WordPress' filesystem abstraction.
+	 *
+	 * @param string $path Path.
+	 * @return bool True when the path is a file.
+	 */
+	private function is_file( $path ) {
+		return class_exists( 'Day_One_Importer_Cleanup' ) && Day_One_Importer_Cleanup::is_file( $path );
+	}
+
+	/**
+	 * Check file readability through WordPress' filesystem abstraction.
+	 *
+	 * @param string $path Path.
+	 * @return bool True when the file can be read.
+	 */
+	private function is_readable( $path ) {
+		return class_exists( 'Day_One_Importer_Cleanup' ) && Day_One_Importer_Cleanup::is_readable( $path );
+	}
+
+	/**
+	 * Append one line to the manifest through WP_Filesystem.
 	 *
 	 * @param string $manifest Manifest path.
 	 * @param string $line Line to append.
 	 * @return bool True when the line was appended.
 	 */
 	private function append_manifest_line( $manifest, $line ) {
-		$current = $this->read_file( $manifest );
+		$existing = '';
+		if ( $this->exists( $manifest ) ) {
+			$existing = $this->read_file( $manifest );
+		}
+		if ( ! is_string( $existing ) ) {
+			return false;
+		}
 
-		return $this->write_manifest_marker( $manifest, $current . $line );
+		return $this->write_manifest_marker( $manifest, $existing . $line );
 	}
 
 	/**
@@ -826,13 +912,13 @@ class Day_One_Importer_Parser {
 	 */
 	private function prepare_manifest_storage( $manifest ) {
 		$dir = dirname( $manifest );
-		if ( ! is_dir( $dir ) && class_exists( 'Day_One_Importer_Cleanup' ) ) {
+		if ( ! $this->is_dir( $dir ) && class_exists( 'Day_One_Importer_Cleanup' ) ) {
 			Day_One_Importer_Cleanup::make_directory( $dir );
 		}
-		if ( ! is_dir( $dir ) ) {
+		if ( ! $this->is_dir( $dir ) ) {
 			return false;
 		}
-		if ( ! file_exists( $manifest ) && ! $this->write_manifest_marker( $manifest, '' ) ) {
+		if ( ! $this->exists( $manifest ) && ! $this->write_manifest_marker( $manifest, '' ) ) {
 			return false;
 		}
 		if ( class_exists( 'Day_One_Importer_Cleanup' ) ) {
@@ -840,14 +926,14 @@ class Day_One_Importer_Parser {
 		}
 
 		$marker_dir = $this->manifest_marker_dir( $manifest );
-		if ( ! is_dir( $marker_dir ) && class_exists( 'Day_One_Importer_Cleanup' ) ) {
+		if ( ! $this->is_dir( $marker_dir ) && class_exists( 'Day_One_Importer_Cleanup' ) ) {
 			Day_One_Importer_Cleanup::make_directory( $marker_dir );
 		}
 		if ( class_exists( 'Day_One_Importer_Cleanup' ) ) {
 			Day_One_Importer_Cleanup::protect_directory( $marker_dir );
 		}
 
-		return is_dir( $marker_dir );
+		return $this->is_dir( $marker_dir );
 	}
 
 	/**
@@ -869,7 +955,7 @@ class Day_One_Importer_Parser {
 	 */
 	private function manifest_marker_path( $manifest, $uuid ) {
 		$dir = $this->manifest_marker_dir( $manifest );
-		if ( ! is_dir( $dir ) && ! $this->prepare_manifest_storage( $manifest ) ) {
+		if ( ! $this->is_dir( $dir ) && ! $this->prepare_manifest_storage( $manifest ) ) {
 			return '';
 		}
 
@@ -884,13 +970,17 @@ class Day_One_Importer_Parser {
 	 * @return bool
 	 */
 	private function manifest_contains_uuid( $manifest, $uuid ) {
-		if ( ! is_readable( $manifest ) ) {
+		if ( ! $this->is_readable( $manifest ) ) {
 			return false;
 		}
 
-		$file = new SplFileObject( $manifest, 'r' );
-		while ( ! $file->eof() ) {
-			$line = trim( (string) $file->fgets() );
+		$contents = $this->read_file( $manifest );
+		if ( ! is_string( $contents ) || '' === $contents ) {
+			return false;
+		}
+
+		foreach ( preg_split( '/\r\n|\r|\n/', $contents ) as $line ) {
+			$line = trim( (string) $line );
 			if ( '' === $line ) {
 				continue;
 			}
@@ -937,8 +1027,7 @@ class Day_One_Importer_Parser {
 	 * @return bool
 	 */
 	private function path_is_inside_root( $path, $root ) {
-		$root_prefix = rtrim( $root, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
-		return $path === $root || 0 === strpos( $path, $root_prefix );
+		return class_exists( 'Day_One_Importer_Cleanup' ) && Day_One_Importer_Cleanup::path_is_inside( $path, $root );
 	}
 
 	/**
@@ -948,25 +1037,22 @@ class Day_One_Importer_Parser {
 	 * @return string[]
 	 */
 	public function find_journal_json_files( $root ) {
-		$root_real = realpath( $root );
-		if ( false === $root_real || ! is_dir( $root_real ) ) {
+		$root = class_exists( 'Day_One_Importer_Cleanup' ) ? Day_One_Importer_Cleanup::normalize_path( $root ) : (string) $root;
+		if ( ! $this->is_dir( $root ) ) {
 			return array();
 		}
 
-		$files    = array();
-		$iterator = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $root_real, FilesystemIterator::SKIP_DOTS ) );
-
-		foreach ( $iterator as $item ) {
-			if ( ! $item->isFile() ) {
+		$files = array();
+		foreach ( Day_One_Importer_Cleanup::list_directory_paths( $root ) as $path ) {
+			if ( ! $this->is_file( $path ) ) {
 				continue;
 			}
 
-			$path = $item->getPathname();
-			if ( false !== strpos( $path, DIRECTORY_SEPARATOR . '__MACOSX' . DIRECTORY_SEPARATOR ) ) {
+			if ( false !== strpos( $path, '/__MACOSX/' ) ) {
 				continue;
 			}
 
-			$filename = $item->getFilename();
+			$filename = basename( $path );
 			if ( 0 === strpos( $filename, '.' ) ) {
 				continue;
 			}
@@ -975,9 +1061,9 @@ class Day_One_Importer_Parser {
 				continue;
 			}
 
-			$data = $this->decode_json_file( $item->getPathname() );
+			$data = $this->decode_json_file( $path );
 			if ( is_array( $data ) && isset( $data['entries'] ) && is_array( $data['entries'] ) ) {
-				$files[] = $item->getPathname();
+				$files[] = $path;
 			}
 		}
 
@@ -992,15 +1078,8 @@ class Day_One_Importer_Parser {
 	 * @return mixed
 	 */
 	public function decode_json_file( $file ) {
-		if ( function_exists( 'wp_json_file_decode' ) ) {
-			$data = wp_json_file_decode( $file, array( 'associative' => true ) );
-			if ( null !== $data ) {
-				return $data;
-			}
-		}
-
 		$contents = $this->read_file( $file );
-		if ( '' === $contents ) {
+		if ( ! is_string( $contents ) || '' === $contents ) {
 			return null;
 		}
 

@@ -90,6 +90,20 @@ if ( ! function_exists( 'absint' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_post_stati' ) ) {
+	function get_post_stati( $args = array(), $output = 'names' ) {
+		unset( $args, $output );
+		return array(
+			'publish' => 'publish',
+			'future'  => 'future',
+			'draft'   => 'draft',
+			'pending' => 'pending',
+			'private' => 'private',
+			'trash'   => 'trash',
+		);
+	}
+}
+
 if ( ! function_exists( 'untrailingslashit' ) ) {
 	function untrailingslashit( $value ) {
 		return rtrim( (string) $value, '/\\' );
@@ -116,6 +130,77 @@ if ( ! function_exists( 'wp_is_writable' ) ) {
 
 if ( ! class_exists( 'Day_One_Importer_Test_Filesystem' ) ) {
 	class Day_One_Importer_Test_Filesystem {
+		public function exists( $path ) {
+			return file_exists( $path );
+		}
+
+		public function is_dir( $path ) {
+			return is_dir( $path );
+		}
+
+		public function is_file( $path ) {
+			return is_file( $path );
+		}
+
+		public function is_readable( $path ) {
+			return is_readable( $path );
+		}
+
+		public function is_writable( $path ) {
+			return is_writable( $path );
+		}
+
+		public function size( $path ) {
+			$size = @filesize( $path );
+			return false === $size ? 0 : $size;
+		}
+
+		public function mkdir( $path, $chmod = false ) {
+			$created = @mkdir( $path, false === $chmod ? 0755 : $chmod );
+			if ( $created && false !== $chmod ) {
+				@chmod( $path, $chmod );
+			}
+			return $created;
+		}
+
+		public function delete( $path, $recursive = false, $type = false ) {
+			unset( $type );
+			if ( is_file( $path ) || is_link( $path ) ) {
+				return @unlink( $path );
+			}
+			if ( ! is_dir( $path ) ) {
+				return false;
+			}
+			if ( $recursive ) {
+				$items = array_diff( (array) scandir( $path ), array( '.', '..' ) );
+				foreach ( $items as $item ) {
+					$this->delete( $path . '/' . $item, true );
+				}
+			}
+			return @rmdir( $path );
+		}
+
+		public function dirlist( $path, $include_hidden = true, $recursive = false ) {
+			unset( $include_hidden );
+			if ( ! is_dir( $path ) ) {
+				return false;
+			}
+			$list  = array();
+			$items = array_diff( (array) scandir( $path ), array( '.', '..' ) );
+			foreach ( $items as $item ) {
+				$full  = $path . '/' . $item;
+				$entry = array(
+					'name' => $item,
+					'type' => is_dir( $full ) ? 'd' : 'f',
+				);
+				if ( $recursive && is_dir( $full ) ) {
+					$entry['files'] = $this->dirlist( $full, true, true );
+				}
+				$list[ $item ] = $entry;
+			}
+			return $list;
+		}
+
 		public function chmod( $path, $mode, $recursive = false ) {
 			unset( $recursive );
 			return chmod( $path, $mode );
@@ -2615,7 +2700,7 @@ assert_true( false === strpos( $gallery_content, 'day-one-importer-photos' ) && 
 $gif_block_content = Day_One_Importer_Content::append_image_section( '', array( 1001 ) );
 assert_true( false !== strpos( $gif_block_content, '<!-- wp:image {"id":1001,"sizeSlug":"full","linkDestination":"none"} -->' ), '#60 R5.1 — GIF image block emits sizeSlug=full and id=1001.' );
 assert_true( false !== strpos( $gif_block_content, '<figure class="wp-block-image size-full">' ), '#60 R5.1 — GIF image block figure carries size-full class.' );
-assert_true( false !== strpos( $gif_block_content, 'src="https://example.test/wp-content/uploads/2026/05/animated.gif"' ), '#60 R5.1 — GIF image block src is wp_get_attachment_url() (original file), not the `large` derivative.' );
+assert_true( false !== strpos( $gif_block_content, 'src="https://example.test/wp-admin/admin-ajax.php?action=day_one_importer_media&amp;attachment_id=1001"' ), '#60 R5.1 — GIF image block src is the stable private endpoint (streams the original file), not the `large` derivative.' );
 assert_true( false === strpos( $gif_block_content, 'animated-1024x1024.jpg' ), '#60 R5.1 — GIF image block does not leak the `large` derivative URL.' );
 assert_true( false === strpos( $gif_block_content, '"sizeSlug":"large"' ), '#60 R5.1 — GIF image block does not emit sizeSlug=large.' );
 assert_true( false === strpos( $gif_block_content, 'size-large' ), '#60 R5.1 — GIF image block figure does not carry size-large class.' );
@@ -2626,7 +2711,7 @@ assert_true( false !== strpos( $gif_block_content, 'alt="animated lantern"' ), '
 $jpeg_block_content = Day_One_Importer_Content::append_image_section( '', array( 1002 ) );
 assert_true( false !== strpos( $jpeg_block_content, '<!-- wp:image {"id":1002,"sizeSlug":"large","linkDestination":"none"} -->' ), '#60 R5.1 — non-GIF (jpeg) image block keeps sizeSlug=large.' );
 assert_true( false !== strpos( $jpeg_block_content, '<figure class="wp-block-image size-large">' ), '#60 R5.1 — non-GIF (jpeg) image block figure keeps size-large class.' );
-assert_true( false !== strpos( $jpeg_block_content, 'src="https://example.test/wp-content/uploads/2026/05/photo-1024x768.jpg"' ), '#60 R5.1 — non-GIF (jpeg) image block uses the `large` derivative URL.' );
+assert_true( false !== strpos( $jpeg_block_content, 'src="https://example.test/wp-admin/admin-ajax.php?action=day_one_importer_media&amp;attachment_id=1002"' ), '#60 R5.1 — non-GIF (jpeg) Day One image src is the stable private endpoint.' );
 assert_true( false === strpos( $jpeg_block_content, '"sizeSlug":"full"' ), '#60 R5.1 — non-GIF (jpeg) image block does not emit sizeSlug=full.' );
 
 // #60 R5.1 K2 — mixed gallery: per-image sizeSlug MUST be preserved through
@@ -4619,28 +4704,38 @@ unset( $GLOBALS['day_one_importer_test_filters']['day_one_importer_weather_meta'
 $GLOBALS['day_one_importer_test_get_posts_calls']  = array();
 $GLOBALS['day_one_importer_test_get_posts_result'] = array();
 $find_existing_uuid  = 'TEST-75-UUID-NO-MATCH';
+$find_existing_owner  = 7;
 $find_existing_runner = new Day_One_Importer_Runner();
 $find_existing_method = new ReflectionMethod( 'Day_One_Importer_Runner', 'find_existing_post_id' );
 $find_existing_method->setAccessible( true );
 $find_existing_results = new Day_One_Importer_Results();
-$found_id = $find_existing_method->invoke( $find_existing_runner, $find_existing_uuid, $find_existing_results );
+$found_id = $find_existing_method->invoke( $find_existing_runner, $find_existing_uuid, $find_existing_results, $find_existing_owner );
 assert_true( 0 === $found_id, '#75 — find_existing_post_id returns 0 when no posts match the UUID.' );
 assert_true( 1 === count( $GLOBALS['day_one_importer_test_get_posts_calls'] ), '#75 — find_existing_post_id issues a single get_posts() query (no per-row meta scan).' );
 $find_existing_args = $GLOBALS['day_one_importer_test_get_posts_calls'][0];
-assert_true( isset( $find_existing_args['meta_key'] ) && '_day_one_uuid' === $find_existing_args['meta_key'], '#75 — find_existing_post_id passes meta_key=_day_one_uuid to get_posts().' );
-assert_true( isset( $find_existing_args['meta_value'] ) && $find_existing_uuid === $find_existing_args['meta_value'], '#75 — find_existing_post_id passes the UUID verbatim as meta_value.' );
+assert_true( isset( $find_existing_args['meta_query'] ) && is_array( $find_existing_args['meta_query'] ), '#75 — find_existing_post_id passes a meta_query to get_posts().' );
+assert_true( isset( $find_existing_args['meta_query'][0]['key'] ) && '_day_one_uuid' === $find_existing_args['meta_query'][0]['key'] && $find_existing_uuid === $find_existing_args['meta_query'][0]['value'], '#75 — meta_query matches _day_one_uuid verbatim.' );
+assert_true( isset( $find_existing_args['meta_query'][1]['key'] ) && '_day_one_source' === $find_existing_args['meta_query'][1]['key'] && 'day-one-export' === $find_existing_args['meta_query'][1]['value'], '#75 — meta_query also requires the importer source marker.' );
+assert_true( isset( $find_existing_args['author'] ) && $find_existing_owner === $find_existing_args['author'], '#75 — lookup is scoped to the import owner (no cross-user reuse).' );
 assert_true( isset( $find_existing_args['posts_per_page'] ) && 2 === $find_existing_args['posts_per_page'], '#75 — find_existing_post_id caps posts_per_page at 2 so the duplicate-UUID warning still fires.' );
 assert_true( isset( $find_existing_args['fields'] ) && 'ids' === $find_existing_args['fields'], '#75 — find_existing_post_id requests only post IDs from get_posts().' );
 assert_true( isset( $find_existing_args['no_found_rows'] ) && true === $find_existing_args['no_found_rows'], '#75 — find_existing_post_id disables SQL_CALC_FOUND_ROWS via no_found_rows=true.' );
 assert_true( isset( $find_existing_args['post_type'] ) && 'post' === $find_existing_args['post_type'], '#75 — find_existing_post_id scopes the lookup to post_type=post.' );
-assert_true( isset( $find_existing_args['post_status'] ) && 'any' === $find_existing_args['post_status'], '#75 — find_existing_post_id uses post_status=any so private imported posts are included.' );
+assert_true( isset( $find_existing_args['post_status'] ) && is_array( $find_existing_args['post_status'] ) && in_array( 'private', $find_existing_args['post_status'], true ), '#75 — find_existing_post_id queries all registered statuses so private imported posts are included.' );
 assert_true( ! $find_existing_results->has_warnings(), '#75 — no warning is emitted when zero posts match.' );
+
+// Owner scoping: without an owner the lookup short-circuits with zero queries.
+$GLOBALS['day_one_importer_test_get_posts_calls']  = array();
+$ownerless_results = new Day_One_Importer_Results();
+$ownerless_id      = $find_existing_method->invoke( $find_existing_runner, 'TEST-75-UUID-NO-OWNER', $ownerless_results, 0 );
+assert_true( 0 === $ownerless_id, 'find_existing_post_id returns 0 when no owner user ID is available.' );
+assert_true( 0 === count( $GLOBALS['day_one_importer_test_get_posts_calls'] ), 'find_existing_post_id issues zero queries without an owner.' );
 
 // #75 — single match: returns the ID and emits no duplicate-UUID warning.
 $GLOBALS['day_one_importer_test_get_posts_calls']  = array();
 $GLOBALS['day_one_importer_test_get_posts_result'] = array( '4242' );
 $single_match_results = new Day_One_Importer_Results();
-$single_match_id      = $find_existing_method->invoke( $find_existing_runner, 'TEST-75-UUID-ONE', $single_match_results );
+$single_match_id      = $find_existing_method->invoke( $find_existing_runner, 'TEST-75-UUID-ONE', $single_match_results, $find_existing_owner );
 assert_true( 4242 === $single_match_id, '#75 — find_existing_post_id returns the matching post ID coerced to int.' );
 assert_true( ! $single_match_results->has_warnings(), '#75 — a single match does not trigger the duplicate-UUID warning.' );
 
@@ -4648,7 +4743,7 @@ assert_true( ! $single_match_results->has_warnings(), '#75 — a single match do
 $GLOBALS['day_one_importer_test_get_posts_calls']  = array();
 $GLOBALS['day_one_importer_test_get_posts_result'] = array( '4242', '5353' );
 $dup_match_results = new Day_One_Importer_Results();
-$dup_match_id      = $find_existing_method->invoke( $find_existing_runner, 'TEST-75-UUID-DUP', $dup_match_results );
+$dup_match_id      = $find_existing_method->invoke( $find_existing_runner, 'TEST-75-UUID-DUP', $dup_match_results, $find_existing_owner );
 assert_true( 4242 === $dup_match_id, '#75 — find_existing_post_id returns the first matching post ID on duplicate UUIDs.' );
 assert_true( $dup_match_results->has_warnings(), '#75 — duplicate-UUID warning is emitted when more than one post matches.' );
 

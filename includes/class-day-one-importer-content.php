@@ -1218,17 +1218,24 @@ class Day_One_Importer_Content {
 
 		$is_gif = ( 'gif' === $format );
 
+		// Day One media keeps a stable nonce-less private endpoint URL so stored
+		// markup never expires. The endpoint streams the original file bytes, so
+		// animated GIFs survive this path too (#60 R2.1).
+		if ( class_exists( 'Day_One_Importer_Media' ) && function_exists( 'get_post_meta' ) && 'day-one-export' === (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
+			$url = Day_One_Importer_Media::private_media_url( $attachment_id, false );
+		}
+
 		// #60 R2.1 — GIF branch skips the `large` derivative; non-GIF keeps the
 		// existing `large` -> `wp_get_attachment_image` -> `wp_get_attachment_url`
 		// ladder (R2.2).
-		if ( ! $is_gif && function_exists( 'wp_get_attachment_image_src' ) ) {
+		if ( '' === $url && ! $is_gif && function_exists( 'wp_get_attachment_image_src' ) ) {
 			$image_src = wp_get_attachment_image_src( $attachment_id, 'large' );
 			if ( is_array( $image_src ) && ! empty( $image_src[0] ) ) {
 				$url = (string) $image_src[0];
 			}
 		}
 
-		if ( $is_gif && function_exists( 'wp_get_attachment_url' ) ) {
+		if ( '' === $url && $is_gif && function_exists( 'wp_get_attachment_url' ) ) {
 			$gif_url = wp_get_attachment_url( $attachment_id );
 			$url     = $gif_url ? (string) $gif_url : '';
 		}

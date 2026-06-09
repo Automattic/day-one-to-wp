@@ -2,10 +2,9 @@
 Contributors: cbravobernal
 Tags: import, importer, day-one, journal, privacy
 Requires at least: 6.4
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
-Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.22
+Stable tag: 0.2.23
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,6 +17,7 @@ Day One Importer is made by Automattic. It adds a WordPress admin importer for D
 The importer is designed for local or private archive migration workflows:
 
 * Imported posts are private by default.
+* The PHP ZipArchive extension is required so ZIP exports can be inspected with safety budgets before extraction.
 * Large exports run as resumable jobs advanced by short browser requests with a WP-Cron fallback, reducing gateway timeout risk.
 * Re-importing the same export skips completed entries using Day One UUID metadata.
 * Interrupted, failed, or older-schema imports can be retried, continued, or refreshed in place without duplicating completed posts or media.
@@ -34,7 +34,7 @@ For development and testing, the repository includes a wholly fictional sample D
 
 == Installation ==
 
-1. Optionally confirm PHP has the ZipArchive extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
+1. Confirm PHP has the ZipArchive extension enabled. The importer requires it to inspect ZIP exports with safety budgets before extraction.
 2. Install the plugin ZIP through the WordPress Plugins screen, or upload the plugin files to your site's configured plugins directory.
 3. Activate the plugin through the Plugins screen in WordPress.
 4. Go to Tools > Import and choose Day One.
@@ -65,6 +65,12 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.23 =
+* Security and review hardening: require the PHP ZipArchive extension and fail closed when it is missing (the previous single-request synchronous fallback was removed), enforce ZIP expansion budgets (member count, total uncompressed size, per-member size, compression ratio) before and during extraction, and scope idempotency lookups to the import owner with an explicit `_day_one_source` check.
+* Restore bounded streaming for journal JSON indexing with resumable offsets, and persist ZIP budget cursors on async jobs.
+* Improve resumable job dashboard updates during long-running requests and after page reloads.
+* Refresh the fictional sample entry text.
 
 = 0.2.22 =
 * tooling: Plugin Check helper script. Add `tools/run-plugin-check.sh` (POSIX shell) and a matching `composer plugin-check` script alias that automate WordPress Plugin Check (PCP) against the plugin via the repository's `wp-env` environment. The helper is idempotent: it starts `wp-env` only if it is not already running (probing `wp core is-installed`), installs and activates the `plugin-check` plugin only when not already active, then runs `wp plugin check day-one-importer --checks=all --format=table --fields=check,file,line,column,type,code,message` inside the container. Exit codes are distinguishable: `0` = zero findings (ready for submission review), `1` = PCP reported one or more errors or warnings, `2` = environment / setup failure (Docker not running, port `8888`/`8889` conflict, wp-env unavailable) with a hint pointing at the likely cause. The script is intentionally **not** wired into the normal lint / test loop — it runs only when invoked explicitly (`composer plugin-check` or `./tools/run-plugin-check.sh`) so contributors are not gated on Docker for routine work. The README's "Pre-submission verification" section and a new `## Plugin Check (PCP)` section in `tests/manual-verification.md` document the expected zero-findings output. No `IMPORT_SCHEMA_VERSION` bump (still `11`); no manifest, parser, or runner contract change.
@@ -179,6 +185,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.23 =
+The PHP ZipArchive extension is now required; imports fail safely with a clear message when it is missing instead of falling back to a single-request import. ZIP safety budgets now reject oversized or hostile archives before extraction. No manifest changes for existing resumable jobs; no schema bump.
 
 = 0.2.20 =
 Defers admin-only files on non-admin requests. The two heaviest admin/AJAX-only files (`class-day-one-importer-admin.php` and `class-day-one-importer-jobs-controller.php`, ~750 LOC combined) are now skipped on plain front-end pageviews. WP-Cron job processing and the front-end private-media endpoint still work because their hooks are registered from the always-loaded plugin class. Internal-only release — no manifest changes, no schema bump, no site-visible behaviour change for existing imports.
