@@ -199,15 +199,15 @@ class Day_One_Importer_Media {
 	 * @return string Empty if unresolved.
 	 */
 	public static function resolve_photo_path( $root, $photo, $photo_dirs = null ) {
-		$root_real = realpath( $root );
-		if ( false === $root_real ) {
+		$root = Day_One_Importer_Cleanup::normalize_path( $root );
+		if ( ! Day_One_Importer_Cleanup::is_dir( $root ) ) {
 			return '';
 		}
 
 		if ( null !== $photo_dirs ) {
-			$photo_dirs = self::sanitize_photo_dirs( $root_real, $photo_dirs );
+			$photo_dirs = self::sanitize_photo_dirs( $root, $photo_dirs );
 		} else {
-			$photo_dirs = self::find_photo_dirs( $root_real );
+			$photo_dirs = self::find_photo_dirs( $root );
 		}
 		if ( empty( $photo_dirs ) ) {
 			return '';
@@ -229,15 +229,11 @@ class Day_One_Importer_Media {
 			$candidates[] = $filename;
 		}
 
-		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
 		foreach ( $photo_dirs as $dir ) {
 			foreach ( array_unique( $candidates ) as $candidate ) {
-				$path = $dir . DIRECTORY_SEPARATOR . $candidate;
-				if ( is_file( $path ) ) {
-					$real = realpath( $path );
-					if ( $real && ( $real === $root_real || 0 === strpos( $real, $root_prefix ) ) ) {
-						return $real;
-					}
+				$path = Day_One_Importer_Cleanup::normalize_path( $dir . '/' . $candidate );
+				if ( Day_One_Importer_Cleanup::is_file( $path ) && Day_One_Importer_Cleanup::path_is_inside( $path, $root ) ) {
+					return $path;
 				}
 			}
 		}
@@ -248,20 +244,20 @@ class Day_One_Importer_Media {
 	/**
 	 * Sanitize cached photo directories against the extraction root.
 	 *
-	 * @param string   $root_real Real extraction root.
+	 * @param string   $root Extraction root.
 	 * @param string[] $photo_dirs Cached directories.
 	 * @return string[]
 	 */
-	private static function sanitize_photo_dirs( $root_real, $photo_dirs ) {
-		$dirs        = array();
-		$root_prefix = rtrim( $root_real, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+	private static function sanitize_photo_dirs( $root, $photo_dirs ) {
+		$dirs = array();
+		$root = Day_One_Importer_Cleanup::normalize_path( $root );
 		foreach ( (array) $photo_dirs as $dir ) {
-			$real = realpath( (string) $dir );
-			if ( false === $real || ! is_dir( $real ) ) {
+			$path = Day_One_Importer_Cleanup::normalize_path( (string) $dir );
+			if ( ! Day_One_Importer_Cleanup::is_dir( $path ) ) {
 				continue;
 			}
-			if ( $real === $root_real || 0 === strpos( $real, $root_prefix ) ) {
-				$dirs[] = $real;
+			if ( Day_One_Importer_Cleanup::path_is_inside( $path, $root ) ) {
+				$dirs[] = $path;
 			}
 		}
 
@@ -276,18 +272,14 @@ class Day_One_Importer_Media {
 	 */
 	public static function find_photo_dirs( $root ) {
 		$dirs = array();
-		if ( ! is_dir( $root ) ) {
+		$root = Day_One_Importer_Cleanup::normalize_path( $root );
+		if ( ! Day_One_Importer_Cleanup::is_dir( $root ) ) {
 			return $dirs;
 		}
 
-		$iterator = new RecursiveIteratorIterator(
-			new RecursiveDirectoryIterator( $root, FilesystemIterator::SKIP_DOTS ),
-			RecursiveIteratorIterator::SELF_FIRST
-		);
-
-		foreach ( $iterator as $item ) {
-			if ( $item->isDir() && 'photos' === strtolower( $item->getFilename() ) ) {
-				$dirs[] = $item->getPathname();
+		foreach ( Day_One_Importer_Cleanup::list_directory_paths( $root ) as $path ) {
+			if ( Day_One_Importer_Cleanup::is_dir( $path ) && 'photos' === strtolower( basename( $path ) ) ) {
+				$dirs[] = $path;
 			}
 		}
 
@@ -332,7 +324,7 @@ class Day_One_Importer_Media {
 	 * @return true|string True or reason.
 	 */
 	private function validate_media_file( $path ) {
-		if ( ! is_readable( $path ) || filesize( $path ) <= 0 ) {
+		if ( ! Day_One_Importer_Cleanup::is_readable( $path ) || Day_One_Importer_Cleanup::size( $path ) <= 0 ) {
 			return 'unreadable';
 		}
 
@@ -501,7 +493,7 @@ class Day_One_Importer_Media {
 		$tmp      = wp_tempnam( $filename );
 		if ( ! $tmp || ! Day_One_Importer_Cleanup::copy_file( $source, $tmp ) ) {
 			if ( $tmp ) {
-				wp_delete_file( $tmp );
+				Day_One_Importer_Cleanup::delete_path( $tmp );
 			}
 			return 0;
 		}
@@ -531,11 +523,11 @@ class Day_One_Importer_Media {
 		}
 
 		if ( is_wp_error( $attachment_id ) ) {
-			wp_delete_file( $tmp );
+			Day_One_Importer_Cleanup::delete_path( $tmp );
 			return 0;
 		}
 
-		if ( $private_file && is_readable( $private_file ) ) {
+		if ( $private_file && Day_One_Importer_Cleanup::is_readable( $private_file ) ) {
 			update_attached_file( $attachment_id, $private_file );
 		}
 
@@ -579,14 +571,12 @@ class Day_One_Importer_Media {
 		$private_subdir = $subdir;
 		$private_path   = untrailingslashit( $private ) . $private_subdir;
 
-		if ( function_exists( 'wp_mkdir_p' ) ) {
-			wp_mkdir_p( $private_path );
-		}
+		Day_One_Importer_Cleanup::make_directory( $private_path );
 
 		self::protect_private_upload_directory( $private );
 		self::protect_private_upload_directory( $private_path );
 
-		if ( ! is_dir( $private_path ) || ! wp_is_writable( $private_path ) ) {
+		if ( ! Day_One_Importer_Cleanup::is_dir( $private_path ) || ! Day_One_Importer_Cleanup::is_writable( $private_path ) ) {
 			$dirs['error'] = __( 'The private media directory is not writable.', 'day-one-importer' );
 			return $dirs;
 		}
@@ -612,11 +602,11 @@ class Day_One_Importer_Media {
 			return '';
 		}
 
-		if ( function_exists( 'wp_mkdir_p' ) && ! wp_mkdir_p( $dir ) ) {
+		if ( ! Day_One_Importer_Cleanup::make_directory( $dir ) ) {
 			return '';
 		}
 
-		if ( ! is_dir( $dir ) || ! wp_is_writable( $dir ) ) {
+		if ( ! Day_One_Importer_Cleanup::is_dir( $dir ) || ! Day_One_Importer_Cleanup::is_writable( $dir ) ) {
 			return '';
 		}
 
@@ -675,22 +665,78 @@ class Day_One_Importer_Media {
 	/**
 	 * Build the stable authenticated endpoint URL for a Day One attachment.
 	 *
-	 * @param int $attachment_id Attachment ID.
+	 * @param int  $attachment_id Attachment ID.
+	 * @param bool $include_nonce Whether to include a fresh media nonce.
 	 * @return string URL.
 	 */
-	public static function private_media_url( $attachment_id ) {
+	public static function private_media_url( $attachment_id, $include_nonce = true ) {
 		if ( ! function_exists( 'admin_url' ) || ! function_exists( 'add_query_arg' ) ) {
 			return '';
 		}
 
-		return add_query_arg(
-			array(
-				'action'        => self::PRIVATE_MEDIA_ACTION,
-				'attachment_id' => absint( $attachment_id ),
-				'nonce'         => wp_create_nonce( self::PRIVATE_MEDIA_ACTION ),
-			),
-			admin_url( 'admin-ajax.php' )
+		$args = array(
+			'action'        => self::PRIVATE_MEDIA_ACTION,
+			'attachment_id' => absint( $attachment_id ),
 		);
+		if ( $include_nonce ) {
+			$args['nonce'] = wp_create_nonce( self::PRIVATE_MEDIA_ACTION );
+		}
+
+		return add_query_arg( $args, admin_url( 'admin-ajax.php' ) );
+	}
+
+	/**
+	 * Inject fresh private media nonces into rendered post content.
+	 *
+	 * Stored block markup intentionally keeps stable nonce-less endpoint URLs so
+	 * imported posts do not expire. Rendered content receives user-specific
+	 * nonces immediately before output.
+	 *
+	 * @param string $content Post content.
+	 * @return string Filtered content.
+	 */
+	public static function filter_private_media_content_urls( $content ) {
+		if ( false === strpos( (string) $content, 'wp-image-' ) ) {
+			return $content;
+		}
+
+		$filtered = preg_replace_callback(
+			'/<img\b[^>]*\bclass=(["\'])(?:(?!\1).)*\bwp-image-([0-9]+)\b(?:(?!\1).)*\1[^>]*>/i',
+			static function ( $matches ) {
+				return self::replace_private_media_img_src( $matches );
+			},
+			(string) $content
+		);
+
+		return is_string( $filtered ) ? $filtered : $content;
+	}
+
+	/**
+	 * Replace one imported Day One image src with a fresh authenticated URL.
+	 *
+	 * @param array<int,string> $matches Regex matches.
+	 * @return string Replacement image tag.
+	 */
+	private static function replace_private_media_img_src( $matches ) {
+		$img           = isset( $matches[0] ) ? (string) $matches[0] : '';
+		$attachment_id = isset( $matches[2] ) ? absint( $matches[2] ) : 0;
+		if ( ! $attachment_id || 'day-one-export' !== (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
+			return $img;
+		}
+
+		$url = self::private_media_url( $attachment_id, true );
+		if ( '' === $url ) {
+			return $img;
+		}
+
+		$escaped_url = esc_url( $url );
+		if ( preg_match( '/\ssrc=(["\']).*?\1/i', $img ) ) {
+			$replaced = preg_replace( '/\ssrc=(["\']).*?\1/i', ' src="' . $escaped_url . '"', $img, 1 );
+			return is_string( $replaced ) ? $replaced : $img;
+		}
+
+		$replaced = preg_replace( '/\s*\/?>$/', ' src="' . $escaped_url . '" />', $img, 1 );
+		return is_string( $replaced ) ? $replaced : $img;
 	}
 
 	/**
@@ -715,7 +761,13 @@ class Day_One_Importer_Media {
 		}
 
 		$file = get_attached_file( $attachment_id );
-		if ( ! $file || ! is_readable( $file ) || ! self::is_private_upload_path( $file ) ) {
+		if ( ! $file || ! Day_One_Importer_Cleanup::is_readable( $file ) || ! self::is_private_upload_path( $file ) ) {
+			self::private_media_status( 404 );
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Private media responses need bounded streaming; WP_Filesystem loads the full file.
+		$handle = fopen( $file, 'rb' );
+		if ( ! is_resource( $handle ) ) {
 			self::private_media_status( 404 );
 		}
 
@@ -727,9 +779,20 @@ class Day_One_Importer_Media {
 
 		nocache_headers();
 		header( 'Content-Type: ' . $mime );
-		header( 'Content-Length: ' . absint( filesize( $file ) ) );
+		header( 'Content-Length: ' . absint( Day_One_Importer_Cleanup::size( $file ) ) );
 		header( 'X-Content-Type-Options: nosniff' );
-		readfile( $file );
+		while ( ! feof( $handle ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread -- Private media responses need bounded streaming; WP_Filesystem loads the full file.
+			$chunk = fread( $handle, 1048576 );
+			if ( false === $chunk || '' === $chunk ) {
+				break;
+			}
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Streaming trusted private media bytes after nonce, capability, MIME, and path checks.
+			echo $chunk;
+			flush();
+		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closing the native stream opened above.
+		fclose( $handle );
 		exit;
 	}
 
@@ -752,14 +815,13 @@ class Day_One_Importer_Media {
 	 * @return bool True when private.
 	 */
 	public static function is_private_upload_path( $file ) {
-		$private_root = realpath( self::private_media_base_dir() );
-		$file_real    = realpath( $file );
-		if ( false === $private_root || false === $file_real ) {
+		$private_root = Day_One_Importer_Cleanup::normalize_path( self::private_media_base_dir() );
+		$file         = Day_One_Importer_Cleanup::normalize_path( $file );
+		if ( '' === $private_root || '' === $file || ! Day_One_Importer_Cleanup::is_file( $file ) ) {
 			return false;
 		}
 
-		$prefix = rtrim( $private_root, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
-		return $file_real === $private_root || 0 === strpos( $file_real, $prefix );
+		return Day_One_Importer_Cleanup::path_is_inside( $file, $private_root );
 	}
 
 	/**

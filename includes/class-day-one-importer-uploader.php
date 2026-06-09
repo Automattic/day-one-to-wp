@@ -96,7 +96,7 @@ class Day_One_Importer_Uploader {
 
 		$target = (string) $uploaded['file'];
 		if ( ! Day_One_Importer_Cleanup::set_owner_only_permissions( $target ) ) {
-			wp_delete_file( $target );
+			Day_One_Importer_Cleanup::delete_path( $target );
 			$results->add_error( __( 'The uploaded ZIP file could not be secured in the protected import directory.', 'day-one-importer' ) );
 			return '';
 		}

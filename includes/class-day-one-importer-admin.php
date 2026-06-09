@@ -215,8 +215,8 @@ class Day_One_Importer_Admin {
 
 		if ( ! class_exists( 'ZipArchive' ) ) {
 			Day_One_Importer_Cleanup::remove( $run_dir );
-			$runner = new Day_One_Importer_Runner();
-			return $runner->run_upload( $file );
+			$results->add_error( __( 'The PHP ZipArchive extension is required before a Day One ZIP can be imported safely.', 'day-one-importer' ) );
+			return $results;
 		}
 
 		$uploader = new Day_One_Importer_Uploader();
@@ -263,7 +263,7 @@ class Day_One_Importer_Admin {
 		echo '<p>' . esc_html__( 'Large imports run as a resumable job advanced by short browser requests with a cron fallback, so refreshing the page or continuing after a network interruption is safe.', 'day-one-importer' ) . '</p>';
 
 		if ( ! class_exists( 'ZipArchive' ) ) {
-			echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'The PHP ZipArchive extension is not available on this host, so the importer will fall back to a single-request synchronous import. Small and medium exports should still work, but very large or photo-heavy exports may exceed your server or proxy timeout. Ask your host to enable the PHP zip extension for resumable batched imports.', 'day-one-importer' ) . '</p></div>';
+			echo '<div class="notice notice-error inline"><p>' . esc_html__( 'The PHP ZipArchive extension is required so Day One exports can be inspected with safety budgets before extraction. Ask your host to enable the PHP zip extension before importing.', 'day-one-importer' ) . '</p></div>';
 		}
 	}
 

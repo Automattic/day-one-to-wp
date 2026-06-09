@@ -316,7 +316,11 @@ class Day_One_Importer_Content {
 		$url           = '';
 		$alt           = '';
 
-		if ( function_exists( 'wp_get_attachment_image_src' ) ) {
+		if ( class_exists( 'Day_One_Importer_Media' ) && function_exists( 'get_post_meta' ) && 'day-one-export' === (string) get_post_meta( $attachment_id, '_day_one_source', true ) ) {
+			$url = Day_One_Importer_Media::private_media_url( $attachment_id, false );
+		}
+
+		if ( '' === $url && function_exists( 'wp_get_attachment_image_src' ) ) {
 			$image_src = wp_get_attachment_image_src( $attachment_id, 'large' );
 			if ( is_array( $image_src ) && ! empty( $image_src[0] ) ) {
 				$url = (string) $image_src[0];

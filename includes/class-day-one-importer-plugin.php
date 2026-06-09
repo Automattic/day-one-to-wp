@@ -40,6 +40,7 @@ class Day_One_Importer_Plugin {
 	 */
 	public function init() {
 		add_filter( 'wp_get_attachment_url', array( 'Day_One_Importer_Media', 'filter_attachment_url' ), 10, 2 );
+		add_filter( 'the_content', array( 'Day_One_Importer_Media', 'filter_private_media_content_urls' ), 20 );
 		add_action( 'wp_ajax_day_one_importer_media', array( 'Day_One_Importer_Media', 'serve_private_media' ) );
 
 		$jobs_controller = new Day_One_Importer_Jobs_Controller();

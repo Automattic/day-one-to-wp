@@ -2,10 +2,9 @@
 Contributors: cbravobernal
 Tags: import, importer, day-one, journal, privacy
 Requires at least: 6.4
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
-Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.5
+Stable tag: 0.2.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,6 +17,7 @@ Day One Importer is made by Automattic. It adds a WordPress admin importer for D
 The importer is designed for local or private archive migration workflows:
 
 * Imported posts are private by default.
+* The PHP ZipArchive extension is required so ZIP exports can be inspected with safety budgets before extraction.
 * Large exports run as resumable jobs advanced by short browser requests with a WP-Cron fallback, reducing gateway timeout risk.
 * Re-importing the same export skips completed entries using Day One UUID metadata.
 * Interrupted, failed, or older-schema imports can be retried, continued, or refreshed in place without duplicating completed posts or media.
@@ -34,7 +34,7 @@ For development and testing, the repository includes a wholly fictional sample D
 
 == Installation ==
 
-1. Optionally confirm PHP has the ZipArchive extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
+1. Confirm PHP has the ZipArchive extension enabled. The importer requires it to inspect ZIP exports with safety budgets before extraction.
 2. Install the plugin ZIP through the WordPress Plugins screen, or upload the plugin files to your site's configured plugins directory.
 3. Activate the plugin through the Plugins screen in WordPress.
 4. Go to Tools > Import and choose Day One.
@@ -65,6 +65,10 @@ The importer initially supports common image formats such as JPEG/JPG and PNG, p
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.2.6 =
+* Improve resumable job dashboard updates during long-running requests and after page reloads.
+* Refresh the fictional sample entry text.
 
 = 0.2.5 =
 * Address WordPress.org review feedback: remove the extra contributor, add nonce verification for admin job/media URLs, sanitize and validate request/upload values before processing, escape generated job-panel markup with an allow-list, store private media in a protected uploads subfolder, stop changing PHP time limits, and avoid switching the current user during cron processing.
@@ -99,6 +103,9 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 * Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
 
 == Upgrade Notice ==
+
+= 0.2.6 =
+The import job panel now polls status while processing so progress updates more visibly during long batches.
 
 = 0.2.5 =
 Addresses WordPress.org review feedback for nonces, upload sanitization, escaping, contributor metadata, private media directory selection, PHP time limits, and cron processing.

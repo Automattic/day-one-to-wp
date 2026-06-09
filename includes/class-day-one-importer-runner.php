@@ -54,7 +54,7 @@ class Day_One_Importer_Runner {
 			}
 
 			$extract_dir = trailingslashit( $run_dir ) . 'extract';
-			wp_mkdir_p( $extract_dir );
+			Day_One_Importer_Cleanup::make_directory( $extract_dir );
 			Day_One_Importer_Cleanup::protect_directory( $extract_dir );
 
 			$unzipped = $this->unzip( $zip_path, $extract_dir );
@@ -63,7 +63,7 @@ class Day_One_Importer_Runner {
 				return $results;
 			}
 
-			wp_delete_file( $zip_path );
+			Day_One_Importer_Cleanup::delete_path( $zip_path );
 			$zip_path = '';
 
 			$tree_valid = Day_One_Importer_Cleanup::validate_extracted_tree( $extract_dir );
@@ -91,7 +91,7 @@ class Day_One_Importer_Runner {
 			$results->add_error( __( 'The import stopped because of an unexpected error.', 'day-one-importer' ) );
 		} finally {
 			if ( $zip_path ) {
-				wp_delete_file( $zip_path );
+				Day_One_Importer_Cleanup::delete_path( $zip_path );
 			}
 			if ( $run_dir ) {
 				Day_One_Importer_Cleanup::remove( $run_dir );
@@ -170,17 +170,52 @@ class Day_One_Importer_Runner {
 			);
 		}
 
+		$owner_user_id = absint( $owner_user_id );
+		if ( ! $owner_user_id && function_exists( 'get_current_user_id' ) ) {
+			$owner_user_id = absint( get_current_user_id() );
+		}
+
 		$post_id          = 0;
-		$existing_post_id = $this->find_existing_post_id( $uuid, $results );
+		$existing_post_id = $this->find_existing_post_id( $uuid, $results, $owner_user_id );
 		if ( $existing_post_id ) {
 			if ( 'trash' === get_post_status( $existing_post_id ) ) {
-				wp_delete_post( $existing_post_id, true );
-				$existing_post_id = 0;
+				if ( current_user_can( 'delete_post', $existing_post_id ) ) {
+					wp_delete_post( $existing_post_id, true );
+					$existing_post_id = 0;
+				} else {
+					$results->increment( 'posts_skipped' );
+					$results->add_warning(
+						sprintf(
+							/* translators: %s: Day One entry UUID. */
+							__( 'Trashed imported post for UUID %s could not be deleted by the current user.', 'day-one-importer' ),
+							$uuid
+						)
+					);
+					return array(
+						'status'  => 'skipped',
+						'post_id' => (int) $existing_post_id,
+					);
+				}
 			} else {
 				$complete = get_post_meta( $existing_post_id, '_day_one_import_complete', true );
 				$version  = get_post_meta( $existing_post_id, '_day_one_import_version', true );
 				if ( '1' === (string) $complete && self::IMPORT_SCHEMA_VERSION === (string) $version ) {
 					$results->increment( 'posts_skipped' );
+					return array(
+						'status'  => 'skipped',
+						'post_id' => (int) $existing_post_id,
+					);
+				}
+
+				if ( ! current_user_can( 'edit_post', $existing_post_id ) ) {
+					$results->increment( 'posts_skipped' );
+					$results->add_warning(
+						sprintf(
+							/* translators: %s: Day One entry UUID. */
+							__( 'Existing imported post for UUID %s could not be edited by the current user.', 'day-one-importer' ),
+							$uuid
+						)
+					);
 					return array(
 						'status'  => 'skipped',
 						'post_id' => (int) $existing_post_id,
@@ -206,11 +241,6 @@ class Day_One_Importer_Runner {
 
 		$content = Day_One_Importer_Content::convert_text_to_content( isset( $entry['text'] ) ? $entry['text'] : '' );
 		$title   = Day_One_Importer_Content::derive_title( isset( $entry['text'] ) ? $entry['text'] : '', $creation['gmt'] );
-
-		$owner_user_id = absint( $owner_user_id );
-		if ( ! $owner_user_id && function_exists( 'get_current_user_id' ) ) {
-			$owner_user_id = absint( get_current_user_id() );
-		}
 
 		$postarr = array(
 			'post_type'    => 'post',
@@ -402,24 +432,41 @@ class Day_One_Importer_Runner {
 	 *
 	 * @param string                   $uuid UUID.
 	 * @param Day_One_Importer_Results $results Results.
+	 * @param int                      $owner_user_id Import owner user ID.
 	 * @return int Post ID or 0.
 	 */
-	private function find_existing_post_id( $uuid, Day_One_Importer_Results $results ) {
+	private function find_existing_post_id( $uuid, Day_One_Importer_Results $results, $owner_user_id ) {
+		$owner_user_id = absint( $owner_user_id );
+		if ( ! $owner_user_id ) {
+			return 0;
+		}
+
 		$statuses   = get_post_stati( array(), 'names' );
-		$candidates = get_posts(
-			array(
-				'post_type'      => 'post',
-				'post_status'    => array_values( $statuses ),
-				'fields'         => 'ids',
-				'posts_per_page' => -1,
-				'no_found_rows'  => true,
-			)
+		$query      = array(
+			'post_type'      => 'post',
+			'post_status'    => array_values( $statuses ),
+			'author'         => $owner_user_id,
+			'fields'         => 'ids',
+			'posts_per_page' => 2,
+			'no_found_rows'  => true,
+			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Bounded idempotency lookup (2 rows max) on importer-owned meta keys; runs only during imports.
+			'meta_query'     => array(
+				'relation' => 'AND',
+				array(
+					'key'     => '_day_one_uuid',
+					'value'   => $uuid,
+					'compare' => '=',
+				),
+				array(
+					'key'     => '_day_one_source',
+					'value'   => 'day-one-export',
+					'compare' => '=',
+				),
+			),
 		);
+		$candidates = get_posts( $query );
 		$ids        = array();
 		foreach ( $candidates as $candidate_id ) {
-			if ( (string) get_post_meta( (int) $candidate_id, '_day_one_uuid', true ) !== $uuid ) {
-				continue;
-			}
 			$ids[] = (int) $candidate_id;
 			if ( 1 < count( $ids ) ) {
 				break;
