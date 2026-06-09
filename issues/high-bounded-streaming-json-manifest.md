@@ -1,6 +1,15 @@
 # High: Restore bounded streaming for JSON and manifest processing
 
-Status: fixed locally with WP_Filesystem-only JSON and manifest handling
+Status: fixed in 0.2.23 — merged resolution keeps native bounded streaming with documented Plugin Check exceptions
+
+Merged resolution (0.2.23): the integrate-blocks-hardening merge kept the truly
+bounded native `fopen`/`fseek`/`fread`/`fclose` streaming for JSON indexing
+(each call site carries a `phpcs:ignore` with rationale, per the 0.2.19
+documented exception — WP_Filesystem has no chunked-read API), combined with
+the hardening branch's `top_depth`/`expect_key` top-level `entries`-key
+detection and a WP_Filesystem readability pre-check. The "Remaining Risk"
+below describes the superseded WP_Filesystem-only variant and no longer
+applies. Plugin Check reports zero findings on the shipped package.
 
 ## Problem
 

@@ -84,7 +84,7 @@ class Day_One_Importer_Admin {
 		}
 
 		$this->submission_handled = true;
-		$outcome                  = $this->handle_submission( false );
+		$outcome                  = $this->handle_submission();
 		if ( is_array( $outcome ) ) {
 			$this->pending_queued_job = $outcome;
 		} elseif ( $outcome instanceof Day_One_Importer_Results ) {
@@ -192,13 +192,10 @@ class Day_One_Importer_Admin {
 	/**
 	 * Handle form submission.
 	 *
-	 * @param bool $verify_nonce Whether to verify the form nonce.
 	 * @return Day_One_Importer_Results|array<string,mixed>|null Results on setup failure; queued job on success.
 	 */
-	private function handle_submission( $verify_nonce = true ) {
-		if ( $verify_nonce ) {
-			check_admin_referer( self::NONCE_ACTION );
-		}
+	private function handle_submission() {
+		check_admin_referer( self::NONCE_ACTION );
 
 		if ( ! $this->current_user_can_import() ) {
 			wp_die( esc_html__( 'You do not have permission to import Day One exports.', 'day-one-importer' ) );

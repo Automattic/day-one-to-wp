@@ -8,6 +8,7 @@
 		"assets",
 		"includes",
 		"day-one-importer.php",
+		"uninstall.php",
 		"README.md",
 		"readme.txt",
 		"LICENSE"

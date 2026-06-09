@@ -1718,7 +1718,7 @@ class Day_One_Importer_Media {
 		// Matches both nonce-less stored URLs and legacy stored URLs whose baked
 		// nonce has expired; either way the whole attribute value is rebuilt.
 		$filtered = preg_replace_callback(
-			'/(["\'])[^"\']*action=' . preg_quote( self::PRIVATE_MEDIA_ACTION, '/' ) . '(?:&|&#0?38;|&amp;)attachment_id=([0-9]+)[^"\']*\1/i',
+			'/(?<=\bsrc=|href=)(["\'])[^"\']*action=' . preg_quote( self::PRIVATE_MEDIA_ACTION, '/' ) . '(?:&|&#0?38;|&amp;)attachment_id=([0-9]+)[^"\']*\1/i',
 			static function ( $matches ) {
 				return self::replace_private_media_endpoint_url( $matches );
 			},
@@ -1804,8 +1804,18 @@ class Day_One_Importer_Media {
 			self::private_media_status( 404 );
 		}
 
+		// Orphaned attachments (parent post deleted) resolve to publish status,
+		// which would degrade read_post to the plain read capability, so they
+		// fail closed: only users who can edit the attachment (or its owner)
+		// may fetch the bytes once the parent post is gone.
 		$parent_id = wp_get_post_parent_id( $attachment_id );
-		$can_read  = $parent_id ? current_user_can( 'read_post', $parent_id ) : current_user_can( 'read_post', $attachment_id );
+		if ( $parent_id ) {
+			$can_read = current_user_can( 'read_post', $parent_id );
+		} else {
+			$attachment_post = get_post( $attachment_id );
+			$is_owner        = $attachment_post && get_current_user_id() && (int) $attachment_post->post_author === get_current_user_id();
+			$can_read        = $is_owner || current_user_can( 'edit_post', $attachment_id );
+		}
 		if ( ! $can_read ) {
 			self::private_media_status( is_user_logged_in() ? 403 : 401 );
 		}
@@ -1877,6 +1887,17 @@ class Day_One_Importer_Media {
 		$file         = Day_One_Importer_Cleanup::normalize_path( $file );
 		if ( '' === $private_root || '' === $file || ! Day_One_Importer_Cleanup::is_file( $file ) ) {
 			return false;
+		}
+
+		// Resolve symlinks and dot segments on both sides before the prefix
+		// comparison so a crafted attached-file path cannot escape the root.
+		$real_file = realpath( $file );
+		$real_root = realpath( $private_root );
+		if ( false !== $real_file && false !== $real_root ) {
+			return Day_One_Importer_Cleanup::path_is_inside(
+				Day_One_Importer_Cleanup::normalize_path( $real_file ),
+				Day_One_Importer_Cleanup::normalize_path( $real_root )
+			);
 		}
 
 		return Day_One_Importer_Cleanup::path_is_inside( $file, $private_root );

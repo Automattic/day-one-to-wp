@@ -53,6 +53,9 @@ if (
 
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-plugin.php';
 
+register_activation_hook( __FILE__, array( 'Day_One_Importer_Plugin', 'activate' ) );
+register_deactivation_hook( __FILE__, array( 'Day_One_Importer_Plugin', 'deactivate' ) );
+
 add_action(
 	'plugins_loaded',
 	static function () {

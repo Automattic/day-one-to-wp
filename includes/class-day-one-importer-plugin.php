@@ -50,9 +50,6 @@ class Day_One_Importer_Plugin {
 		// free of `Day_One_Importer_Jobs_Controller` / `Day_One_Importer_Admin`.
 		add_action( Day_One_Importer_Job_Store::CRON_HOOK, array( $this, 'cron_process_job' ), 10, 1 );
 		add_action( 'day_one_importer_daily_cleanup', array( $this, 'cleanup_stale_jobs' ) );
-		if ( function_exists( 'wp_next_scheduled' ) && ! wp_next_scheduled( 'day_one_importer_daily_cleanup' ) && function_exists( 'wp_schedule_event' ) ) {
-			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'day_one_importer_daily_cleanup' );
-		}
 
 		// Admin + AJAX-only wiring. The require_once for these classes is gated
 		// by the same condition in `day-one-importer.php`, so this branch is
@@ -70,6 +67,27 @@ class Day_One_Importer_Plugin {
 				$admin->init();
 			}
 		}
+	}
+
+	/**
+	 * Activation: schedule the daily stale-job cleanup event.
+	 *
+	 * @return void
+	 */
+	public static function activate() {
+		if ( ! wp_next_scheduled( 'day_one_importer_daily_cleanup' ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'day_one_importer_daily_cleanup' );
+		}
+	}
+
+	/**
+	 * Deactivation: clear scheduled plugin events.
+	 *
+	 * @return void
+	 */
+	public static function deactivate() {
+		wp_clear_scheduled_hook( 'day_one_importer_daily_cleanup' );
+		wp_unschedule_hook( Day_One_Importer_Job_Store::CRON_HOOK );
 	}
 
 	/**

@@ -356,24 +356,33 @@ class Day_One_Importer_Parser {
 			return null;
 		}
 
-		$contents = $this->read_file( $manifest );
-		if ( ! is_string( $contents ) || '' === $contents ) {
+		// Native fopen()/fgets() stream one JSONL line at a time so large
+		// manifests never buffer fully in memory. WP_Filesystem has no
+		// line-read API (same documented exception as the JSON streaming).
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		$handle = fopen( $manifest, 'rb' );
+		if ( ! is_resource( $handle ) ) {
 			return null;
 		}
 
 		$current = 0;
-		foreach ( preg_split( '/\r\n|\r|\n/', $contents ) as $line ) {
+		// phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.FoundInWhileCondition -- Idiomatic bounded line streaming.
+		while ( false !== ( $line = fgets( $handle ) ) ) {
 			$line = trim( (string) $line );
 			if ( '' === $line ) {
 				continue;
 			}
 			if ( $current === $index ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+				fclose( $handle );
 				$data = json_decode( $line, true );
 				return is_array( $data ) ? $data : null;
 			}
 			++$current;
 		}
 
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+		fclose( $handle );
 		return null;
 	}
 
@@ -422,6 +431,13 @@ class Day_One_Importer_Parser {
 		$processed       = 0;
 		$file_done       = false;
 		$paused          = false;
+
+		// In-flight entry buffers persist into the job option on checkpoints, so
+		// a single hostile multi-hundred-MB entry must not be buffered whole.
+		$max_entry_bytes = 8 * 1024 * 1024;
+		if ( function_exists( 'apply_filters' ) ) {
+			$max_entry_bytes = max( 65536, (int) apply_filters( 'day_one_importer_max_entry_json_bytes', $max_entry_bytes ) );
+		}
 
 		while ( ! feof( $handle ) ) {
 			if ( $processed >= $limit || ( class_exists( 'Day_One_Importer_Job_State' ) && Day_One_Importer_Job_State::should_pause_for_deadline( $deadline ) ) ) {
@@ -477,6 +493,15 @@ class Day_One_Importer_Parser {
 
 				if ( $entry_depth > 0 ) {
 					$entry_buffer .= $char;
+					if ( strlen( $entry_buffer ) > $max_entry_bytes ) {
+						// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+						fclose( $handle );
+						return array(
+							'file_done' => false,
+							'processed' => $processed,
+							'error'     => function_exists( '__' ) ? __( 'A journal entry exceeded the maximum supported size and the import was stopped for safety.', 'day-one-importer' ) : 'A journal entry exceeded the maximum supported size and the import was stopped for safety.',
+						);
+					}
 					$this->stream_entry_char( $char, $entry_depth, $entry_in_string, $entry_escape );
 					if ( 0 === $entry_depth ) {
 						++$processed;
@@ -893,6 +918,22 @@ class Day_One_Importer_Parser {
 	 * @return bool True when the line was appended.
 	 */
 	private function append_manifest_line( $manifest, $line ) {
+		// Native fopen('ab') appends one JSONL line without rewriting the whole
+		// manifest. WP_Filesystem has no append API (same documented exception
+		// as the JSON streaming). Falls back to a WP_Filesystem read+rewrite
+		// when the native stream cannot be opened.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		$handle = fopen( $manifest, 'ab' );
+		if ( is_resource( $handle ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
+			$written = fwrite( $handle, $line );
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+			fclose( $handle );
+			if ( false !== $written && strlen( $line ) === $written ) {
+				return true;
+			}
+		}
+
 		$existing = '';
 		if ( $this->exists( $manifest ) ) {
 			$existing = $this->read_file( $manifest );

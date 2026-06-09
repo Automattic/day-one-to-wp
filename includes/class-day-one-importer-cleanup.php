@@ -863,6 +863,11 @@ class Day_One_Importer_Cleanup {
 			}
 
 			$stat = $zip->statIndex( $index );
+			if ( ! is_array( $stat ) ) {
+				$result['error'] = function_exists( '__' ) ? __( 'The ZIP archive could not be inspected safely.', 'day-one-importer' ) : 'The ZIP archive could not be inspected safely.';
+				$zip->close();
+				return $result;
+			}
 			$name = isset( $stat['name'] ) ? (string) $stat['name'] : '';
 			if ( ! self::is_safe_relative_archive_name( $name ) ) {
 				$result['error'] = sprintf(
@@ -872,6 +877,23 @@ class Day_One_Importer_Cleanup {
 				);
 				$zip->close();
 				return $result;
+			}
+
+			// Defense in depth: repeat the preflight symlink rejection at
+			// extraction time so a mutated archive cannot smuggle one in.
+			$opsys = 0;
+			$attr  = 0;
+			if ( method_exists( $zip, 'getExternalAttributesIndex' ) && $zip->getExternalAttributesIndex( $index, $opsys, $attr ) ) {
+				$file_type = ( $attr >> 16 ) & 0170000;
+				if ( 0120000 === $file_type ) {
+					$result['error'] = sprintf(
+						/* translators: %s: archive entry. */
+						function_exists( '__' ) ? __( 'Symlink archive entry rejected: %s', 'day-one-importer' ) : 'Symlink archive entry rejected: %s',
+						$name
+					);
+					$zip->close();
+					return $result;
+				}
 			}
 
 			$member_size                             = isset( $stat['size'] ) ? max( 0, (int) $stat['size'] ) : 0;
