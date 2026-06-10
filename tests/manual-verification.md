@@ -90,6 +90,108 @@ Run a clean import with **Journal entries (custom post type)** selected, then:
 
 5. Ordinary requests do not regenerate rewrite rules: after step 4, browse several front-end and admin pages, then re-run the `SELECT` and confirm the stored value is unchanged (`1`). The guard flushes only when the stored version is missing or stale — deactivation deletes it and a release that changes rewrite output bumps it; every other request short-circuits. (The wp-env e2e also asserts this short-circuit.)
 
+### Private media endpoint parity (HTTP matrix)
+
+Imported Day One media is served only through the authenticated endpoint `wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=<ID>&nonce=<nonce>`, and the endpoint must behave identically whether an attachment's parent is a regular post or a Journal Entry. The endpoint terminates the request when it responds, so the wp-env e2e cannot assert this in-process — verify it with real HTTP requests against the test site. Run the four request shapes below against **two** attachments, one with a Journal Entry parent and one with a post parent, and confirm:
+
+- For each shape, the HTTP status **and** body are identical across both parent types.
+- Only shape (iv) receives the media bytes.
+
+| Shape | Request | Expected (identical for both parent types) |
+|---|---|---|
+| (i) logged out | no cookies | **400**, body is the single character `0` |
+| (ii) logged in, missing or invalid nonce | owner cookie jar, `nonce` removed or altered | **403**, empty body |
+| (iii) logged-in user who cannot read the parent, presenting a nonce valid for their own session | subscriber cookie jar, subscriber-page-extracted URL | **403**, empty body |
+| (iv) import owner, valid nonce | owner cookie jar, owner-page-extracted URL | **200**, image content type, the media bytes (`file` identifies a valid image) |
+
+Shape (i) is rejected by WordPress core before any plugin code runs: the media action is registered for authenticated admin-ajax only (no `nopriv` handler), and admin-ajax answers logged-out requests for unknown actions with `400`/`0`. Shapes (ii) and (iii) both return 403 but fail at different gates — the nonce check and the parent-read authorization check respectively — which is why step 5 below constructs (iii) so its nonce is valid by design.
+
+**Nonce rule for the whole matrix:** never mint or print a nonce with `wp eval`/WP-CLI. WordPress nonces hash the requester's session token, which comes from the logged-in auth cookie; CLI runs carry no cookie, so a CLI-minted nonce can never validate against a cookie-authenticated `curl` request and every shape would collapse into a nonce-gate 403. Always take each shape's URL verbatim from page HTML rendered **within the requesting session itself**, as described below. The parameter names are load-bearing too: a misspelled `attachment_id` resolves to attachment 0 and yields a 404 instead of the expected status.
+
+1. **Targets.** Complete a fixture import as **Journal entries (custom post type)**. Pick an entry whose photo is *embedded in the content* — entries that only attach a photo without embedding it render no endpoint URL on their page:
+
+    ```sh
+    wp-env run cli wp db query "SELECT ID, post_type, post_title FROM wp_posts WHERE post_content LIKE '%day_one_importer_media%' AND post_type IN ('post','day_one_entry')"
+    ```
+
+    For the post-parent twin, force-delete one of those Journal Entries together with its attachment(s), then re-import the same ZIP with **Posts (default)** selected — every other entry is skipped and only the deleted one is recreated, as a post (itself a live demonstration of the cross-type rerun semantics):
+
+    ```sh
+    wp-env run cli wp post list --post_type=attachment --post_parent=<entry ID> --fields=ID,post_title
+    wp-env run cli wp post delete <entry ID> <attachment ID> --force
+    # re-upload the fixture ZIP with "Posts (default)" selected, let it complete
+    ```
+
+    Note the two attachment IDs — `<ATT_CPT>` (Journal Entry parent) and `<ATT_POST>` (post parent) — and mint each parent's permalink **in a logged-in context** (with no user, WordPress forces the plain `?p=` form for private posts; use the import owner's user ID, `1` in a default wp-env):
+
+    ```sh
+    wp-env run cli wp eval 'wp_set_current_user( 1 ); echo get_permalink( <parent ID> ), "\n";'
+    ```
+
+2. **Owner session (cookie jar).** Default wp-env credentials are `admin`/`password`; if the import was run by another user, set a known password first (`wp user update <user ID> --user_pass=<password>`).
+
+    ```sh
+    SITE=http://localhost:8888   # your wp-env site URL
+    curl -s -o /dev/null -c ac9-owner.jar -b 'wordpress_test_cookie=WP+Cookie+check' \
+      --data-urlencode 'log=admin' --data-urlencode 'pwd=password' \
+      -d 'wp-submit=Log+In&testcookie=1' "$SITE/wp-login.php"   # responds 302 to /wp-admin/
+    ```
+
+3. **Extract the owner URLs.** Fetch each parent's permalink with the owner jar and pull the rewritten endpoint URL from the HTML; decode the `&#038;` (or `&amp;`) entities back to `&` before use:
+
+    ```sh
+    curl -s -b ac9-owner.jar '<parent permalink>' \
+      | grep -o 'admin-ajax\.php?action=day_one_importer_media[^"]*'
+    ```
+
+    Each page yields `…action=day_one_importer_media&attachment_id=<ID>&nonce=<10 hex chars>`. Seeing the same nonce on both pages is expected — one session, one nonce action.
+
+4. **Shapes (i) and (ii).**
+
+    ```sh
+    # (i) logged out — no jar; expect body 0 then status=400, for both IDs
+    curl -s -w '\nstatus=%{http_code}\n' \
+      "$SITE/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=<ID>&nonce=<owner nonce>"
+
+    # (ii) owner jar, broken nonce — run both variants per ID; expect status=403 bytes=0
+    curl -s -b ac9-owner.jar -w 'status=%{http_code} bytes=%{size_download}\n' \
+      "$SITE/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=<ID>"                    # nonce removed
+    curl -s -b ac9-owner.jar -w 'status=%{http_code} bytes=%{size_download}\n' \
+      "$SITE/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=<ID>&nonce=deadbeef00"   # nonce altered
+    ```
+
+5. **Shape (iii) — subscriber with a nonce valid for their own session.** No existing page shows a media URL to a non-reader (the imported entries are private), so render one: a temporary **published** post whose content embeds the nonce-less stable endpoint URL for both attachments. The content filter that re-nonces endpoint URLs at render time checks only that the attachment came from a Day One import — not viewer permissions — so the subscriber's own page view returns both URLs re-nonced with **their** session (a different nonce than the owner's).
+
+    ```sh
+    wp-env run cli wp user create ac9-subscriber ac9-subscriber@example.com --role=subscriber --user_pass=ac9-pass-123
+    wp-env run cli wp post create --post_status=publish --post_title='AC9 temp' --porcelain \
+      --post_content='<a href="<SITE>/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=<ATT_CPT>">a</a> <a href="<SITE>/wp-admin/admin-ajax.php?action=day_one_importer_media&attachment_id=<ATT_POST>">b</a>'
+    wp-env run cli wp eval 'echo get_permalink( <temp post ID> ), "\n";'   # published — no user context needed
+    ```
+
+    Log the subscriber into their own jar (same `wp-login.php` call as step 2 with `ac9-subscriber`/`ac9-pass-123` into `ac9-sub.jar`), fetch the temporary post's permalink with that jar, extract both re-nonced URLs as in step 3, and request each with the same jar — expect **403** with an empty body for both parent types.
+
+    Why this is a genuine authorization-gate rejection and not a nonce failure: the nonce was minted server-side during the subscriber's own authenticated page view, so the nonce check passes by construction, and the 403 must come from the later can-the-user-read-the-parent check. (Both gates answer 403, which is why the by-construction setup matters.)
+
+    Clean up the temporary user and post afterward:
+
+    ```sh
+    wp-env run cli wp post delete <temp post ID> --force
+    wp-env run cli wp user delete ac9-subscriber --yes
+    ```
+
+6. **Shape (iv) — owner with a valid nonce.** Request each owner-extracted URL from step 3 with the owner jar:
+
+    ```sh
+    curl -s -b ac9-owner.jar -o ac9-cpt.bin -w 'status=%{http_code} type=%{content_type} bytes=%{size_download}\n' '<owner URL for ATT_CPT>'
+    curl -s -b ac9-owner.jar -o ac9-post.bin -w 'status=%{http_code} type=%{content_type} bytes=%{size_download}\n' '<owner URL for ATT_POST>'
+    file ac9-cpt.bin ac9-post.bin
+    ```
+
+    Expect `status=200` with an image content type and a non-empty body for both, and `file` identifying valid image data (for the committed fixture: `PNG image data, 2 x 2`).
+
+7. **Compare against the matrix.** Every observed status/body must match the table above, shape by shape, identically for `<ATT_CPT>` and `<ATT_POST>`; only shape (iv) received bytes. Finally remove the cookie jars and downloads (`rm -f ac9-owner.jar ac9-sub.jar ac9-cpt.bin ac9-post.bin`). The post-parent entry created in step 1 keeps its type on reruns (no migration); to restore an all-Journal-Entries state, force-delete that post and its attachment and re-import with **Journal entries (custom post type)** selected.
+
 ## Invalid input and authorization checks
 
 Confirm clear, escaped, privacy-safe failures for:
