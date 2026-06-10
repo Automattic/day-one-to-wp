@@ -581,6 +581,7 @@ if ( ! function_exists( 'get_posts' ) ) {
 
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-results.php';
+require_once __DIR__ . '/../includes/class-day-one-importer-post-type.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-job-state.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-cleanup.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-job-store.php';
@@ -4731,7 +4732,7 @@ assert_true( isset( $find_existing_args['author'] ) && $find_existing_owner === 
 assert_true( isset( $find_existing_args['posts_per_page'] ) && 2 === $find_existing_args['posts_per_page'], '#75 — find_existing_post_id caps posts_per_page at 2 so the duplicate-UUID warning still fires.' );
 assert_true( isset( $find_existing_args['fields'] ) && 'ids' === $find_existing_args['fields'], '#75 — find_existing_post_id requests only post IDs from get_posts().' );
 assert_true( isset( $find_existing_args['no_found_rows'] ) && true === $find_existing_args['no_found_rows'], '#75 — find_existing_post_id disables SQL_CALC_FOUND_ROWS via no_found_rows=true.' );
-assert_true( isset( $find_existing_args['post_type'] ) && 'post' === $find_existing_args['post_type'], '#75 — find_existing_post_id scopes the lookup to post_type=post.' );
+assert_true( isset( $find_existing_args['post_type'] ) && is_array( $find_existing_args['post_type'] ) && array( 'post', 'day_one_entry' ) === array_values( $find_existing_args['post_type'] ), '#75 — find_existing_post_id scopes the lookup to exactly the two entry post types (post, day_one_entry).' );
 assert_true( isset( $find_existing_args['post_status'] ) && is_array( $find_existing_args['post_status'] ) && in_array( 'private', $find_existing_args['post_status'], true ), '#75 — find_existing_post_id queries all registered statuses so private imported posts are included.' );
 assert_true( ! $find_existing_results->has_warnings(), '#75 — no warning is emitted when zero posts match.' );
 
@@ -5023,6 +5024,175 @@ assert_true( '' !== $jobs_src, '#78 — class-day-one-importer-jobs-controller.p
 assert_true(
 	false === strpos( $jobs_src, 'add_action( Day_One_Importer_Job_Store::CRON_HOOK' ),
 	'#78 — Day_One_Importer_Jobs_Controller::init() no longer registers the cron callback (registration moved to Day_One_Importer_Plugin so cron fires on front-end pageviews without loading this admin/AJAX file).'
+);
+
+// #43 — Day_One_Importer_Post_Type pure surface: per-import choice allowlist,
+// entry post type list, and identifier constraints. No WordPress needed.
+assert_true(
+	'post' === Day_One_Importer_Post_Type::sanitize_choice( 'post' ),
+	'#43 — sanitize_choice() accepts the default post choice.'
+);
+assert_true(
+	'day_one_entry' === Day_One_Importer_Post_Type::sanitize_choice( 'day_one_entry' ),
+	'#43 — sanitize_choice() accepts the journal entry post type choice.'
+);
+$invalid_post_type_choices = array(
+	'an empty string'        => '',
+	'null'                   => null,
+	'an array'               => array( 'day_one_entry' ),
+	'a free-form post type'  => 'page',
+	'an injection-ish value' => 'day_one_entry; DROP TABLE',
+	'an uppercase CPT name'  => 'DAY_ONE_ENTRY',
+	'a wrong-case post'      => 'Post',
+	'integer zero'           => 0,
+	'boolean true'           => true,
+);
+foreach ( $invalid_post_type_choices as $invalid_choice_label => $invalid_choice ) {
+	assert_true(
+		'post' === Day_One_Importer_Post_Type::sanitize_choice( $invalid_choice ),
+		"#43 — sanitize_choice() falls back to 'post' for {$invalid_choice_label}."
+	);
+}
+assert_true(
+	array( 'post', 'day_one_entry' ) === Day_One_Importer_Post_Type::entry_post_types(),
+	'#43 — entry_post_types() returns the literal array( post, day_one_entry ) in that exact order (lockstep anchor for the runner lookup assertion).'
+);
+assert_true(
+	strlen( Day_One_Importer_Post_Type::POST_TYPE ) <= 20,
+	'#43 — POST_TYPE fits the 20-character post type identifier limit.'
+);
+assert_true(
+	strtolower( Day_One_Importer_Post_Type::POST_TYPE ) === Day_One_Importer_Post_Type::POST_TYPE,
+	'#43 — POST_TYPE is all lowercase.'
+);
+assert_true(
+	0 === strpos( Day_One_Importer_Post_Type::POST_TYPE, 'day_one_' ),
+	'#43 — POST_TYPE carries the day_one_ prefix.'
+);
+
+// #43 — bootstrap wiring: the CPT registers on every request type (hooked in
+// the always-on section of Day_One_Importer_Plugin::init(), before the
+// admin/AJAX-gated branch located by the #78 block above), and the versioned
+// rewrite-flush lifecycle runs on activation, post-update, and deactivation.
+$day_one_cpt_register_hook_pos = strpos(
+	$plugin_src,
+	"add_action( 'init', array( 'Day_One_Importer_Post_Type', 'register' ) );"
+);
+assert_true(
+	false !== $day_one_cpt_register_hook_pos,
+	'#43 — Day_One_Importer_Plugin::init() hooks Day_One_Importer_Post_Type::register onto init at default priority.'
+);
+$day_one_cpt_flush_hook_pos = strpos(
+	$plugin_src,
+	"add_action( 'init', array( 'Day_One_Importer_Post_Type', 'maybe_flush_rewrite_rules' ), 20 );"
+);
+assert_true(
+	false !== $day_one_cpt_flush_hook_pos,
+	'#43 — Day_One_Importer_Plugin::init() hooks maybe_flush_rewrite_rules onto init at priority 20, after registration, so flushed rules include the CPT.'
+);
+assert_true(
+	false !== $day_one_cpt_register_hook_pos && false !== $day_one_cpt_flush_hook_pos && $day_one_cpt_register_hook_pos < $day_one_cpt_flush_hook_pos,
+	'#43 — init() adds the registration hook before the rewrite-flush hook.'
+);
+assert_true(
+	false !== $day_one_cpt_register_hook_pos && $day_one_cpt_register_hook_pos < $admin_branch_offset && $day_one_cpt_flush_hook_pos < $admin_branch_offset,
+	'#43 — both CPT init hooks sit before the admin/AJAX-gated branch (always-on registration on front-end, cron, CLI, and admin requests alike).'
+);
+
+// activate(): cron scheduling stays first, then register -> flush ->
+// option write (the activation request's own init fired before the plugin
+// loaded, so the CPT must be registered in-place before flushing; writing
+// the version option afterwards prevents a redundant flush on the next
+// request).
+$day_one_activate_pos   = strpos( $plugin_src, 'public static function activate()' );
+$day_one_deactivate_pos = strpos( $plugin_src, 'public static function deactivate()' );
+assert_true(
+	false !== $day_one_activate_pos && false !== $day_one_deactivate_pos && $day_one_activate_pos < $day_one_deactivate_pos,
+	'#43 — Day_One_Importer_Plugin keeps static activate() and deactivate() methods.'
+);
+$day_one_activate_body = substr( $plugin_src, $day_one_activate_pos, $day_one_deactivate_pos - $day_one_activate_pos );
+
+$day_one_activate_schedule_pos = strpos( $day_one_activate_body, 'wp_schedule_event(' );
+$day_one_activate_register_pos = strpos( $day_one_activate_body, 'Day_One_Importer_Post_Type::register();' );
+$day_one_activate_flush_pos    = strpos( $day_one_activate_body, 'flush_rewrite_rules();' );
+$day_one_activate_option_pos   = strpos( $day_one_activate_body, 'update_option( Day_One_Importer_Post_Type::REWRITE_VERSION_OPTION, Day_One_Importer_Post_Type::REWRITE_VERSION );' );
+assert_true(
+	false !== $day_one_activate_schedule_pos && false !== $day_one_activate_register_pos && $day_one_activate_schedule_pos < $day_one_activate_register_pos,
+	'#43 — activate() keeps the cron scheduling and registers the CPT after it.'
+);
+assert_true(
+	false !== $day_one_activate_register_pos && false !== $day_one_activate_flush_pos && $day_one_activate_register_pos < $day_one_activate_flush_pos,
+	'#43 — activate() registers the CPT before flushing rewrite rules (flushed rules include the CPT).'
+);
+assert_true(
+	false !== $day_one_activate_flush_pos && false !== $day_one_activate_option_pos && $day_one_activate_flush_pos < $day_one_activate_option_pos,
+	'#43 — activate() records the rewrite version after flushing (skips the redundant second flush on the next request).'
+);
+
+// deactivate(): cron clearing stays, then the CPT is unregistered (when
+// present), rules are flushed without it, and the version option is deleted
+// so reactivation re-flushes.
+$day_one_after_deactivate     = strpos( $plugin_src, 'public function cron_process_job(' );
+$day_one_deactivate_body      = substr( $plugin_src, $day_one_deactivate_pos, ( false !== $day_one_after_deactivate ? $day_one_after_deactivate : strlen( $plugin_src ) ) - $day_one_deactivate_pos );
+$day_one_deactivate_clear_pos = strpos( $day_one_deactivate_body, 'wp_clear_scheduled_hook(' );
+$day_one_deactivate_unreg_pos = strpos( $day_one_deactivate_body, 'unregister_post_type( Day_One_Importer_Post_Type::POST_TYPE );' );
+$day_one_deactivate_flush_pos = strpos( $day_one_deactivate_body, 'flush_rewrite_rules();' );
+$day_one_deactivate_del_pos   = strpos( $day_one_deactivate_body, 'delete_option( Day_One_Importer_Post_Type::REWRITE_VERSION_OPTION );' );
+assert_true(
+	false !== strpos( $day_one_deactivate_body, 'post_type_exists( Day_One_Importer_Post_Type::POST_TYPE )' ),
+	'#43 — deactivate() guards the unregister call behind post_type_exists().'
+);
+assert_true(
+	false !== $day_one_deactivate_clear_pos && false !== $day_one_deactivate_unreg_pos && $day_one_deactivate_clear_pos < $day_one_deactivate_unreg_pos,
+	'#43 — deactivate() keeps the cron clearing and unregisters the CPT after it.'
+);
+assert_true(
+	false !== $day_one_deactivate_unreg_pos && false !== $day_one_deactivate_flush_pos && $day_one_deactivate_unreg_pos < $day_one_deactivate_flush_pos,
+	'#43 — deactivate() unregisters the CPT before flushing (refreshed rules omit the CPT).'
+);
+assert_true(
+	false !== $day_one_deactivate_flush_pos && false !== $day_one_deactivate_del_pos && $day_one_deactivate_flush_pos < $day_one_deactivate_del_pos,
+	'#43 — deactivate() deletes the rewrite version option so reactivation re-flushes via the missing option.'
+);
+
+// #43 — maybe_flush_rewrite_rules() versioned guard behavior: a missing or
+// stale option triggers exactly one flush + option write; once the persisted
+// version matches, further calls short-circuit and leave the rewrite_rules
+// option byte-identical (never per-request regeneration).
+$GLOBALS['day_one_importer_test_flush_count'] = 0;
+if ( ! function_exists( 'flush_rewrite_rules' ) ) {
+	/**
+	 * Test double: count flushes and regenerate a fake rewrite_rules option.
+	 *
+	 * @param bool $hard Ignored hard-flush flag.
+	 * @return void
+	 */
+	function flush_rewrite_rules( $hard = true ) {
+		unset( $hard );
+		++$GLOBALS['day_one_importer_test_flush_count'];
+		update_option( 'rewrite_rules', 'regenerated-' . $GLOBALS['day_one_importer_test_flush_count'] );
+	}
+}
+delete_option( Day_One_Importer_Post_Type::REWRITE_VERSION_OPTION );
+update_option( 'rewrite_rules', 'stale-rules' );
+Day_One_Importer_Post_Type::maybe_flush_rewrite_rules();
+assert_true(
+	1 === $GLOBALS['day_one_importer_test_flush_count'],
+	'#43 — maybe_flush_rewrite_rules() flushes when the version option is missing.'
+);
+assert_true(
+	Day_One_Importer_Post_Type::REWRITE_VERSION === get_option( Day_One_Importer_Post_Type::REWRITE_VERSION_OPTION ),
+	'#43 — maybe_flush_rewrite_rules() persists the current rewrite version after flushing.'
+);
+$day_one_rules_after_first_flush = get_option( 'rewrite_rules' );
+Day_One_Importer_Post_Type::maybe_flush_rewrite_rules();
+assert_true(
+	1 === $GLOBALS['day_one_importer_test_flush_count'],
+	'#43 — a second maybe_flush_rewrite_rules() call short-circuits on the matching version (no flush).'
+);
+assert_true(
+	get_option( 'rewrite_rules' ) === $day_one_rules_after_first_flush,
+	'#43 — a second maybe_flush_rewrite_rules() call leaves the rewrite_rules option byte-identical.'
 );
 
 echo "All pure helper tests passed.\n";

@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Day_One_Importer_Runner {
 	/**
-	 * Import schema version stored on posts.
+	 * Import schema version stored on imported entries (either entry post type).
 	 *
 	 * @var string
 	 */
@@ -27,10 +27,11 @@ class Day_One_Importer_Runner {
 	 * @param string                   $extract_dir Extraction root.
 	 * @param Day_One_Importer_Results $results Results.
 	 * @param int                      $owner_user_id User ID to assign as post author.
+	 * @param string                   $post_type Post type for newly created entries ('post' or 'day_one_entry'); invalid values fall back to 'post'. Existing entries keep their current type.
 	 * @return void
 	 */
-	public function import_entry( $entry, $extract_dir, Day_One_Importer_Results $results, $owner_user_id = 0 ) {
-		$prepared = $this->prepare_imported_entry_post( $entry, $results, $owner_user_id );
+	public function import_entry( $entry, $extract_dir, Day_One_Importer_Results $results, $owner_user_id = 0, $post_type = 'post' ) {
+		$prepared = $this->prepare_imported_entry_post( $entry, $results, $owner_user_id, $post_type );
 		if ( 'ready' !== $prepared['status'] ) {
 			return;
 		}
@@ -70,9 +71,12 @@ class Day_One_Importer_Runner {
 	 * @param array<string,mixed>      $entry Entry.
 	 * @param Day_One_Importer_Results $results Results.
 	 * @param int                      $owner_user_id User ID to assign as post author.
+	 * @param string                   $post_type Post type for newly created entries ('post' or 'day_one_entry'); invalid values fall back to 'post'. Existing entries keep their current type.
 	 * @return array<string,mixed> status: ready, skipped, or failed.
 	 */
-	public function prepare_imported_entry_post( $entry, Day_One_Importer_Results $results, $owner_user_id = 0 ) {
+	public function prepare_imported_entry_post( $entry, Day_One_Importer_Results $results, $owner_user_id = 0, $post_type = 'post' ) {
+		$post_type = Day_One_Importer_Post_Type::sanitize_choice( $post_type );
+
 		$uuid = isset( $entry['uuid'] ) ? (string) $entry['uuid'] : '';
 		if ( '' === $uuid ) {
 			$results->increment( 'entries_failed' );
@@ -164,7 +168,6 @@ class Day_One_Importer_Runner {
 		$title = Day_One_Importer_Content::derive_title_from_entry( $entry, $creation['gmt'] );
 
 		$postarr = array(
-			'post_type'    => 'post',
 			'post_title'   => $title,
 			'post_content' => $content,
 		);
@@ -201,6 +204,7 @@ class Day_One_Importer_Runner {
 			}
 			update_post_meta( $post_id, '_day_one_import_complete', '0' );
 		} else {
+			$postarr['post_type']   = $post_type;
 			$postarr['post_status'] = 'private';
 			$postarr['meta_input']  = array(
 				'_day_one_uuid'              => $uuid,
@@ -763,7 +767,7 @@ class Day_One_Importer_Runner {
 	}
 
 	/**
-	 * Find existing imported post by UUID.
+	 * Find an existing imported entry by UUID, across both entry post types.
 	 *
 	 * @param string                   $uuid UUID.
 	 * @param Day_One_Importer_Results $results Results.
@@ -778,7 +782,7 @@ class Day_One_Importer_Runner {
 
 		$statuses   = get_post_stati( array(), 'names' );
 		$query      = array(
-			'post_type'      => 'post',
+			'post_type'      => Day_One_Importer_Post_Type::entry_post_types(),
 			'post_status'    => array_values( $statuses ),
 			'author'         => $owner_user_id,
 			'fields'         => 'ids',

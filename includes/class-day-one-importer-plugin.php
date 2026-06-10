@@ -44,6 +44,14 @@ class Day_One_Importer_Plugin {
 		add_filter( 'the_content', array( 'Day_One_Importer_Media', 'filter_private_media_content_urls' ), 20 );
 		add_action( 'wp_ajax_day_one_importer_media', array( 'Day_One_Importer_Media', 'serve_private_media' ) );
 
+		// The journal entry CPT must exist on every request type — front-end
+		// views of imported entries, cron batches, CLI, and admin alike — so it
+		// registers outside the admin-gated branch below. The flush guard runs
+		// at priority 20, after registration, so any one-time flush it performs
+		// includes the CPT's rules.
+		add_action( 'init', array( 'Day_One_Importer_Post_Type', 'register' ) );
+		add_action( 'init', array( 'Day_One_Importer_Post_Type', 'maybe_flush_rewrite_rules' ), 20 );
+
 		// Cron callbacks must register on every request (WP-Cron can fire on a
 		// front-end pageview). Both callbacks lazy-load admin-only collaborators
 		// only when the cron actually fires, keeping the front-end fast path
@@ -70,7 +78,14 @@ class Day_One_Importer_Plugin {
 	}
 
 	/**
-	 * Activation: schedule the daily stale-job cleanup event.
+	 * Activation: schedule the daily stale-job cleanup event and flush rewrite
+	 * rules with the journal entry CPT registered.
+	 *
+	 * The activation request's `init` fired before this plugin loaded, so the
+	 * CPT is registered in-place here before flushing — otherwise the freshly
+	 * generated rules would omit it. Recording the rewrite version afterwards
+	 * lets `Day_One_Importer_Post_Type::maybe_flush_rewrite_rules()`
+	 * short-circuit on the next request instead of flushing a second time.
 	 *
 	 * @return void
 	 */
@@ -78,16 +93,32 @@ class Day_One_Importer_Plugin {
 		if ( ! wp_next_scheduled( 'day_one_importer_daily_cleanup' ) ) {
 			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'day_one_importer_daily_cleanup' );
 		}
+
+		Day_One_Importer_Post_Type::register();
+		flush_rewrite_rules();
+		update_option( Day_One_Importer_Post_Type::REWRITE_VERSION_OPTION, Day_One_Importer_Post_Type::REWRITE_VERSION );
 	}
 
 	/**
-	 * Deactivation: clear scheduled plugin events.
+	 * Deactivation: clear scheduled plugin events and retire the CPT's rewrite
+	 * rules.
+	 *
+	 * Unregistering the CPT before the flush regenerates the rules without it,
+	 * so its permalinks stop resolving while the plugin is inactive. Deleting
+	 * the rewrite version option makes reactivation (or the next request's
+	 * guard) flush again and restore the rules.
 	 *
 	 * @return void
 	 */
 	public static function deactivate() {
 		wp_clear_scheduled_hook( 'day_one_importer_daily_cleanup' );
 		wp_unschedule_hook( Day_One_Importer_Job_Store::CRON_HOOK );
+
+		if ( post_type_exists( Day_One_Importer_Post_Type::POST_TYPE ) ) {
+			unregister_post_type( Day_One_Importer_Post_Type::POST_TYPE );
+		}
+		flush_rewrite_rules();
+		delete_option( Day_One_Importer_Post_Type::REWRITE_VERSION_OPTION );
 	}
 
 	/**

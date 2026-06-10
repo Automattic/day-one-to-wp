@@ -1701,8 +1701,8 @@ class Day_One_Importer_Media {
 	 * Inject fresh private media nonces into rendered post content.
 	 *
 	 * Stored block markup intentionally keeps stable nonce-less endpoint URLs so
-	 * imported posts do not expire. Rendered content receives user-specific
-	 * nonces immediately before output.
+	 * imported entries of either post type do not expire. Rendered content
+	 * receives user-specific nonces immediately before output.
 	 *
 	 * @param string $content Post content.
 	 * @return string Filtered content.
@@ -1813,7 +1813,7 @@ class Day_One_Importer_Media {
 			$can_read = current_user_can( 'read_post', $parent_id );
 		} else {
 			$attachment_post = get_post( $attachment_id );
-			$is_owner        = $attachment_post && get_current_user_id() && (int) $attachment_post->post_author === get_current_user_id();
+			$is_owner        = $attachment_post && get_current_user_id() && get_current_user_id() === (int) $attachment_post->post_author;
 			$can_read        = $is_owner || current_user_can( 'edit_post', $attachment_id );
 		}
 		if ( ! $can_read ) {

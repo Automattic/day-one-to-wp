@@ -105,7 +105,7 @@ class Day_One_Importer_Admin {
 		register_importer(
 			'day-one',
 			__( 'Day One', 'day-one-importer' ),
-			__( 'Import Day One journal exports into private WordPress posts.', 'day-one-importer' ),
+			__( 'Import Day One journal exports into private WordPress posts or a journal entries post type.', 'day-one-importer' ),
 			array( $this, 'render_importer' )
 		);
 	}
@@ -224,7 +224,7 @@ class Day_One_Importer_Admin {
 		}
 
 		$store = new Day_One_Importer_Job_Store();
-		$job   = $store->create_job( get_current_user_id(), $run_dir, $zip_path, $results );
+		$job   = $store->create_job( get_current_user_id(), $run_dir, $zip_path, $results, $this->requested_entry_post_type() );
 		if ( ! $job ) {
 			Day_One_Importer_Cleanup::remove( $run_dir );
 			$results->add_error( __( 'The import job could not be created.', 'day-one-importer' ) );
@@ -254,7 +254,7 @@ class Day_One_Importer_Admin {
 	 * @return void
 	 */
 	private function render_intro() {
-		echo '<p>' . esc_html__( 'Upload a Day One export ZIP. The importer will create one private WordPress post per Day One entry and will attempt to import supported photos from the export.', 'day-one-importer' ) . '</p>';
+		echo '<p>' . esc_html__( 'Upload a Day One export ZIP. The importer will create one private entry per Day One entry — as a WordPress post (default) or as a Journal Entry custom post type, chosen below — and will attempt to import supported photos from the export.', 'day-one-importer' ) . '</p>';
 		echo '<div class="notice notice-info inline"><p>' . esc_html__( 'Privacy note: imported posts and imported Day One media are protected and served only to authorized WordPress users, but review your hosting backups and filesystem access policies for private journals.', 'day-one-importer' ) . '</p></div>';
 		echo '<p>' . esc_html__( 'For best results, export your journal from Day One as JSON in its original ZIP format and upload that ZIP without editing it.', 'day-one-importer' ) . '</p>';
 		echo '<p>' . esc_html__( 'Large imports run as a resumable job advanced by short browser requests with a cron fallback, so refreshing the page or continuing after a network interruption is safe.', 'day-one-importer' ) . '</p>';
@@ -459,6 +459,26 @@ class Day_One_Importer_Admin {
 	}
 
 	/**
+	 * Read and sanitize the requested entry post type from the import form.
+	 *
+	 * Re-verifies the import nonce in-method, then runs the posted value
+	 * through the post type allowlist, so a missing field, a failed nonce
+	 * check, or any value outside the allowlist falls back to 'post'.
+	 *
+	 * @return string Either 'post' or Day_One_Importer_Post_Type::POST_TYPE.
+	 */
+	private function requested_entry_post_type() {
+		$nonce = isset( $_POST['_wpnonce'] ) && is_scalar( $_POST['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ) : '';
+		if ( ! wp_verify_nonce( $nonce, self::NONCE_ACTION ) ) {
+			return 'post';
+		}
+
+		$value = isset( $_POST['day_one_importer_post_type'] ) && is_scalar( $_POST['day_one_importer_post_type'] ) ? sanitize_key( wp_unslash( $_POST['day_one_importer_post_type'] ) ) : '';
+
+		return Day_One_Importer_Post_Type::sanitize_choice( $value );
+	}
+
+	/**
 	 * Read a nonce-protected job ID from the query string for display-only job panels.
 	 *
 	 * @return string
@@ -509,6 +529,24 @@ class Day_One_Importer_Admin {
 					<td>
 						<input type="file" id="day-one-export" name="day_one_export" accept=".zip,application/zip" required />
 						<p class="description"><?php esc_html_e( 'Choose the ZIP file exported by Day One. JSON files and a photos folder will be detected inside the archive.', 'day-one-importer' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Import entries as', 'day-one-importer' ); ?></th>
+					<td>
+						<fieldset>
+							<legend class="screen-reader-text"><?php esc_html_e( 'Import entries as', 'day-one-importer' ); ?></legend>
+							<label>
+								<input type="radio" name="day_one_importer_post_type" value="post" checked="checked" />
+								<?php esc_html_e( 'Posts (default)', 'day-one-importer' ); ?>
+							</label>
+							<br />
+							<label>
+								<input type="radio" name="day_one_importer_post_type" value="<?php echo esc_attr( Day_One_Importer_Post_Type::POST_TYPE ); ?>" />
+								<?php esc_html_e( 'Journal entries (custom post type)', 'day-one-importer' ); ?>
+							</label>
+							<p class="description"><?php esc_html_e( 'Applies only to entries created by this import. Previously imported entries keep their current post type.', 'day-one-importer' ); ?></p>
+						</fieldset>
 					</td>
 				</tr>
 			</table>

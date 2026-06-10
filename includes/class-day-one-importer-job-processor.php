@@ -407,8 +407,11 @@ class Day_One_Importer_Job_Processor {
 			}
 
 			if ( empty( $job['current_entry_post_prepared'] ) ) {
-				$owner_user_id = isset( $job['owner_user_id'] ) ? absint( $job['owner_user_id'] ) : 0;
-				$prepared      = $runner->prepare_imported_entry_post( $entry, $results, $owner_user_id );
+				$owner_user_id   = isset( $job['owner_user_id'] ) ? absint( $job['owner_user_id'] ) : 0;
+				$entry_post_type = isset( $job['entry_post_type'] )
+					? Day_One_Importer_Post_Type::sanitize_choice( $job['entry_post_type'] )
+					: 'post';
+				$prepared        = $runner->prepare_imported_entry_post( $entry, $results, $owner_user_id, $entry_post_type );
 				if ( 'ready' === $prepared['status'] ) {
 					$job['current_post_id']             = (int) $prepared['post_id'];
 					$job['current_entry_post_prepared'] = true;
