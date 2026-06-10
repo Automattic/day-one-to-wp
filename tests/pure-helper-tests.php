@@ -581,6 +581,7 @@ if ( ! function_exists( 'get_posts' ) ) {
 
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-results.php';
+require_once __DIR__ . '/../includes/class-day-one-importer-post-type.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-job-state.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-cleanup.php';
 require_once __DIR__ . '/../includes/class-day-one-importer-job-store.php';
@@ -5023,6 +5024,50 @@ assert_true( '' !== $jobs_src, '#78 — class-day-one-importer-jobs-controller.p
 assert_true(
 	false === strpos( $jobs_src, 'add_action( Day_One_Importer_Job_Store::CRON_HOOK' ),
 	'#78 — Day_One_Importer_Jobs_Controller::init() no longer registers the cron callback (registration moved to Day_One_Importer_Plugin so cron fires on front-end pageviews without loading this admin/AJAX file).'
+);
+
+// #43 — Day_One_Importer_Post_Type pure surface: per-import choice allowlist,
+// entry post type list, and identifier constraints. No WordPress needed.
+assert_true(
+	'post' === Day_One_Importer_Post_Type::sanitize_choice( 'post' ),
+	'#43 — sanitize_choice() accepts the default post choice.'
+);
+assert_true(
+	'day_one_entry' === Day_One_Importer_Post_Type::sanitize_choice( 'day_one_entry' ),
+	'#43 — sanitize_choice() accepts the journal entry post type choice.'
+);
+$invalid_post_type_choices = array(
+	'an empty string'        => '',
+	'null'                   => null,
+	'an array'               => array( 'day_one_entry' ),
+	'a free-form post type'  => 'page',
+	'an injection-ish value' => 'day_one_entry; DROP TABLE',
+	'an uppercase CPT name'  => 'DAY_ONE_ENTRY',
+	'a wrong-case post'      => 'Post',
+	'integer zero'           => 0,
+	'boolean true'           => true,
+);
+foreach ( $invalid_post_type_choices as $invalid_choice_label => $invalid_choice ) {
+	assert_true(
+		'post' === Day_One_Importer_Post_Type::sanitize_choice( $invalid_choice ),
+		"#43 — sanitize_choice() falls back to 'post' for {$invalid_choice_label}."
+	);
+}
+assert_true(
+	array( 'post', 'day_one_entry' ) === Day_One_Importer_Post_Type::entry_post_types(),
+	'#43 — entry_post_types() returns the literal array( post, day_one_entry ) in that exact order (lockstep anchor for the runner lookup assertion).'
+);
+assert_true(
+	strlen( Day_One_Importer_Post_Type::POST_TYPE ) <= 20,
+	'#43 — POST_TYPE fits the 20-character post type identifier limit.'
+);
+assert_true(
+	strtolower( Day_One_Importer_Post_Type::POST_TYPE ) === Day_One_Importer_Post_Type::POST_TYPE,
+	'#43 — POST_TYPE is all lowercase.'
+);
+assert_true(
+	0 === strpos( Day_One_Importer_Post_Type::POST_TYPE, 'day_one_' ),
+	'#43 — POST_TYPE carries the day_one_ prefix.'
 );
 
 echo "All pure helper tests passed.\n";

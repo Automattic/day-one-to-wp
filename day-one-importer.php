@@ -26,6 +26,7 @@ define( 'DAY_ONE_IMPORTER_TEXT_DOMAIN', 'day-one-importer' );
 
 require_once DAY_ONE_IMPORTER_DIR . 'includes/functions.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-results.php';
+require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-post-type.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-job-state.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-cleanup.php';
 require_once DAY_ONE_IMPORTER_DIR . 'includes/class-day-one-importer-content.php';
