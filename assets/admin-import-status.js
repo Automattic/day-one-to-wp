@@ -330,7 +330,41 @@
 			if ( stopped || ! jobId ) {
 				return;
 			}
-			postJobAction( 'day_one_importer_job_process', jobId ).then( handleData ).catch( function () {
+
+			var statusTimer = 0;
+			var statusBusy = false;
+			function stopStatusTimer() {
+				if ( statusTimer ) {
+					window.clearInterval( statusTimer );
+					statusTimer = 0;
+				}
+			}
+			function pollStatus() {
+				if ( stopped || statusBusy ) {
+					return;
+				}
+				statusBusy = true;
+				postJobAction( 'day_one_importer_job_status', jobId ).then( function ( data ) {
+					statusBusy = false;
+					if ( stopped ) {
+						return;
+					}
+					updatePanel( data );
+					if ( data && data.is_terminal ) {
+						stopped = true;
+						stopStatusTimer();
+					}
+				} ).catch( function () {
+					statusBusy = false;
+				} );
+			}
+
+			statusTimer = window.setInterval( pollStatus, 1500 );
+			postJobAction( 'day_one_importer_job_process', jobId ).then( function ( data ) {
+				stopStatusTimer();
+				handleData( data );
+			} ).catch( function () {
+				stopStatusTimer();
 				if ( stopped ) {
 					return;
 				}

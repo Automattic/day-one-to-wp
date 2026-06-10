@@ -84,7 +84,7 @@ class Day_One_Importer_Admin {
 		}
 
 		$this->submission_handled = true;
-		$outcome                  = $this->handle_submission( false );
+		$outcome                  = $this->handle_submission();
 		if ( is_array( $outcome ) ) {
 			$this->pending_queued_job = $outcome;
 		} elseif ( $outcome instanceof Day_One_Importer_Results ) {
@@ -192,13 +192,10 @@ class Day_One_Importer_Admin {
 	/**
 	 * Handle form submission.
 	 *
-	 * @param bool $verify_nonce Whether to verify the form nonce.
 	 * @return Day_One_Importer_Results|array<string,mixed>|null Results on setup failure; queued job on success.
 	 */
-	private function handle_submission( $verify_nonce = true ) {
-		if ( $verify_nonce ) {
-			check_admin_referer( self::NONCE_ACTION );
-		}
+	private function handle_submission() {
+		check_admin_referer( self::NONCE_ACTION );
 
 		if ( ! $this->current_user_can_import() ) {
 			wp_die( esc_html__( 'You do not have permission to import Day One exports.', 'day-one-importer' ) );
@@ -215,8 +212,8 @@ class Day_One_Importer_Admin {
 
 		if ( ! class_exists( 'ZipArchive' ) ) {
 			Day_One_Importer_Cleanup::remove( $run_dir );
-			$runner = new Day_One_Importer_Runner();
-			return $runner->run_upload( $file );
+			$results->add_error( __( 'The PHP ZipArchive extension is required before a Day One ZIP can be imported safely.', 'day-one-importer' ) );
+			return $results;
 		}
 
 		$uploader = new Day_One_Importer_Uploader();
@@ -263,7 +260,7 @@ class Day_One_Importer_Admin {
 		echo '<p>' . esc_html__( 'Large imports run as a resumable job advanced by short browser requests with a cron fallback, so refreshing the page or continuing after a network interruption is safe.', 'day-one-importer' ) . '</p>';
 
 		if ( ! class_exists( 'ZipArchive' ) ) {
-			echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'The PHP ZipArchive extension is not available on this host, so the importer will fall back to a single-request synchronous import. Small and medium exports should still work, but very large or photo-heavy exports may exceed your server or proxy timeout. Ask your host to enable the PHP zip extension for resumable batched imports.', 'day-one-importer' ) . '</p></div>';
+			echo '<div class="notice notice-error inline"><p>' . esc_html__( 'The PHP ZipArchive extension is required so Day One exports can be inspected with safety budgets before extraction. Ask your host to enable the PHP zip extension before importing.', 'day-one-importer' ) . '</p></div>';
 		}
 	}
 

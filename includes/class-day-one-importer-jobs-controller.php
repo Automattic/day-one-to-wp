@@ -35,6 +35,12 @@ class Day_One_Importer_Jobs_Controller {
 	/**
 	 * Register hooks.
 	 *
+	 * Only AJAX endpoints are registered here. The matching cron callback
+	 * (`Day_One_Importer_Job_Store::CRON_HOOK`) is registered by
+	 * `Day_One_Importer_Plugin::init()` on every request so WP-Cron can
+	 * dispatch on a front-end pageview without loading this admin/AJAX-only
+	 * file. See issue #78 for the conditional file-loading refactor.
+	 *
 	 * @return void
 	 */
 	public function init() {
@@ -42,7 +48,6 @@ class Day_One_Importer_Jobs_Controller {
 		add_action( 'wp_ajax_day_one_importer_job_process', array( $this, 'ajax_process' ) );
 		add_action( 'wp_ajax_day_one_importer_job_retry', array( $this, 'ajax_retry' ) );
 		add_action( 'wp_ajax_day_one_importer_job_cancel', array( $this, 'ajax_cancel' ) );
-		add_action( Day_One_Importer_Job_Store::CRON_HOOK, array( $this, 'cron_process' ) );
 	}
 
 	/**
@@ -94,22 +99,6 @@ class Day_One_Importer_Jobs_Controller {
 		}
 
 		wp_send_json_success( Day_One_Importer_Job_State::status_response( $job ) );
-	}
-
-	/**
-	 * Cron fallback processor.
-	 *
-	 * @param string $job_id Job ID.
-	 * @return void
-	 */
-	public function cron_process( $job_id ) {
-		$job = $this->store->get_job( $job_id );
-		if ( ! $job || empty( $job['owner_user_id'] ) || ! day_one_importer_user_can_import( (int) $job['owner_user_id'] ) ) {
-			return;
-		}
-
-		$processor = new Day_One_Importer_Job_Processor( $this->store );
-		$processor->process_batch( $job['id'], 'cron' );
 	}
 
 	/**

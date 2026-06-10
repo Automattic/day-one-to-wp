@@ -1,6 +1,6 @@
 {
 	"name": "day-one-importer",
-	"version": "0.2.5",
+	"version": "0.2.23",
 	"description": "WordPress admin importer for Day One JSON exports.",
 	"license": "GPL-2.0-or-later",
 	"private": true,
@@ -8,6 +8,7 @@
 		"assets",
 		"includes",
 		"day-one-importer.php",
+		"uninstall.php",
 		"README.md",
 		"readme.txt",
 		"LICENSE"

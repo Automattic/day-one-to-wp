@@ -197,11 +197,15 @@ class Day_One_Importer_Job_Processor {
 			(string) $job['zip_path'],
 			isset( $job['zip_index'] ) ? (int) $job['zip_index'] : 0,
 			Day_One_Importer_Job_State::batch_zip_limit(),
-			$deadline
+			$deadline,
+			$job
 		);
 
-		$job['zip_index'] = (int) $batch['next_index'];
-		$job['zip_total'] = (int) $batch['total'];
+		$job['zip_index']                = (int) $batch['next_index'];
+		$job['zip_total']                = (int) $batch['total'];
+		$job['zip_uncompressed_total']   = isset( $batch['uncompressed_total'] ) ? (int) $batch['uncompressed_total'] : 0;
+		$job['zip_compressed_total']     = isset( $batch['compressed_total'] ) ? (int) $batch['compressed_total'] : 0;
+		$job['zip_largest_member_bytes'] = isset( $batch['largest_member_bytes'] ) ? (int) $batch['largest_member_bytes'] : 0;
 		if ( ! empty( $batch['json_candidates'] ) && is_array( $batch['json_candidates'] ) ) {
 			$existing                   = isset( $job['zip_json_candidates'] ) && is_array( $job['zip_json_candidates'] ) ? $job['zip_json_candidates'] : array();
 			$job['zip_json_candidates'] = array_values( array_unique( array_merge( $existing, $batch['json_candidates'] ) ) );
@@ -209,6 +213,18 @@ class Day_One_Importer_Job_Processor {
 		if ( ! empty( $batch['photo_dirs'] ) && is_array( $batch['photo_dirs'] ) ) {
 			$existing              = isset( $job['zip_photo_dirs'] ) && is_array( $job['zip_photo_dirs'] ) ? $job['zip_photo_dirs'] : array();
 			$job['zip_photo_dirs'] = array_values( array_unique( array_merge( $existing, $batch['photo_dirs'] ) ) );
+		}
+		if ( ! empty( $batch['video_dirs'] ) && is_array( $batch['video_dirs'] ) ) {
+			$existing              = isset( $job['zip_video_dirs'] ) && is_array( $job['zip_video_dirs'] ) ? $job['zip_video_dirs'] : array();
+			$job['zip_video_dirs'] = array_values( array_unique( array_merge( $existing, $batch['video_dirs'] ) ) );
+		}
+		if ( ! empty( $batch['audio_dirs'] ) && is_array( $batch['audio_dirs'] ) ) {
+			$existing              = isset( $job['zip_audio_dirs'] ) && is_array( $job['zip_audio_dirs'] ) ? $job['zip_audio_dirs'] : array();
+			$job['zip_audio_dirs'] = array_values( array_unique( array_merge( $existing, $batch['audio_dirs'] ) ) );
+		}
+		if ( ! empty( $batch['pdf_dirs'] ) && is_array( $batch['pdf_dirs'] ) ) {
+			$existing            = isset( $job['zip_pdf_dirs'] ) && is_array( $job['zip_pdf_dirs'] ) ? $job['zip_pdf_dirs'] : array();
+			$job['zip_pdf_dirs'] = array_values( array_unique( array_merge( $existing, $batch['pdf_dirs'] ) ) );
 		}
 		if ( ! empty( $batch['error'] ) ) {
 			$this->fail_job( $job, $results, (string) $batch['error'] );
@@ -240,11 +256,13 @@ class Day_One_Importer_Job_Processor {
 			(string) $job['extract_dir'],
 			isset( $job['extract_index'] ) ? (int) $job['extract_index'] : 0,
 			Day_One_Importer_Job_State::batch_zip_limit(),
-			$deadline
+			$deadline,
+			$job
 		);
 
-		$job['extract_index'] = (int) $batch['next_index'];
-		$job['extract_total'] = (int) $batch['total'];
+		$job['extract_index']              = (int) $batch['next_index'];
+		$job['extract_total']              = (int) $batch['total'];
+		$job['extract_uncompressed_total'] = isset( $batch['extracted_uncompressed_total'] ) ? (int) $batch['extracted_uncompressed_total'] : 0;
 		if ( ! empty( $batch['error'] ) ) {
 			$this->fail_job( $job, $results, (string) $batch['error'] );
 			return false;
@@ -414,7 +432,16 @@ class Day_One_Importer_Job_Processor {
 			}
 
 			if ( empty( $job['current_entry_content_appended'] ) ) {
-				$finalized = $runner->finalize_imported_entry( $entry, (int) $job['current_post_id'], isset( $job['current_attachment_ids'] ) ? $job['current_attachment_ids'] : array(), $results );
+				$finalized = $runner->finalize_imported_entry(
+					$entry,
+					(int) $job['current_post_id'],
+					isset( $job['current_attachment_ids'] ) ? $job['current_attachment_ids'] : array(),
+					isset( $job['current_photo_identifier_map'] ) && is_array( $job['current_photo_identifier_map'] ) ? $job['current_photo_identifier_map'] : array(),
+					$results,
+					isset( $job['current_video_identifier_map'] ) && is_array( $job['current_video_identifier_map'] ) ? $job['current_video_identifier_map'] : array(),
+					isset( $job['current_audio_identifier_map'] ) && is_array( $job['current_audio_identifier_map'] ) ? $job['current_audio_identifier_map'] : array(),
+					isset( $job['current_pdf_identifier_map'] ) && is_array( $job['current_pdf_identifier_map'] ) ? $job['current_pdf_identifier_map'] : array()
+				);
 				if ( ! $finalized ) {
 					$this->fail_job( $job, $results, __( 'The import could not finalize an entry after importing media. Retry is safe.', 'day-one-importer' ) );
 					return false;
@@ -512,10 +539,10 @@ class Day_One_Importer_Job_Processor {
 	 * @return int
 	 */
 	private function lock_ttl( $budget ) {
-		$default = max( 120, (int) ceil( (float) $budget ) + 60 );
+		$default = max( 20, (int) ceil( (float) $budget ) + 10 );
 		$value   = function_exists( 'apply_filters' ) ? apply_filters( 'day_one_importer_job_lock_ttl', $default, $budget ) : $default;
 
-		return max( 30, (int) $value );
+		return max( 15, (int) $value );
 	}
 
 	/**
@@ -529,10 +556,23 @@ class Day_One_Importer_Job_Processor {
 		$job['current_post_id']                = 0;
 		$job['current_media_index']            = 0;
 		$job['current_media_total']            = 0;
+		$job['current_video_media_index']      = 0;
+		$job['current_video_total']            = 0;
+		$job['current_audio_media_index']      = 0;
+		$job['current_audio_total']            = 0;
+		$job['current_pdf_media_index']        = 0;
+		$job['current_pdf_total']              = 0;
 		$job['current_attachment_ids']         = array();
+		$job['current_photo_identifier_map']   = array();
+		$job['current_video_identifier_map']   = array();
+		$job['current_audio_identifier_map']   = array();
+		$job['current_pdf_identifier_map']     = array();
 		$job['current_entry_post_prepared']    = false;
 		$job['current_entry_media_complete']   = false;
 		$job['current_entry_media_counted']    = false;
+		$job['current_entry_video_counted']    = false;
+		$job['current_entry_audio_counted']    = false;
+		$job['current_entry_pdf_counted']      = false;
 		$job['current_entry_content_appended'] = false;
 	}
 }

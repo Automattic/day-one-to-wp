@@ -38,7 +38,7 @@
       "creationDate": "2031-04-06T09:15:00Z",
       "modifiedDate": "2031-04-06T09:45:00Z",
       "timeZone": "Etc/UTC",
-      "text": "# Library Robot Rehearsal\n\nThe cardboard library robot announced this shortcode-like text as plain writing: [gallery].\n\nLiteral raw HTML for safety testing: <strong>imaginary bold shelf</strong> and <script>makeBelieve()</script>. These strings are fictional fixture text.",
+      "text": "# Library Robot Rehearsal\n\nThe cardboard library robot arranged paper bookmarks by moonlight and practiced a quiet greeting for imaginary library visitors.\n\nThis fictional entry is text-only, so it is useful for confirming that simple journal writing imports cleanly without media.",
       "tags": [
         "fictional",
         "library",
@@ -66,6 +66,1459 @@
       "creationDeviceType": "Fictional Device",
       "creationDeviceModel": "Sample Simulator",
       "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0004",
+      "creationDate": "2031-04-08T11:00:00Z",
+      "modifiedDate": "2031-04-08T11:20:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": "{\"meta\":{\"version\":1},\"contents\":[{\"attributes\":{\"italic\":true},\"text\":\"Imaginary trip to the paper marigolds\"},{\"attributes\":{},\"text\":\"\\nDay One scaffold sample, fictional content only.\"}]}",
+      "tags": [
+        "fictional",
+        "scaffold",
+        "richtext-string"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0005",
+      "creationDate": "2031-04-09T18:45:00Z",
+      "modifiedDate": "2031-04-09T19:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Pre-decoded richText fixture for the imaginary lantern festival.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Pre-decoded richText fixture for the imaginary lantern festival.\n"
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-9999"
+              }
+            ]
+          },
+          {
+            "attributes": {},
+            "text": "Second paragraph after a dropped embedded-object item."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "scaffold",
+        "richtext-object"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0006",
+      "creationDate": "2031-04-10T08:30:00Z",
+      "modifiedDate": "2031-04-10T08:35:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Caption-bearing fictional entry for precedence testing.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Caption-bearing fictional entry for precedence testing.",
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-8888"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "scaffold",
+        "precedence"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0007",
+      "creationDate": "2031-04-11T16:15:00Z",
+      "modifiedDate": "2031-04-11T16:30:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Imaginary garden photo accompanies a richText paragraph.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Imaginary garden photo accompanies a richText paragraph."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "scaffold",
+        "richtext-photo"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0007",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-04-11T16:20:00Z",
+          "orderInEntry": 0,
+          "width": 2,
+          "height": 2
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0008",
+      "creationDate": "2031-05-01T12:00:00Z",
+      "modifiedDate": "2031-05-01T12:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {
+              "bold": true
+            },
+            "text": "Bold sample run."
+          },
+          {
+            "attributes": {
+              "italic": true
+            },
+            "text": "Italic sample run."
+          },
+          {
+            "attributes": {
+              "strikethrough": true
+            },
+            "text": "Strikethrough sample run."
+          },
+          {
+            "attributes": {
+              "inlineCode": true
+            },
+            "text": "Inline code sample."
+          },
+          {
+            "attributes": {
+              "linkURL": "https://example.com/fictional-link"
+            },
+            "text": "Linked sample run."
+          },
+          {
+            "attributes": {
+              "autolink": true,
+              "linkURL": "https://example.com/auto"
+            },
+            "text": "Autolink sample run."
+          },
+          {
+            "attributes": {
+              "highlightedColor": "0xFFEE99"
+            },
+            "text": "Highlighted sample run."
+          },
+          {
+            "attributes": {
+              "bold": true,
+              "italic": true,
+              "strikethrough": true,
+              "inlineCode": true,
+              "highlightedColor": "0x000FFF",
+              "linkURL": "https://example.com/x"
+            },
+            "text": "hello"
+          },
+          {
+            "attributes": {
+              "linkURL": "javascript:alert(1)"
+            },
+            "text": "Bad link sample run."
+          },
+          {
+            "attributes": {
+              "highlightedColor": "0xZZZZZZ"
+            },
+            "text": "Bad color sample run."
+          },
+          {
+            "attributes": {
+              "autolink": true
+            },
+            "text": "Autolink without URL sample."
+          },
+          {
+            "attributes": {},
+            "text": "Plain unstyled sample run for the legacy-delegation baseline."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "scaffold",
+        "richtext-inline-formatting"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0009",
+      "creationDate": "2031-05-02T09:00:00Z",
+      "modifiedDate": "2031-05-02T09:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {
+              "line": {
+                "header": 1
+              }
+            },
+            "text": "Heading level one"
+          },
+          {
+            "attributes": {
+              "line": {
+                "header": 2
+              }
+            },
+            "text": "Heading level two first"
+          },
+          {
+            "attributes": {
+              "line": {
+                "header": 2
+              }
+            },
+            "text": "Heading level two second"
+          },
+          {
+            "attributes": {
+              "line": {
+                "header": 3
+              }
+            },
+            "text": "Heading level three"
+          },
+          {
+            "attributes": {
+              "line": {
+                "header": 4
+              }
+            },
+            "text": "Heading level four"
+          },
+          {
+            "attributes": {
+              "line": {
+                "header": 5
+              }
+            },
+            "text": "Heading level five"
+          },
+          {
+            "attributes": {
+              "line": {
+                "header": 6
+              }
+            },
+            "text": "Heading level six"
+          },
+          {
+            "attributes": {
+              "line": {
+                "header": 2
+              }
+            },
+            "text": "line one\nline two"
+          },
+          {
+            "attributes": {
+              "line": {
+                "header": 0
+              }
+            },
+            "text": "Header zero falls through to paragraph."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "headings"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0010",
+      "creationDate": "2031-05-02T10:00:00Z",
+      "modifiedDate": "2031-05-02T10:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "bulleted",
+                "indentLevel": 1
+              }
+            },
+            "text": "Outer bullet alpha"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "bulleted",
+                "indentLevel": 2
+              }
+            },
+            "text": "Nested bullet beta"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "bulleted",
+                "indentLevel": 1
+              }
+            },
+            "text": "Outer bullet gamma"
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "lists-bulleted"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0011",
+      "creationDate": "2031-05-02T11:00:00Z",
+      "modifiedDate": "2031-05-02T11:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "numbered",
+                "indentLevel": 1,
+                "listIndex": 5
+              }
+            },
+            "text": "Numbered start five"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "numbered",
+                "indentLevel": 1,
+                "listIndex": 6
+              }
+            },
+            "text": "Numbered continues six"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "numbered",
+                "indentLevel": 2,
+                "listIndex": 1
+              }
+            },
+            "text": "Nested numbered one"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "numbered",
+                "indentLevel": 1,
+                "listIndex": "7"
+              }
+            },
+            "text": "Numeric-string seven"
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "lists-numbered"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0012",
+      "creationDate": "2031-05-02T12:00:00Z",
+      "modifiedDate": "2031-05-02T12:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "numbered",
+                "indentLevel": 1,
+                "listIndex": 1
+              }
+            },
+            "text": "Numbered start one"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "numbered",
+                "indentLevel": 1,
+                "listIndex": 2
+              }
+            },
+            "text": "Numbered continues two"
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "lists-numbered-default"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0013",
+      "creationDate": "2031-05-02T13:00:00Z",
+      "modifiedDate": "2031-05-02T13:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "checkbox",
+                "indentLevel": 1,
+                "checked": true
+              }
+            },
+            "text": "Checked box alpha"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "checkbox",
+                "indentLevel": 1,
+                "checked": false
+              }
+            },
+            "text": "Unchecked box beta"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "checkbox",
+                "indentLevel": 1
+              }
+            },
+            "text": "Absent-checked box gamma"
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "lists-checkbox"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0014",
+      "creationDate": "2031-05-02T14:00:00Z",
+      "modifiedDate": "2031-05-02T14:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {
+              "line": {
+                "codeBlock": true
+              }
+            },
+            "text": "a\n"
+          },
+          {
+            "attributes": {
+              "line": {
+                "codeBlock": true
+              }
+            },
+            "text": "b\n"
+          },
+          {
+            "attributes": {
+              "line": {
+                "codeBlock": true
+              },
+              "linkURL": "javascript:x",
+              "bold": true,
+              "highlightedColor": "0xZZZZZZ"
+            },
+            "text": "c\n"
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "code-block"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0015",
+      "creationDate": "2031-05-02T15:00:00Z",
+      "modifiedDate": "2031-05-02T15:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {
+              "line": {
+                "quote": true,
+                "indentLevel": 1
+              }
+            },
+            "text": "Imaginary quote first paragraph."
+          },
+          {
+            "attributes": {
+              "line": {
+                "quote": true,
+                "indentLevel": 2
+              },
+              "bold": true
+            },
+            "text": "Imaginary quote second paragraph."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "quote"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0016",
+      "creationDate": "2031-05-02T16:00:00Z",
+      "modifiedDate": "2031-05-02T16:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Lead paragraph for the mixed-line-types fixture."
+          },
+          {
+            "attributes": {
+              "line": {
+                "header": 1
+              }
+            },
+            "text": "Mixed sample heading"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "bulleted",
+                "indentLevel": 1
+              }
+            },
+            "text": "Bulleted item alpha"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "bulleted",
+                "indentLevel": 1
+              }
+            },
+            "text": "Bulleted item beta"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "numbered",
+                "indentLevel": 1,
+                "listIndex": 1
+              }
+            },
+            "text": "Numbered item alpha"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "numbered",
+                "indentLevel": 1,
+                "listIndex": 2
+              }
+            },
+            "text": "Numbered item beta"
+          },
+          {
+            "attributes": {
+              "line": {
+                "codeBlock": true
+              }
+            },
+            "text": "first code\n"
+          },
+          {
+            "attributes": {
+              "line": {
+                "codeBlock": true
+              }
+            },
+            "text": "second code\n"
+          },
+          {
+            "attributes": {
+              "line": {
+                "codeBlock": true
+              }
+            },
+            "text": "third code\n"
+          },
+          {
+            "attributes": {
+              "line": {
+                "quote": true,
+                "indentLevel": 1
+              }
+            },
+            "text": "Quoted first."
+          },
+          {
+            "attributes": {
+              "line": {
+                "quote": true,
+                "indentLevel": 1
+              }
+            },
+            "text": "Quoted second."
+          },
+          {
+            "attributes": {},
+            "text": "Trailing paragraph after the mixed run."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "mixed"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0017",
+      "creationDate": "2031-05-02T17:00:00Z",
+      "modifiedDate": "2031-05-02T17:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "bulleted",
+                "indentLevel": 1
+              }
+            },
+            "text": "Bullet before the drop"
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "bulleted",
+                "indentLevel": 1
+              }
+            },
+            "text": "   "
+          },
+          {
+            "attributes": {
+              "line": {
+                "listStyle": "bulleted",
+                "indentLevel": 1
+              }
+            },
+            "text": "Bullet after the drop"
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "line-attributes",
+        "transparent-drop"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0018",
+      "creationDate": "2031-05-02T18:00:00Z",
+      "modifiedDate": "2031-05-02T18:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Before the embedded photo."
+          },
+          {
+            "attributes": {},
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0018"
+              }
+            ]
+          },
+          {
+            "attributes": {},
+            "text": "After the embedded photo."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "embedded-objects",
+        "inline-positioning"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0018",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-04-11T16:20:00Z",
+          "orderInEntry": 0,
+          "width": 2,
+          "height": 2
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0019",
+      "creationDate": "2031-05-02T19:00:00Z",
+      "modifiedDate": "2031-05-02T19:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Before placeholders.\n\n![](dayone-moment://4223F59BF563410FAACA8EDBF888C3FB)\n![](dayone-moment:/photo/4223F59BF563410FAACA8EDBF888C3FB)\n![](dayone-moment:/video/36AFEC058A8640F98420344B2CCCD145)\n![](dayone-moment:/audio/A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1)\n![](dayone-moment:/pdfAttachment/2540EC0D96C24252AB79706C8BDED592)\n![](dayone-photo://B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2B2)\n![](dayone-video://C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3)\n![](dayone-audio://D4D4D4D4D4D4D4D4D4D4D4D4D4D4D4D4)\n![](dayone-pdf://E5E5E5E5E5E5E5E5E5E5E5E5E5E5E5E5)\n\nAfter placeholders.",
+      "tags": [
+        "fictional",
+        "legacy-placeholder",
+        "regex"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": []
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0020",
+      "creationDate": "2031-05-03T08:00:00Z",
+      "modifiedDate": "2031-05-03T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Inline video embed.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Before the video.\n"
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "video",
+                "identifier": "36AFEC058A8640F98420344B2CCCD145"
+              }
+            ]
+          },
+          {
+            "attributes": {},
+            "text": "After the video."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "video",
+        "embed"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [],
+      "videos": [
+        {
+          "identifier": "36AFEC058A8640F98420344B2CCCD145",
+          "md5": "9278c8334f6b4af7bbb1a5dd9a6545f6",
+          "type": "mov",
+          "filename": "lantern-clip.mov",
+          "date": "2031-05-03T08:00:00Z",
+          "orderInEntry": 0,
+          "width": 320,
+          "height": 180,
+          "duration": 1.0
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0021",
+      "creationDate": "2031-05-04T08:00:00Z",
+      "modifiedDate": "2031-05-04T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Interleaved photo, video, photo.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0001"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "video",
+                "identifier": "36AFEC058A8640F98420344B2CCCD145"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0001"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "video",
+        "interleaved"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0001",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-05-04T08:00:00Z",
+          "orderInEntry": 0,
+          "width": 64,
+          "height": 64
+        }
+      ],
+      "videos": [
+        {
+          "identifier": "36AFEC058A8640F98420344B2CCCD145",
+          "md5": "9278c8334f6b4af7bbb1a5dd9a6545f6",
+          "type": "mov",
+          "filename": "lantern-clip.mov",
+          "date": "2031-05-04T08:00:00Z",
+          "orderInEntry": 1,
+          "width": 320,
+          "height": 180,
+          "duration": 1.0
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0022",
+      "creationDate": "2031-05-05T08:00:00Z",
+      "modifiedDate": "2031-05-05T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Inline audio embed.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Before the audio.\n"
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "audio",
+                "identifier": "A1B2C3D400000000000000000058AU01"
+              }
+            ]
+          },
+          {
+            "attributes": {},
+            "text": "After the audio."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "audio",
+        "embed"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [],
+      "videos": [],
+      "audios": [
+        {
+          "identifier": "A1B2C3D400000000000000000058AU01",
+          "md5": "19f9bc2c348dd7d9615641233a845728",
+          "format": "mp3",
+          "filename": "sample-1s.mp3",
+          "date": "2031-05-05T08:00:00Z",
+          "orderInEntry": 0,
+          "duration": 1.0,
+          "title": "sample-1s"
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0023",
+      "creationDate": "2031-05-06T08:00:00Z",
+      "modifiedDate": "2031-05-06T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Interleaved photo, video, audio.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0001"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "video",
+                "identifier": "36AFEC058A8640F98420344B2CCCD145"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "audio",
+                "identifier": "A1B2C3D400000000000000000058AU01"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "audio",
+        "interleaved"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0001",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-05-06T08:00:00Z",
+          "orderInEntry": 0,
+          "width": 64,
+          "height": 64
+        }
+      ],
+      "videos": [
+        {
+          "identifier": "36AFEC058A8640F98420344B2CCCD145",
+          "md5": "9278c8334f6b4af7bbb1a5dd9a6545f6",
+          "type": "mov",
+          "filename": "lantern-clip.mov",
+          "date": "2031-05-06T08:00:00Z",
+          "orderInEntry": 1,
+          "width": 320,
+          "height": 180,
+          "duration": 1.0
+        }
+      ],
+      "audios": [
+        {
+          "identifier": "A1B2C3D400000000000000000058AU01",
+          "md5": "19f9bc2c348dd7d9615641233a845728",
+          "format": "mp3",
+          "filename": "sample-1s.mp3",
+          "date": "2031-05-06T08:00:00Z",
+          "orderInEntry": 2,
+          "duration": 1.0,
+          "title": "mixed-sequence audio"
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0024",
+      "creationDate": "2031-05-07T08:00:00Z",
+      "modifiedDate": "2031-05-07T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Inline PDF embed.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Before the PDF.\n"
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "pdfAttachment",
+                "identifier": "F1C7100A00000000000000000059PD01"
+              }
+            ]
+          },
+          {
+            "attributes": {},
+            "text": "After the PDF."
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "pdf",
+        "embed"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [],
+      "videos": [],
+      "audios": [],
+      "pdfAttachments": [
+        {
+          "identifier": "F1C7100A00000000000000000059PD01",
+          "md5": "65206568723b92ce9a928d0fb0ebed49",
+          "pdfName": "Fictional PDF Sample",
+          "orderInEntry": 0,
+          "fileSize": 303
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0025",
+      "creationDate": "2031-05-08T08:00:00Z",
+      "modifiedDate": "2031-05-08T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Interleaved photo, video, audio, pdf.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0001"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "video",
+                "identifier": "36AFEC058A8640F98420344B2CCCD145"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "audio",
+                "identifier": "A1B2C3D400000000000000000058AU01"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "pdfAttachment",
+                "identifier": "F1C7100A00000000000000000059PD01"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "pdf",
+        "interleaved"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0001",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-05-08T08:00:00Z",
+          "orderInEntry": 0,
+          "width": 64,
+          "height": 64
+        }
+      ],
+      "videos": [
+        {
+          "identifier": "36AFEC058A8640F98420344B2CCCD145",
+          "md5": "9278c8334f6b4af7bbb1a5dd9a6545f6",
+          "type": "mov",
+          "filename": "lantern-clip.mov",
+          "date": "2031-05-08T08:00:00Z",
+          "orderInEntry": 1,
+          "width": 320,
+          "height": 180,
+          "duration": 1.0
+        }
+      ],
+      "audios": [
+        {
+          "identifier": "A1B2C3D400000000000000000058AU01",
+          "md5": "19f9bc2c348dd7d9615641233a845728",
+          "format": "mp3",
+          "filename": "sample-1s.mp3",
+          "date": "2031-05-08T08:00:00Z",
+          "orderInEntry": 2,
+          "duration": 1.0,
+          "title": "mixed-sequence audio"
+        }
+      ],
+      "pdfAttachments": [
+        {
+          "identifier": "F1C7100A00000000000000000059PD01",
+          "md5": "65206568723b92ce9a928d0fb0ebed49",
+          "pdfName": "Fictional PDF Sample",
+          "orderInEntry": 3,
+          "fileSize": 303
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0026",
+      "creationDate": "2031-05-09T08:00:00Z",
+      "modifiedDate": "2031-05-09T08:00:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "# Animated lantern test\n\nA fictional animated lantern, exported as a tiny 2-frame GIF so the importer can prove it kept the animation bytes intact.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "66ED4DF51BBC4EDC85644FA05CD8A2F3"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "gif",
+        "animation"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "66ED4DF51BBC4EDC85644FA05CD8A2F3",
+          "md5": "3b22a729ac3d48d50fc2925514df76e0",
+          "type": "gif",
+          "filename": "fictional-animated-lantern.gif",
+          "date": "2031-05-09T08:00:00Z",
+          "orderInEntry": 0,
+          "width": 1,
+          "height": 1
+        }
+      ]
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0027",
+      "creationDate": "2031-05-10T17:45:00Z",
+      "modifiedDate": "2031-05-10T17:45:00Z",
+      "timeZone": "America/Boise",
+      "text": "# Departure notes\n\nA fictional traveler scribbles notes about a windswept fictional airfield. The location subtree below is the canonical sample from issue #61 and is preserved verbatim so the importer can prove every location meta key round-trips.",
+      "tags": [
+        "fictional",
+        "location",
+        "travel"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "location": {
+        "region": {
+          "center": { "longitude": -112.0715115, "latitude": 43.5109408 },
+          "identifier": "<+43.51094080,-112.07151150> radius 70.70",
+          "radius": 70.698295006150417
+        },
+        "localityName": "Idaho Falls",
+        "country": "United States",
+        "timeZoneName": "America/Boise",
+        "administrativeArea": "ID",
+        "longitude": -112.07170104980469,
+        "placeName": "Idaho Falls Regional Airport",
+        "latitude": 43.511299133300781
+      }
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0028",
+      "creationDate": "2031-05-11T17:00:00Z",
+      "modifiedDate": "2031-05-11T17:00:00Z",
+      "timeZone": "America/Boise",
+      "text": "# Forecast notes\n\nA fictional weather observer records the canonical sample weather payload from issue #62. The weather subtree below is preserved verbatim so the importer can prove every weather meta key round-trips.",
+      "tags": [
+        "fictional",
+        "weather"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "weather": {
+        "moonPhaseCode": "first-quarter",
+        "temperatureCelsius": 29.909999847412109,
+        "weatherServiceName": "Forecast.io",
+        "windBearing": 234,
+        "conditionsDescription": "Clear",
+        "pressureMB": 1016.7999877929688,
+        "moonPhase": 0.19,
+        "visibilityKM": 10.451999664306641,
+        "relativeHumidity": 0,
+        "windSpeedKPH": 9.8500003814697266,
+        "weatherCode": "clear"
+      }
+    },
+    {
+      "uuid": "FICTIONAL-SAMPLE-ENTRY-0029",
+      "creationDate": "2031-05-12T09:30:00Z",
+      "modifiedDate": "2031-05-12T09:30:00Z",
+      "timeZone": "Etc/UTC",
+      "text": "Two consecutive inline photo embeds for the imaginary gallery.",
+      "richText": {
+        "meta": {
+          "version": 1
+        },
+        "contents": [
+          {
+            "attributes": {},
+            "text": "Two consecutive inline photo embeds for the imaginary gallery.\n"
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0029A"
+              }
+            ]
+          },
+          {
+            "embeddedObjects": [
+              {
+                "type": "photo",
+                "identifier": "FICTIONAL-SAMPLE-PHOTO-0029B"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "fictional",
+        "gallery",
+        "inline-positioning"
+      ],
+      "starred": false,
+      "isPinned": false,
+      "creationDeviceType": "Fictional Device",
+      "creationDeviceModel": "Sample Simulator",
+      "photos": [
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0029A",
+          "md5": "a36a701e0fe5e46e37fb460b40ccda7b",
+          "type": "png",
+          "filename": "fictional-color-tile.png",
+          "date": "2031-05-12T09:30:00Z",
+          "orderInEntry": 0,
+          "width": 2,
+          "height": 2
+        },
+        {
+          "identifier": "FICTIONAL-SAMPLE-PHOTO-0029B",
+          "md5": "20a943a863b66c168e6fa53c83fb3320",
+          "type": "png",
+          "filename": "fictional-second-tile.png",
+          "date": "2031-05-12T09:30:00Z",
+          "orderInEntry": 1,
+          "width": 1,
+          "height": 1
+        }
+      ]
     }
   ]
 }

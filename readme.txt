@@ -2,26 +2,26 @@
 Contributors: cbravobernal
 Tags: import, importer, day-one, journal, privacy
 Requires at least: 6.4
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
-Recommended PHP extensions: ZipArchive (for resumable batched imports)
-Stable tag: 0.2.5
+Stable tag: 0.2.23
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Import Day One JSON export ZIPs as private WordPress posts with journal categories, tags, dates, and supported photos.
+Import Day One JSON export ZIPs as private WordPress posts with categories, tags, dates, photos, videos, audios, and PDF attachments.
 
 == Description ==
 
-Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, and supported photos.
+Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, supported photos, supported videos, supported audios, and supported PDF attachments.
 
 The importer is designed for local or private archive migration workflows:
 
 * Imported posts are private by default.
+* The PHP ZipArchive extension is required so ZIP exports can be inspected with safety budgets before extraction.
 * Large exports run as resumable jobs advanced by short browser requests with a WP-Cron fallback, reducing gateway timeout risk.
 * Re-importing the same export skips completed entries using Day One UUID metadata.
 * Interrupted, failed, or older-schema imports can be retried, continued, or refreshed in place without duplicating completed posts or media.
-* Supported photos are imported into the Media Library and attached to their posts.
+* Supported photos, videos, audios, and PDFs are imported into the Media Library and attached to their posts. Videos render inline as `core/video` blocks, audios render inline as `core/audio` blocks (with the Day One audio `title` as the block caption when set), and PDFs render inline as `core/file` blocks (with the Day One `pdfName` as the link text when set, falling back to the basename without extension and finally to a literal `[PDF]` floor) at their original `richText` position when present.
 * New Day One media is stored in a protected uploads subfolder and served through a nonce- and permission-checked WordPress endpoint.
 * Generated image sub-sizes are skipped during import to reduce timeout risk on large exports.
 * Result screens report counts, UUIDs, dates, filenames, and generic warnings rather than full journal content.
@@ -34,7 +34,7 @@ For development and testing, the repository includes a wholly fictional sample D
 
 == Installation ==
 
-1. Optionally confirm PHP has the ZipArchive extension enabled. Resumable batched imports require it; without it the importer falls back to a synchronous single-request import that works for smaller exports but may time out on very large or photo-heavy ones.
+1. Confirm PHP has the ZipArchive extension enabled. The importer requires it to inspect ZIP exports with safety budgets before extraction.
 2. Install the plugin ZIP through the WordPress Plugins screen, or upload the plugin files to your site's configured plugins directory.
 3. Activate the plugin through the Plugins screen in WordPress.
 4. Go to Tools > Import and choose Day One.
@@ -46,7 +46,7 @@ For development and testing, the repository includes a wholly fictional sample D
 
 = What Day One export format is supported? =
 
-Export your journal from Day One as JSON and keep the original ZIP intact. The importer expects a ZIP containing one or more journal JSON files with an `entries` array and, when photos are present, a `photos` directory.
+Export your journal from Day One as JSON and keep the original ZIP intact. The importer expects a ZIP containing one or more journal JSON files with an `entries` array and, when photos, videos, audios, or PDFs are present, `photos/`, `videos/`, `audios/`, and/or `pdfs/` directories.
 
 = Are imported entries public? =
 
@@ -58,7 +58,7 @@ Yes. The importer stores Day One UUID metadata and skips entries that were alrea
 
 = What media types are imported? =
 
-The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Unsupported or missing media generates warnings without stopping unrelated entries. New imported media is stored in a protected uploads subfolder and served through a nonce- and permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
+The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Day One videos (`.mov`, `.mp4`), Day One audios (`.mp3`, `.m4a`, `.aac`), and Day One PDFs (`application/pdf`) are imported when the site's MIME allowlist accepts them (`video/quicktime`, `video/mp4`, `audio/mpeg`, `audio/mp4`, `audio/aac`, and `application/pdf` are enabled by default for Administrator-role users on most WordPress sites). PDF preview / thumbnail rendering is intentionally out of scope: the emitted `core/file` block is link + Download button only. Unsupported or missing media generates warnings without stopping unrelated entries; video, audio, and PDF embeds whose MIME the site refuses (most notably `.lpcm` linear-PCM audio on default WordPress allowlists, or sites that have explicitly stripped `application/pdf` from `upload_mimes`) are dropped with a privacy-safe warning (no `core/file` fallback is emitted). To support additional video, audio, or PDF MIMEs, extend the uploader allowlist via the standard `upload_mimes` filter. New imported media is stored in a protected uploads subfolder and served through a nonce- and permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
 
 = Does the plugin contact external services? =
 
@@ -66,57 +66,84 @@ No. The plugin processes ZIP files, extracted content, and resumable job manifes
 
 == Changelog ==
 
+= 0.2.23 =
+* Security hardening for WordPress.org review: the PHP ZipArchive extension is now required (imports fail closed without it), ZIP expansion budgets (member count, total uncompressed size, per-member size, compression ratio) reject hostile archives before and during extraction, and idempotency lookups are scoped to the import owner.
+* Stored video, audio, and PDF block markup now uses the stable nonce-less private endpoint URL; fresh nonces are injected at render time, so imported posts never expire.
+* Bounded streaming for journal JSON indexing with resumable offsets; ZIP budget cursors persist on async jobs.
+
+= 0.2.22 =
+* Add a Plugin Check helper script (`tools/run-plugin-check.sh`, `composer plugin-check`) for pre-submission verification.
+
+= 0.2.21 =
+* Harden private-media response headers: `Cache-Control: private, no-store`, `Referrer-Policy: same-origin`, and a sanitized inline `Content-Disposition` filename.
+
+= 0.2.20 =
+* Defer admin-only files on non-admin requests; cron processing and the private-media endpoint stay registered from the always-loaded plugin class.
+
+= 0.2.19 =
+* Document the streaming JSON I/O exception (native `fopen`/`fread`/`fclose`) with explicit `phpcs:ignore` rationale comments.
+
+= 0.2.18 =
+* Attachment dedupe N+1 fix: indexed `meta_query` lookups replace per-attachment meta scans during reruns.
+
+= 0.2.17 =
+* Existing-post lookup N+1 fix: a single `_day_one_uuid` meta query per entry replaces scanning every post.
+
+= 0.2.16 =
+* Document the fictional fixture journal and add a consolidated regression asserting every supported block type imports (paragraph, heading, list, code, quote, image, gallery, video, audio, file).
+
+= 0.2.15 =
+* Preserve Day One `entry.weather` as `_day_one_weather_*` post meta with a `day_one_importer_weather_meta` filter. Schema 10 → 11.
+
+= 0.2.14 =
+* Preserve Day One `entry.location` as `_day_one_location_*` post meta with a `day_one_importer_location_meta` filter. Schema 9 → 10.
+
+= 0.2.13 =
+* Preserve animated GIFs: GIF image blocks reference the original file with `sizeSlug: "full"` instead of the flattened `large` derivative.
+
+= 0.2.12 =
+* Import Day One `entry.pdfAttachments[]` as `core/file` blocks at their inline positions. Schema 8 → 9.
+
+= 0.2.11 =
+* Import Day One `entry.audios[]` as `core/audio` blocks at their inline positions, with `title` captions. Schema 7 → 8.
+
+= 0.2.10 =
+* Import Day One `entry.videos[]` as `core/video` blocks at their inline positions. Schema 6 → 7.
+
+= 0.2.9 =
+* Place richText inline photos at their original position (single embed → `core/image`, consecutive embeds → `core/gallery`).
+
+= 0.2.8 =
+* Map richText line attributes to Gutenberg blocks: headings, bulleted/numbered/checkbox lists, code blocks, and blockquotes.
+
+= 0.2.7 =
+* Render richText inline formatting: bold, italic, strikethrough, inline code, http(s) links, and highlight color.
+
+= 0.2.6 =
+* Parse Day One `richText` payloads (one block per text run) with a privacy-safe fallback to legacy `text` rendering.
+
 = 0.2.5 =
-* Address WordPress.org review feedback: remove the extra contributor, add nonce verification for admin job/media URLs, sanitize and validate request/upload values before processing, escape generated job-panel markup with an allow-list, store private media in a protected uploads subfolder, stop changing PHP time limits, and avoid switching the current user during cron processing.
+* Address WordPress.org review feedback: nonces, upload sanitization, escaping, contributor metadata, private media directory, PHP time limits, and cron processing.
 
 = 0.2.4 =
-* Add a missing `translators:` comment to the `%d%% complete` localized progress format used by the resumable job panel's JavaScript so Plugin Check no longer flags the call as `WordPress.WP.I18n.MissingTranslatorsComment`.
-* Tighten the upload dispatcher screen-routing check while keeping upload nonce verification in the submission handler.
+* Add a missing `translators:` comment and tighten the upload dispatcher screen-routing check.
 
 = 0.2.3 =
-* Fix the Import Day One Export upload submission. The submit handler still referenced the removed inline `#day-one-importer-status` notice (its `statusRegion`, `statusMessage`, and `spinner` lookups), which threw a `ReferenceError` under strict mode right after `event.preventDefault()` and prevented the XHR upload from running, so the form looked unresponsive and the upload percentage never appeared. The stale references are now removed.
+* Fix the unresponsive upload submit handler caused by stale DOM references.
 
 = 0.2.2 =
-* Fix the Cancel import button so the job panel reflects the canceled status immediately. The poll loop's in-flight `day_one_importer_job_process` response was returning after the cancel completed and overwriting the panel back to the running state; the polling callbacks now bail when the `stopped` flag has been set by Cancel.
+* Fix the Cancel import button so the job panel reflects the canceled status immediately.
 
 = 0.2.1 =
-* Move the upload submission dispatcher to `admin_init` so the post-upload `wp_safe_redirect()` runs before `admin-header.php` emits headers. Previously the redirect failed silently from inside the importer screen callback, leaving the page showing the prior canceled job instead of the freshly queued one. Also remove the redundant `#day-one-importer-status` notice under the form and suppress the upload panel's phase and "Progress will update as the job runs." sub-labels during the ZIP upload.
+* Dispatch the upload on `admin_init` so the post-upload redirect runs before headers are sent.
 
 = 0.2.0 =
-* Fix the blank importer screen after a successful upload by redirecting to `import.php` instead of `admin.php`, which is the dispatcher that `register_importer()` uses.
-* Upload the export ZIP in the background and show real-time upload percentage in the job panel; the form, intro copy, and panel remain on screen for the entire upload instead of blanking during navigation.
-* Always render the import job panel scaffold (hidden when no job exists yet) so the live upload progress and queuing state have a stable place to render before the first job is created.
-* Collapse the job panel notice color to three states: canceled or failed runs are red, queued or running runs are blue, completed runs are green regardless of warnings.
-* Recalibrate the import progress percentage so the bar tracks entries imported during the importing phase instead of jumping to roughly 65% once preflight, extract, and indexing finish. Resumed jobs paint at their already-imported ratio on first render, and failed or canceled mid-import jobs keep the computed value rather than snapping to 100%.
-* Add an estimated import progress bar to the resumable job panel so paused, canceled, retried, or re-opened uploads visibly report their current status.
-* Plugin Check compliance cleanup with no user-facing behavior change: private media writability checks now call `wp_is_writable()` directly (the prior `is_writable()` fallback is moved to the test bootstrap as a polyfill), long-running imports use the resumable job flow rather than changing the PHP time limit, and the media class direct-access guard is rewritten in the nested form already used elsewhere in the plugin.
-* Additional Plugin Check compliance cleanup with no user-facing behavior change: add a `translators:` hint to the `%d%% complete` progress string in the resumable job panel and document intentionally low-level file/option operations used by the streaming parser and distributed import lock.
+* Background ZIP upload with live progress, recalibrated progress bar, and Plugin Check compliance cleanup.
 
 = 0.1.0 =
-* Initial release.
-* Import Day One JSON export ZIP entries as private WordPress posts.
-* Preserve dates, journal categories, tags, conservative text formatting, and supported photos.
-* Support resumable batched import jobs with progress, Retry / Continue, cancellation, cron fallback, idempotent reruns, incomplete import resume behavior, and privacy-safe result summaries.
+* Initial release: import Day One JSON export ZIPs as private posts with dates, categories, tags, text formatting, supported photos, and resumable batched jobs.
 
 == Upgrade Notice ==
 
-= 0.2.5 =
-Addresses WordPress.org review feedback for nonces, upload sanitization, escaping, contributor metadata, private media directory selection, PHP time limits, and cron processing.
-
-= 0.2.4 =
-Adds a missing `translators:` comment for the `%d%% complete` progress format.
-
-= 0.2.3 =
-Fixes the unresponsive Import Day One Export button and the missing upload percentage caused by stale DOM references in the submit handler.
-
-= 0.2.2 =
-Cancel import now updates the job panel status immediately instead of flickering back to the running state.
-
-= 0.2.1 =
-Fixes the post-upload screen still showing the previously canceled job instead of the new one by dispatching the upload on `admin_init` so the redirect actually runs.
-
-= 0.2.0 =
-Fixes the post-upload blank screen and adds a live upload progress percentage to the import job panel.
-
-= 0.1.0 =
-Initial release.
+= 0.2.23 =
+The PHP ZipArchive extension is now required; imports fail safely with a clear message when it is missing. ZIP safety budgets reject oversized or hostile archives before extraction. No schema bump.

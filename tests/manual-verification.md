@@ -57,6 +57,29 @@ Confirm clear, escaped, privacy-safe failures for:
 4. Force a stale job/lock past retention and run cleanup; confirm stale files/options/locks are removed without deleting an unexpired lock.
 5. Confirm imported posts are private, assigned to their Day One journal category, and imported Day One media is served only through the authenticated media endpoint to users who can read the parent post.
 
+## Plugin Check (PCP)
+
+Run WordPress Plugin Check against the plugin before submitting any release to WordPress.org. This is gated behind an explicit helper so it does not run during the normal lint / test loop.
+
+1. From the repository root, run the helper:
+
+    ```sh
+    composer plugin-check
+    # or equivalently:
+    ./tools/run-plugin-check.sh
+    ```
+
+2. The helper is idempotent. It:
+    - Starts `wp-env` (`npx wp-env start --debug`) if it is not already running.
+    - Installs and activates the `plugin-check` plugin only when it is not already active.
+    - Runs `wp plugin check day-one-importer --checks=all --format=table --fields=check,file,line,column,type,code,message` inside the wp-env container.
+
+3. Expected output on a clean release: PCP prints a "Checks complete" trailer (no table rows) and the helper exits `0` with the message `Plugin Check reported zero findings. Ready for submission review.`
+
+4. On any error or warning the helper exits `1` and prints the offending rows. Address each finding (or document a deliberate exception in the changelog) before tagging the release.
+
+5. Environment failures (Docker not running, port `8888`/`8889` conflict, wp-env unavailable) exit `2` with a hint pointing at the likely cause. Resolve the environment issue and rerun — the helper is safe to invoke repeatedly.
+
 ## Final acceptance
 
 - Large imports advance through bounded requests rather than one long HTTP request.
@@ -64,3 +87,4 @@ Confirm clear, escaped, privacy-safe failures for:
 - Reruns do not duplicate posts or media.
 - Progress and final summaries are understandable and privacy-safe.
 - Invalid archives/uploads/permissions fail safely.
+- Pre-submission only: `composer plugin-check` reports zero findings.
