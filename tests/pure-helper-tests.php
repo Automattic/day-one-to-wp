@@ -4732,7 +4732,7 @@ assert_true( isset( $find_existing_args['author'] ) && $find_existing_owner === 
 assert_true( isset( $find_existing_args['posts_per_page'] ) && 2 === $find_existing_args['posts_per_page'], '#75 — find_existing_post_id caps posts_per_page at 2 so the duplicate-UUID warning still fires.' );
 assert_true( isset( $find_existing_args['fields'] ) && 'ids' === $find_existing_args['fields'], '#75 — find_existing_post_id requests only post IDs from get_posts().' );
 assert_true( isset( $find_existing_args['no_found_rows'] ) && true === $find_existing_args['no_found_rows'], '#75 — find_existing_post_id disables SQL_CALC_FOUND_ROWS via no_found_rows=true.' );
-assert_true( isset( $find_existing_args['post_type'] ) && 'post' === $find_existing_args['post_type'], '#75 — find_existing_post_id scopes the lookup to post_type=post.' );
+assert_true( isset( $find_existing_args['post_type'] ) && is_array( $find_existing_args['post_type'] ) && array( 'post', 'day_one_entry' ) === array_values( $find_existing_args['post_type'] ), '#75 — find_existing_post_id scopes the lookup to exactly the two entry post types (post, day_one_entry).' );
 assert_true( isset( $find_existing_args['post_status'] ) && is_array( $find_existing_args['post_status'] ) && in_array( 'private', $find_existing_args['post_status'], true ), '#75 — find_existing_post_id queries all registered statuses so private imported posts are included.' );
 assert_true( ! $find_existing_results->has_warnings(), '#75 — no warning is emitted when zero posts match.' );
 
