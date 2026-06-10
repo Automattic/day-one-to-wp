@@ -20,13 +20,13 @@ The importer is designed for local or private archive migration workflows:
 * The PHP ZipArchive extension is required so ZIP exports can be inspected with safety budgets before extraction.
 * Large exports run as resumable jobs advanced by short browser requests with a WP-Cron fallback, reducing gateway timeout risk.
 * Re-importing the same export skips completed entries using Day One UUID metadata.
-* Interrupted, failed, or older-schema imports can be retried, continued, or refreshed in place without duplicating completed posts or media.
-* Supported photos, videos, audios, and PDFs are imported into the Media Library and attached to their posts. Videos render inline as `core/video` blocks, audios render inline as `core/audio` blocks (with the Day One audio `title` as the block caption when set), and PDFs render inline as `core/file` blocks (with the Day One `pdfName` as the link text when set, falling back to the basename without extension and finally to a literal `[PDF]` floor) at their original `richText` position when present.
+* Interrupted, failed, or older-schema imports can be retried, continued, or refreshed in place without duplicating completed entries or media.
+* Supported photos, videos, audios, and PDFs are imported into the Media Library and attached to their entries. Videos render inline as `core/video` blocks, audios render inline as `core/audio` blocks (with the Day One audio `title` as the block caption when set), and PDFs render inline as `core/file` blocks (with the Day One `pdfName` as the link text when set, falling back to the basename without extension and finally to a literal `[PDF]` floor) at their original `richText` position when present.
 * New Day One media is stored in a protected uploads subfolder and served through a nonce- and permission-checked WordPress endpoint.
 * Generated image sub-sizes are skipped during import to reduce timeout risk on large exports.
 * Result screens report counts, UUIDs, dates, filenames, and generic warnings rather than full journal content.
 
-Privacy note: the importer stores new imported media in a dedicated uploads subfolder with best-effort server protection files as defense in depth. It serves imported media through WordPress only to logged-in users with a valid media nonce who can read the associated private post or attachment. If media privacy is critical, confirm your host honors the protection files for that uploads subfolder.
+Privacy note: the importer stores new imported media in a dedicated uploads subfolder with best-effort server protection files as defense in depth. It serves imported media through WordPress only to logged-in users with a valid media nonce who can read the associated private entry or attachment. If media privacy is critical, confirm your host honors the protection files for that uploads subfolder.
 
 The plugin does not send journal content or media to external services.
 
@@ -40,7 +40,7 @@ For development and testing, the repository includes a wholly fictional sample D
 4. Go to Tools > Import and choose Day One.
 5. Upload the original Day One JSON export ZIP and click Import Day One export.
 6. Watch the import job panel for phase, progress, counters, warnings, and errors. If the browser connection is interrupted, refresh the page or click Retry / Continue.
-7. Review the final import summary and spot-check the resulting private posts.
+7. Review the final import summary and spot-check the resulting private entries (under Posts, or under Journal Entries if you chose the custom post type).
 
 == Frequently Asked Questions ==
 
