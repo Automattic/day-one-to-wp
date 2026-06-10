@@ -171,7 +171,21 @@ function day_one_importer_wp_env_import_from_zip( $zip_path ) {
 	}
 }
 
-function day_one_importer_wp_env_import_from_zip_async( $zip_path ) {
+/**
+ * Run a full async import of the given ZIP through the job store/processor.
+ *
+ * Mirrors the browser upload path: the ZIP is copied into a protected run
+ * directory, a job is created for the current user, and process_batch() is
+ * driven to a terminal state with forced one-item batch limits.
+ *
+ * @param string $zip_path        Absolute path to a Day One export ZIP.
+ * @param string $entry_post_type Post type for entries created by this run:
+ *                                'post' (default) or the journal entry CPT.
+ *                                Snapshotted into the job record, exactly as
+ *                                the upload form's radio choice would be.
+ * @return array{results:Day_One_Importer_Results,batches:int,job:array} Final results, batch count, and job record.
+ */
+function day_one_importer_wp_env_import_from_zip_async( $zip_path, $entry_post_type = 'post' ) {
 	day_one_importer_wp_env_assert( class_exists( 'ZipArchive' ), 'Async import requires ZipArchive for chunked ZIP processing.' );
 
 	$run_dir = Day_One_Importer_Cleanup::create_run_directory();
@@ -181,7 +195,7 @@ function day_one_importer_wp_env_import_from_zip_async( $zip_path ) {
 	Day_One_Importer_Cleanup::set_owner_only_permissions( $target_zip );
 
 	$store = new Day_One_Importer_Job_Store();
-	$job   = $store->create_job( get_current_user_id(), $run_dir, $target_zip, new Day_One_Importer_Results() );
+	$job   = $store->create_job( get_current_user_id(), $run_dir, $target_zip, new Day_One_Importer_Results(), $entry_post_type );
 	day_one_importer_wp_env_assert( is_array( $job ), 'Async job created.' );
 
 	$processor = new Day_One_Importer_Job_Processor( $store );
@@ -209,25 +223,74 @@ function day_one_importer_wp_env_import_from_zip_async( $zip_path ) {
 	);
 }
 
-// Start from a clean sample-import state so this smoke test is repeatable.
-$existing_candidates = get_posts(
-	array(
-		'post_type'      => array( 'post', 'attachment' ),
+/**
+ * Permanently delete every imported Day One post, journal entry, and attachment.
+ *
+ * Filters only on the `_day_one_source` meta marker, across both entry post
+ * types and attachments, with NO author scoping — it removes imported content
+ * belonging to ALL users, including the second administrator this suite
+ * creates. The #43 CPT scenarios rely on that property to reach a
+ * zero-imported-rows state, and the startup call keeps the smoke test
+ * repeatable even when a previous run left custom post type entries behind.
+ */
+function day_one_importer_wp_env_cleanup_imported_content() {
+	$existing_candidates = get_posts(
+		array(
+			'post_type'      => array( 'post', Day_One_Importer_Post_Type::POST_TYPE, 'attachment' ),
+			'post_status'    => 'any',
+			'posts_per_page' => -1,
+			'fields'         => 'ids',
+		)
+	);
+	foreach ( $existing_candidates as $post_id ) {
+		if ( 'day-one-export' !== (string) get_post_meta( (int) $post_id, '_day_one_source', true ) ) {
+			continue;
+		}
+		if ( 'attachment' === get_post_type( (int) $post_id ) ) {
+			wp_delete_attachment( (int) $post_id, true );
+		} else {
+			wp_delete_post( (int) $post_id, true );
+		}
+	}
+}
+
+/**
+ * Query the IDs of imported Day One entries of a given post type.
+ *
+ * Imported entries are identified by the `_day_one_source` meta marker.
+ * Optionally scoped to a single author; unscoped calls span ALL owners, so
+ * after the suite creates its second administrator an unscoped 'post' query
+ * counts both users' imported sets.
+ *
+ * @param string $post_type Entry post type to query ('post' or the journal entry CPT).
+ * @param int    $author_id Optional author user ID to scope the query to; 0 queries all owners.
+ * @return int[] Matching post IDs in ascending ID order.
+ */
+function day_one_importer_wp_env_imported_entry_ids( $post_type, $author_id = 0 ) {
+	$query = array(
+		'post_type'      => $post_type,
 		'post_status'    => 'any',
 		'posts_per_page' => -1,
 		'fields'         => 'ids',
-	)
-);
-foreach ( $existing_candidates as $post_id ) {
-	if ( 'day-one-export' !== (string) get_post_meta( (int) $post_id, '_day_one_source', true ) ) {
-		continue;
+		'orderby'        => 'ID',
+		'order'          => 'ASC',
+		'meta_query'     => array(
+			array(
+				'key'     => '_day_one_source',
+				'value'   => 'day-one-export',
+				'compare' => '=',
+			),
+		),
+	);
+	if ( $author_id > 0 ) {
+		$query['author'] = (int) $author_id;
 	}
-	if ( 'attachment' === get_post_type( (int) $post_id ) ) {
-		wp_delete_attachment( (int) $post_id, true );
-	} else {
-		wp_delete_post( (int) $post_id, true );
-	}
+
+	return array_map( 'intval', get_posts( $query ) );
 }
+
+// Start from a clean sample-import state so this smoke test is repeatable.
+day_one_importer_wp_env_cleanup_imported_content();
 
 $day_one_importer_wp_env_return_one = static function () {
 	return 1;
@@ -1545,6 +1608,187 @@ if ( $using_default_zip && ! empty( $GLOBALS['day_one_importer_62_entry_0028_pos
 	day_one_importer_wp_env_import_from_zip( $sample_zip );
 	day_one_importer_wp_env_assert( 'Clear' === (string) get_post_meta( $weather_filter_post_id, '_day_one_weather_conditions', true ), '#62 AC6 final cleanup — conditions meta is restored to "Clear" after all filter scenarios.' );
 }
+
+// --- #43 — custom post type scenarios (AC7 both directions, AC4, AC8). ---
+//
+// State at entry: 29 complete private `post` entries at the current schema
+// owned by the import owner ($day_one_importer_original_user_id, the current
+// user here), PLUS 29 imported `post` entries (and their attachments) owned
+// by the second administrator created above and never removed — 58 imported
+// `post` rows total across two owners. Every imported-entry count assertion
+// below is therefore either author-scoped or sequenced after a fresh
+// day_one_importer_wp_env_cleanup_imported_content() call, which deletes
+// BOTH owners' imported content (the helper has no author scoping).
+
+// #43 AC7 direction 1 — rerun the fixture as the journal entry CPT while the
+// import owner's 29 completed `post` entries exist: the cross-type lookup
+// skips every entry, creates nothing, and never migrates an existing entry.
+$day_one_importer_43_dir1_run    = day_one_importer_wp_env_import_from_zip_async( $sample_zip, Day_One_Importer_Post_Type::POST_TYPE );
+$day_one_importer_43_dir1_counts = $day_one_importer_43_dir1_run['results']->get_counts();
+$day_one_importer_43_dir1_skipped = isset( $day_one_importer_43_dir1_counts['posts_skipped'] ) ? (int) $day_one_importer_43_dir1_counts['posts_skipped'] : 0;
+$day_one_importer_43_dir1_created = isset( $day_one_importer_43_dir1_counts['posts_created'] ) ? (int) $day_one_importer_43_dir1_counts['posts_created'] : 0;
+day_one_importer_wp_env_assert( $created === $day_one_importer_43_dir1_skipped, '#43 AC7 — CPT rerun over existing post-type entries skipped every entry.' );
+day_one_importer_wp_env_assert( 0 === $day_one_importer_43_dir1_created, '#43 AC7 — CPT rerun over existing post-type entries created zero entries.' );
+$day_one_importer_43_dir1_cpt_rows = get_posts(
+	array(
+		'post_type'      => Day_One_Importer_Post_Type::POST_TYPE,
+		'post_status'    => 'any',
+		'posts_per_page' => -1,
+		'fields'         => 'ids',
+	)
+);
+day_one_importer_wp_env_assert( 0 === count( $day_one_importer_43_dir1_cpt_rows ), '#43 AC7 — zero day_one_entry rows exist after the CPT rerun (no migration of existing entries).' );
+// Author-scoped on purpose: an unscoped 'post' query would return 58 rows
+// across both owners here and would mask a type-migration bug.
+$day_one_importer_43_owner_posts = day_one_importer_wp_env_imported_entry_ids( 'post', (int) $day_one_importer_original_user_id );
+day_one_importer_wp_env_assert( $created === count( $day_one_importer_43_owner_posts ), '#43 AC7 — the import owner still owns all imported entries as type post after the CPT rerun.' );
+
+// #43 AC4 — fresh CPT import fidelity. The cleanup call removes ALL imported
+// content for BOTH owners (import owner + second administrator, posts and
+// attachments alike), leaving zero imported rows before the CPT import.
+day_one_importer_wp_env_cleanup_imported_content();
+day_one_importer_wp_env_assert( 0 === count( day_one_importer_wp_env_imported_entry_ids( 'post' ) ), '#43 AC4 — cleanup removed every imported post-type entry across all owners.' );
+day_one_importer_wp_env_assert( 0 === count( day_one_importer_wp_env_imported_entry_ids( Day_One_Importer_Post_Type::POST_TYPE ) ), '#43 AC4 — cleanup removed every imported journal entry across all owners.' );
+
+$day_one_importer_43_cpt_run    = day_one_importer_wp_env_import_from_zip_async( $sample_zip, Day_One_Importer_Post_Type::POST_TYPE );
+$day_one_importer_43_cpt_counts = $day_one_importer_43_cpt_run['results']->get_counts();
+$day_one_importer_43_cpt_created = isset( $day_one_importer_43_cpt_counts['posts_created'] ) ? (int) $day_one_importer_43_cpt_counts['posts_created'] : 0;
+day_one_importer_wp_env_assert( $created === $day_one_importer_43_cpt_created, '#43 AC4 — fresh CPT import created exactly the fixture entry count as journal entries.' );
+
+$day_one_importer_43_cpt_entries = day_one_importer_wp_env_imported_entry_ids( Day_One_Importer_Post_Type::POST_TYPE );
+day_one_importer_wp_env_assert( $created === count( $day_one_importer_43_cpt_entries ), '#43 AC4 — all imported entries exist as type day_one_entry.' );
+
+// #43 R9 — the CPT registers against both core taxonomies.
+day_one_importer_wp_env_assert( is_object_in_taxonomy( Day_One_Importer_Post_Type::POST_TYPE, 'category' ), '#43 R9 — day_one_entry is registered for the category taxonomy.' );
+day_one_importer_wp_env_assert( is_object_in_taxonomy( Day_One_Importer_Post_Type::POST_TYPE, 'post_tag' ), '#43 R9 — day_one_entry is registered for the post_tag taxonomy.' );
+
+// Build the uuid → creationDate map from the committed fixture JSON so the
+// per-entry loop can assert post dates match the fixture.
+$day_one_importer_43_fixture_dates = array();
+if ( $using_default_zip ) {
+	$day_one_importer_43_fixture_json = json_decode( (string) file_get_contents( dirname( __DIR__ ) . '/tests/fixtures/day-one-fictional/Fictional Journal.json' ), true );
+	if ( is_array( $day_one_importer_43_fixture_json ) && ! empty( $day_one_importer_43_fixture_json['entries'] ) ) {
+		foreach ( (array) $day_one_importer_43_fixture_json['entries'] as $day_one_importer_43_fixture_entry ) {
+			if ( ! empty( $day_one_importer_43_fixture_entry['uuid'] ) && ! empty( $day_one_importer_43_fixture_entry['creationDate'] ) ) {
+				$day_one_importer_43_fixture_dates[ (string) $day_one_importer_43_fixture_entry['uuid'] ] = (string) $day_one_importer_43_fixture_entry['creationDate'];
+			}
+		}
+	}
+	day_one_importer_wp_env_assert( count( $day_one_importer_43_fixture_dates ) === $created, '#43 AC4 — fixture JSON provides a creation date for every imported entry.' );
+}
+
+// #43 AC4 per-entry fidelity loop — the same shape the default path asserts
+// near the top of this suite, retargeted at the day_one_entry rows.
+$day_one_importer_43_cpt_uuid_map    = array();
+$day_one_importer_43_found_tag       = false;
+$day_one_importer_43_found_category  = false;
+$day_one_importer_43_all_block_names = array();
+foreach ( $day_one_importer_43_cpt_entries as $day_one_importer_43_entry_id ) {
+	$day_one_importer_43_entry_id = (int) $day_one_importer_43_entry_id;
+	day_one_importer_wp_env_assert( Day_One_Importer_Post_Type::POST_TYPE === get_post_type( $day_one_importer_43_entry_id ), '#43 AC4 — imported journal entry has post type day_one_entry.' );
+	day_one_importer_wp_env_assert( 'private' === get_post_status( $day_one_importer_43_entry_id ), '#43 AC4 — imported journal entry is private.' );
+	day_one_importer_wp_env_assert( (int) get_post_field( 'post_author', $day_one_importer_43_entry_id ) === (int) $day_one_importer_original_user_id, '#43 AC4 — imported journal entry is owned by the import owner.' );
+
+	$day_one_importer_43_uuid = (string) get_post_meta( $day_one_importer_43_entry_id, '_day_one_uuid', true );
+	day_one_importer_wp_env_assert( '' !== $day_one_importer_43_uuid, '#43 AC4 — imported journal entry has Day One UUID.' );
+	$day_one_importer_43_cpt_uuid_map[ $day_one_importer_43_uuid ] = $day_one_importer_43_entry_id;
+	day_one_importer_wp_env_assert( 'day-one-export' === get_post_meta( $day_one_importer_43_entry_id, '_day_one_source', true ), '#43 AC4 — imported journal entry has Day One source metadata.' );
+	day_one_importer_wp_env_assert( Day_One_Importer_Runner::IMPORT_SCHEMA_VERSION === get_post_meta( $day_one_importer_43_entry_id, '_day_one_import_version', true ), '#43 AC4 — imported journal entry has current import schema metadata.' );
+	day_one_importer_wp_env_assert( '1' === get_post_meta( $day_one_importer_43_entry_id, '_day_one_import_complete', true ), '#43 AC4 — imported journal entry marked complete.' );
+
+	// Post dates match the fixture's creationDate, through the same
+	// parser the runner uses for both the GMT and local fields.
+	if ( isset( $day_one_importer_43_fixture_dates[ $day_one_importer_43_uuid ] ) ) {
+		$day_one_importer_43_expected_date = Day_One_Importer_Content::parse_day_one_date( $day_one_importer_43_fixture_dates[ $day_one_importer_43_uuid ] );
+		day_one_importer_wp_env_assert( ! empty( $day_one_importer_43_expected_date['valid'] ), '#43 AC4 — fixture creation date parses for ' . $day_one_importer_43_uuid . '.' );
+		day_one_importer_wp_env_assert( $day_one_importer_43_expected_date['gmt'] === (string) get_post_field( 'post_date_gmt', $day_one_importer_43_entry_id ), '#43 AC4 — journal entry post_date_gmt matches the fixture creationDate for ' . $day_one_importer_43_uuid . '.' );
+		day_one_importer_wp_env_assert( $day_one_importer_43_expected_date['local'] === (string) get_post_field( 'post_date', $day_one_importer_43_entry_id ), '#43 AC4 — journal entry post_date matches the fixture creationDate for ' . $day_one_importer_43_uuid . '.' );
+	}
+
+	$day_one_importer_43_content = (string) get_post_field( 'post_content', $day_one_importer_43_entry_id );
+	day_one_importer_wp_env_assert( false !== strpos( $day_one_importer_43_content, '<!-- wp:' ), '#43 AC4 — journal entry content contains block comments.' );
+	if ( function_exists( 'parse_blocks' ) ) {
+		$day_one_importer_43_blocks = parse_blocks( $day_one_importer_43_content );
+		day_one_importer_wp_env_assert( day_one_importer_wp_env_blocks_have_core_block( $day_one_importer_43_blocks ), '#43 AC4 — journal entry content parses as core blocks.' );
+		day_one_importer_wp_env_collect_block_names( $day_one_importer_43_blocks, $day_one_importer_43_all_block_names );
+	}
+
+	if ( $using_default_zip && has_term( 'fictional', 'post_tag', $day_one_importer_43_entry_id ) ) {
+		$day_one_importer_43_found_tag = true;
+	}
+	if ( $using_default_zip && has_term( 'Fictional Journal', 'category', $day_one_importer_43_entry_id ) ) {
+		$day_one_importer_43_found_category = true;
+	}
+}
+
+if ( $using_default_zip ) {
+	day_one_importer_wp_env_assert( $day_one_importer_43_found_tag, '#43 AC4 — expected fictional fixture tag exists on imported journal entries.' );
+	day_one_importer_wp_env_assert( $day_one_importer_43_found_category, '#43 AC4 — expected fictional journal category exists on imported journal entries.' );
+
+	// Same block-type coverage the default path pins: the fixture must
+	// exercise every supported block type on the CPT path too.
+	$day_one_importer_43_expected_block_types = array(
+		'core/paragraph',
+		'core/heading',
+		'core/list',
+		'core/code',
+		'core/quote',
+		'core/image',
+		'core/gallery',
+		'core/video',
+		'core/audio',
+		'core/file',
+	);
+	foreach ( $day_one_importer_43_expected_block_types as $day_one_importer_43_expected_block ) {
+		day_one_importer_wp_env_assert(
+			isset( $day_one_importer_43_all_block_names[ $day_one_importer_43_expected_block ] ),
+			'#43 AC4 — the fictional fixture exercises ' . $day_one_importer_43_expected_block . ' at least once across the imported journal entries.'
+		);
+	}
+
+	// Location meta where the fixture provides it (entry 0027, Idaho Falls sample).
+	$day_one_importer_43_loc_id = isset( $day_one_importer_43_cpt_uuid_map['FICTIONAL-SAMPLE-ENTRY-0027'] ) ? (int) $day_one_importer_43_cpt_uuid_map['FICTIONAL-SAMPLE-ENTRY-0027'] : 0;
+	day_one_importer_wp_env_assert( $day_one_importer_43_loc_id > 0, '#43 AC4 — fixture entry 0027 (location sample) was imported as a journal entry.' );
+	day_one_importer_wp_env_assert( ( (string) (float) 43.511299133300781 ) === (string) get_post_meta( $day_one_importer_43_loc_id, '_day_one_location_latitude', true ), '#43 AC4 — journal entry 0027 carries the fixture latitude meta.' );
+	day_one_importer_wp_env_assert( ( (string) (float) -112.07170104980469 ) === (string) get_post_meta( $day_one_importer_43_loc_id, '_day_one_location_longitude', true ), '#43 AC4 — journal entry 0027 carries the fixture longitude meta.' );
+	day_one_importer_wp_env_assert( 'Idaho Falls Regional Airport' === (string) get_post_meta( $day_one_importer_43_loc_id, '_day_one_location_place_name', true ), '#43 AC4 — journal entry 0027 carries the fixture place name meta.' );
+	day_one_importer_wp_env_assert( 'Idaho Falls' === (string) get_post_meta( $day_one_importer_43_loc_id, '_day_one_location_locality', true ), '#43 AC4 — journal entry 0027 carries the fixture locality meta.' );
+	day_one_importer_wp_env_assert( 'United States' === (string) get_post_meta( $day_one_importer_43_loc_id, '_day_one_location_country', true ), '#43 AC4 — journal entry 0027 carries the fixture country meta.' );
+	day_one_importer_wp_env_assert( 'America/Boise' === (string) get_post_meta( $day_one_importer_43_loc_id, '_day_one_location_timezone', true ), '#43 AC4 — journal entry 0027 carries the fixture timezone meta.' );
+
+	// Weather meta where the fixture provides it (entry 0028, Idaho Falls sample).
+	$day_one_importer_43_weather_id = isset( $day_one_importer_43_cpt_uuid_map['FICTIONAL-SAMPLE-ENTRY-0028'] ) ? (int) $day_one_importer_43_cpt_uuid_map['FICTIONAL-SAMPLE-ENTRY-0028'] : 0;
+	day_one_importer_wp_env_assert( $day_one_importer_43_weather_id > 0, '#43 AC4 — fixture entry 0028 (weather sample) was imported as a journal entry.' );
+	day_one_importer_wp_env_assert( ( (string) (float) 29.909999847412109 ) === (string) get_post_meta( $day_one_importer_43_weather_id, '_day_one_weather_temperature_celsius', true ), '#43 AC4 — journal entry 0028 carries the fixture temperature meta.' );
+	day_one_importer_wp_env_assert( ( (string) (float) 0 ) === (string) get_post_meta( $day_one_importer_43_weather_id, '_day_one_weather_humidity', true ), '#43 AC4 — journal entry 0028 carries the zero humidity meta.' );
+	day_one_importer_wp_env_assert( 'Clear' === (string) get_post_meta( $day_one_importer_43_weather_id, '_day_one_weather_conditions', true ), '#43 AC4 — journal entry 0028 carries the fixture conditions meta.' );
+	day_one_importer_wp_env_assert( 'Forecast.io' === (string) get_post_meta( $day_one_importer_43_weather_id, '_day_one_weather_service', true ), '#43 AC4 — journal entry 0028 carries the fixture service meta.' );
+}
+
+// #43 AC8 — same-type rerun over the completed CPT import: everything skips.
+$day_one_importer_43_same_run    = day_one_importer_wp_env_import_from_zip_async( $sample_zip, Day_One_Importer_Post_Type::POST_TYPE );
+$day_one_importer_43_same_counts = $day_one_importer_43_same_run['results']->get_counts();
+$day_one_importer_43_same_created = isset( $day_one_importer_43_same_counts['posts_created'] ) ? (int) $day_one_importer_43_same_counts['posts_created'] : 0;
+$day_one_importer_43_same_skipped = isset( $day_one_importer_43_same_counts['posts_skipped'] ) ? (int) $day_one_importer_43_same_counts['posts_skipped'] : 0;
+day_one_importer_wp_env_assert( 0 === $day_one_importer_43_same_created, '#43 AC8 — same-type CPT rerun created zero entries.' );
+day_one_importer_wp_env_assert( $created === $day_one_importer_43_same_skipped, '#43 AC8 — same-type CPT rerun skipped every completed journal entry.' );
+day_one_importer_wp_env_assert( $created === count( day_one_importer_wp_env_imported_entry_ids( Day_One_Importer_Post_Type::POST_TYPE ) ), '#43 AC8 — journal entry count is unchanged after the same-type rerun.' );
+
+// #43 AC7 direction 2 — rerun as 'post' over the completed CPT import:
+// everything skips and nothing migrates back to type post.
+$day_one_importer_43_dir2_run    = day_one_importer_wp_env_import_from_zip_async( $sample_zip, 'post' );
+$day_one_importer_43_dir2_counts = $day_one_importer_43_dir2_run['results']->get_counts();
+$day_one_importer_43_dir2_created = isset( $day_one_importer_43_dir2_counts['posts_created'] ) ? (int) $day_one_importer_43_dir2_counts['posts_created'] : 0;
+$day_one_importer_43_dir2_skipped = isset( $day_one_importer_43_dir2_counts['posts_skipped'] ) ? (int) $day_one_importer_43_dir2_counts['posts_skipped'] : 0;
+day_one_importer_wp_env_assert( 0 === $day_one_importer_43_dir2_created, '#43 AC7 — post-type rerun over journal entries created zero entries.' );
+day_one_importer_wp_env_assert( $created === $day_one_importer_43_dir2_skipped, '#43 AC7 — post-type rerun over journal entries skipped every entry.' );
+foreach ( $day_one_importer_43_cpt_entries as $day_one_importer_43_entry_id ) {
+	day_one_importer_wp_env_assert( Day_One_Importer_Post_Type::POST_TYPE === get_post_type( (int) $day_one_importer_43_entry_id ), '#43 AC7 — journal entry kept type day_one_entry after the post-type rerun.' );
+}
+// Unscoped zero-rows assertion: valid only because the AC4 cleanup above
+// deleted the second administrator's imported posts along with the owner's
+// (the cleanup helper has no author scoping); keep it sequenced after that.
+day_one_importer_wp_env_assert( 0 === count( day_one_importer_wp_env_imported_entry_ids( 'post' ) ), '#43 AC7 — zero imported post-type rows exist after the post-type rerun.' );
 
 echo wp_json_encode(
 	array(
