@@ -31,9 +31,10 @@ class Day_One_Importer_Job_Store {
 	 * @param string                        $run_dir Protected run directory.
 	 * @param string                        $zip_path Protected ZIP path.
 	 * @param Day_One_Importer_Results|null $results Initial results.
+	 * @param string                        $entry_post_type Post type for entries created by this run; sanitized against the entry post type allowlist, invalid values fall back to 'post'.
 	 * @return array<string,mixed>|false Job state, or false.
 	 */
-	public function create_job( $owner_user_id, $run_dir, $zip_path, $results = null ) {
+	public function create_job( $owner_user_id, $run_dir, $zip_path, $results = null, $entry_post_type = 'post' ) {
 		$owner_user_id = (int) $owner_user_id;
 		$run_dir       = (string) $run_dir;
 		$zip_path      = (string) $zip_path;
@@ -47,6 +48,7 @@ class Day_One_Importer_Job_Store {
 		$job     = array(
 			'id'                             => $job_id,
 			'owner_user_id'                  => $owner_user_id,
+			'entry_post_type'                => Day_One_Importer_Post_Type::sanitize_choice( $entry_post_type ),
 			'created_at'                     => $now,
 			'updated_at'                     => $now,
 			'expires_at'                     => $now + $this->retention_seconds(),
