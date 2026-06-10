@@ -289,6 +289,46 @@ function day_one_importer_wp_env_imported_entry_ids( $post_type, $author_id = 0 
 	return array_map( 'intval', get_posts( $query ) );
 }
 
+/**
+ * Query the IDs of imported Day One entries carrying a given UUID, across
+ * every post type an imported entry may be stored as.
+ *
+ * Spans all registered post statuses — including trash — so cross-type
+ * duplicate detection cannot miss a row that was trashed rather than
+ * deleted. Attachments are excluded: only entry post types are queried.
+ *
+ * @param string $uuid Day One entry UUID.
+ * @return int[] Matching entry post IDs in ascending ID order.
+ */
+function day_one_importer_wp_env_entry_ids_for_uuid( $uuid ) {
+	return array_map(
+		'intval',
+		get_posts(
+			array(
+				'post_type'      => Day_One_Importer_Post_Type::entry_post_types(),
+				'post_status'    => array_values( get_post_stati( array(), 'names' ) ),
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'meta_query'     => array(
+					'relation' => 'AND',
+					array(
+						'key'     => '_day_one_uuid',
+						'value'   => (string) $uuid,
+						'compare' => '=',
+					),
+					array(
+						'key'     => '_day_one_source',
+						'value'   => 'day-one-export',
+						'compare' => '=',
+					),
+				),
+			)
+		)
+	);
+}
+
 // Start from a clean sample-import state so this smoke test is repeatable.
 day_one_importer_wp_env_cleanup_imported_content();
 
@@ -1789,6 +1829,178 @@ foreach ( $day_one_importer_43_cpt_entries as $day_one_importer_43_entry_id ) {
 // deleted the second administrator's imported posts along with the owner's
 // (the cleanup helper has no author scoping); keep it sequenced after that.
 day_one_importer_wp_env_assert( 0 === count( day_one_importer_wp_env_imported_entry_ids( 'post' ) ), '#43 AC7 — zero imported post-type rows exist after the post-type rerun.' );
+
+// --- #43 — trash-replace, legacy-job, media-scope, and rewrite-guard scenarios (AC12, AC6, AC9, AC13). ---
+//
+// State at entry: 29 day_one_entry entries owned by the import owner and zero
+// imported post-type rows — the AC4 cleanup above removed both owners' earlier
+// content and the subsequent reruns skipped everything.
+
+// #43 AC12 direction 1 (CPT → post) — trash one journal entry, then rerun as
+// 'post': the run hard-deletes the trashed original and creates exactly one
+// replacement of the CURRENT run's type, with no UUID duplicate across types.
+$day_one_importer_43_pre_trash_cpt_ids = day_one_importer_wp_env_imported_entry_ids( Day_One_Importer_Post_Type::POST_TYPE );
+day_one_importer_wp_env_assert( $created === count( $day_one_importer_43_pre_trash_cpt_ids ), '#43 AC12 — scenario entry state holds the full journal entry set.' );
+$day_one_importer_43_trashed_id   = (int) reset( $day_one_importer_43_pre_trash_cpt_ids );
+$day_one_importer_43_trashed_uuid = (string) get_post_meta( $day_one_importer_43_trashed_id, '_day_one_uuid', true );
+day_one_importer_wp_env_assert( '' !== $day_one_importer_43_trashed_uuid, '#43 AC12 — journal entry picked for trashing has a Day One UUID.' );
+wp_trash_post( $day_one_importer_43_trashed_id );
+day_one_importer_wp_env_assert( 'trash' === get_post_status( $day_one_importer_43_trashed_id ), '#43 AC12 — journal entry moved to trash before the post-type rerun.' );
+
+$day_one_importer_43_replace1_run     = day_one_importer_wp_env_import_from_zip_async( $sample_zip, 'post' );
+$day_one_importer_43_replace1_counts  = $day_one_importer_43_replace1_run['results']->get_counts();
+$day_one_importer_43_replace1_created = isset( $day_one_importer_43_replace1_counts['posts_created'] ) ? (int) $day_one_importer_43_replace1_counts['posts_created'] : 0;
+$day_one_importer_43_replace1_skipped = isset( $day_one_importer_43_replace1_counts['posts_skipped'] ) ? (int) $day_one_importer_43_replace1_counts['posts_skipped'] : 0;
+day_one_importer_wp_env_assert( 1 === $day_one_importer_43_replace1_created, '#43 AC12 — post-type rerun created exactly one replacement for the trashed journal entry.' );
+day_one_importer_wp_env_assert( ( $created - 1 ) === $day_one_importer_43_replace1_skipped, '#43 AC12 — post-type rerun skipped every non-trashed journal entry.' );
+day_one_importer_wp_env_assert( null === get_post( $day_one_importer_43_trashed_id ), '#43 AC12 — trashed journal entry was hard-deleted by the replacement run.' );
+$day_one_importer_43_replace1_ids = day_one_importer_wp_env_entry_ids_for_uuid( $day_one_importer_43_trashed_uuid );
+day_one_importer_wp_env_assert( 1 === count( $day_one_importer_43_replace1_ids ), '#43 AC12 — exactly one entry carries the replaced UUID across both entry post types.' );
+$day_one_importer_43_replace1_id = (int) reset( $day_one_importer_43_replace1_ids );
+day_one_importer_wp_env_assert( 'post' === get_post_type( $day_one_importer_43_replace1_id ), '#43 AC12 — the replacement entry took the rerun type post.' );
+day_one_importer_wp_env_assert( $created === ( count( day_one_importer_wp_env_imported_entry_ids( 'post' ) ) + count( day_one_importer_wp_env_imported_entry_ids( Day_One_Importer_Post_Type::POST_TYPE ) ) ), '#43 AC12 — combined imported-entry count across both post types is unchanged after the CPT-to-post replacement.' );
+
+// #43 AC12 direction 2 (post → CPT) — trash the post-type replacement, then
+// rerun as the journal entry CPT: the state returns to a full CPT entry set.
+wp_trash_post( $day_one_importer_43_replace1_id );
+day_one_importer_wp_env_assert( 'trash' === get_post_status( $day_one_importer_43_replace1_id ), '#43 AC12 — post-type replacement moved to trash before the CPT rerun.' );
+
+$day_one_importer_43_replace2_run     = day_one_importer_wp_env_import_from_zip_async( $sample_zip, Day_One_Importer_Post_Type::POST_TYPE );
+$day_one_importer_43_replace2_counts  = $day_one_importer_43_replace2_run['results']->get_counts();
+$day_one_importer_43_replace2_created = isset( $day_one_importer_43_replace2_counts['posts_created'] ) ? (int) $day_one_importer_43_replace2_counts['posts_created'] : 0;
+$day_one_importer_43_replace2_skipped = isset( $day_one_importer_43_replace2_counts['posts_skipped'] ) ? (int) $day_one_importer_43_replace2_counts['posts_skipped'] : 0;
+day_one_importer_wp_env_assert( 1 === $day_one_importer_43_replace2_created, '#43 AC12 — CPT rerun created exactly one replacement for the trashed post-type entry.' );
+day_one_importer_wp_env_assert( ( $created - 1 ) === $day_one_importer_43_replace2_skipped, '#43 AC12 — CPT rerun skipped every non-trashed entry.' );
+day_one_importer_wp_env_assert( null === get_post( $day_one_importer_43_replace1_id ), '#43 AC12 — trashed post-type replacement was hard-deleted by the CPT rerun.' );
+$day_one_importer_43_replace2_ids = day_one_importer_wp_env_entry_ids_for_uuid( $day_one_importer_43_trashed_uuid );
+day_one_importer_wp_env_assert( 1 === count( $day_one_importer_43_replace2_ids ), '#43 AC12 — exactly one entry carries the replaced UUID after the reverse-direction replacement.' );
+day_one_importer_wp_env_assert( Day_One_Importer_Post_Type::POST_TYPE === get_post_type( (int) reset( $day_one_importer_43_replace2_ids ) ), '#43 AC12 — the reverse-direction replacement took the rerun type day_one_entry.' );
+day_one_importer_wp_env_assert( $created === count( day_one_importer_wp_env_imported_entry_ids( Day_One_Importer_Post_Type::POST_TYPE ) ), '#43 AC12 — the journal entry set is back to the full fixture count after both replacement directions.' );
+day_one_importer_wp_env_assert( 0 === count( day_one_importer_wp_env_imported_entry_ids( 'post' ) ), '#43 AC12 — zero imported post-type rows remain after both replacement directions.' );
+
+// #43 AC6 — a legacy job record without the entry_post_type key processes to
+// completion and creates type post. The job is created WITH the CPT choice
+// and the key is then removed from the stored option, proving the observed
+// post-type fallback comes from the missing key, not from the stored value.
+$day_one_importer_43_legacy_cpt_ids    = day_one_importer_wp_env_imported_entry_ids( Day_One_Importer_Post_Type::POST_TYPE );
+$day_one_importer_43_legacy_deleted_id = (int) reset( $day_one_importer_43_legacy_cpt_ids );
+$day_one_importer_43_legacy_uuid       = (string) get_post_meta( $day_one_importer_43_legacy_deleted_id, '_day_one_uuid', true );
+day_one_importer_wp_env_assert( '' !== $day_one_importer_43_legacy_uuid, '#43 AC6 — journal entry picked for permanent deletion has a Day One UUID.' );
+wp_delete_post( $day_one_importer_43_legacy_deleted_id, true );
+day_one_importer_wp_env_assert( null === get_post( $day_one_importer_43_legacy_deleted_id ), '#43 AC6 — journal entry was permanently deleted before the legacy-job run.' );
+
+$day_one_importer_43_legacy_run_dir = Day_One_Importer_Cleanup::create_run_directory();
+day_one_importer_wp_env_assert( $day_one_importer_43_legacy_run_dir, '#43 AC6 — legacy-job run directory created.' );
+$day_one_importer_43_legacy_zip = trailingslashit( $day_one_importer_43_legacy_run_dir ) . 'day-one-export.zip';
+day_one_importer_wp_env_assert( copy( $sample_zip, $day_one_importer_43_legacy_zip ), '#43 AC6 — legacy-job ZIP copied into protected run directory.' );
+Day_One_Importer_Cleanup::set_owner_only_permissions( $day_one_importer_43_legacy_zip );
+
+$day_one_importer_43_legacy_store = new Day_One_Importer_Job_Store();
+$day_one_importer_43_legacy_job   = $day_one_importer_43_legacy_store->create_job( get_current_user_id(), $day_one_importer_43_legacy_run_dir, $day_one_importer_43_legacy_zip, new Day_One_Importer_Results(), Day_One_Importer_Post_Type::POST_TYPE );
+day_one_importer_wp_env_assert( is_array( $day_one_importer_43_legacy_job ), '#43 AC6 — legacy-job record created.' );
+
+// Reshape the stored record into the pre-#43 schema: drop entry_post_type.
+$day_one_importer_43_legacy_option = Day_One_Importer_Job_Store::JOB_PREFIX . $day_one_importer_43_legacy_job['id'];
+$day_one_importer_43_legacy_stored = get_option( $day_one_importer_43_legacy_option );
+day_one_importer_wp_env_assert( is_array( $day_one_importer_43_legacy_stored ) && isset( $day_one_importer_43_legacy_stored['entry_post_type'] ) && Day_One_Importer_Post_Type::POST_TYPE === $day_one_importer_43_legacy_stored['entry_post_type'], '#43 AC6 — job record persisted the CPT entry_post_type before the legacy reshape.' );
+unset( $day_one_importer_43_legacy_stored['entry_post_type'] );
+update_option( $day_one_importer_43_legacy_option, $day_one_importer_43_legacy_stored, false );
+$day_one_importer_43_legacy_reloaded = get_option( $day_one_importer_43_legacy_option );
+day_one_importer_wp_env_assert( is_array( $day_one_importer_43_legacy_reloaded ) && ! array_key_exists( 'entry_post_type', $day_one_importer_43_legacy_reloaded ), '#43 AC6 — stored job record no longer carries the entry_post_type key.' );
+
+$day_one_importer_43_legacy_processor = new Day_One_Importer_Job_Processor( $day_one_importer_43_legacy_store );
+$day_one_importer_43_legacy_batches   = 0;
+$day_one_importer_43_legacy_status    = array();
+while ( $day_one_importer_43_legacy_batches < 500 ) {
+	++$day_one_importer_43_legacy_batches;
+	$day_one_importer_43_legacy_status = $day_one_importer_43_legacy_processor->process_batch( $day_one_importer_43_legacy_job['id'], 'manual' );
+	if ( ! empty( $day_one_importer_43_legacy_status['is_terminal'] ) || 'failed' === $day_one_importer_43_legacy_status['status'] ) {
+		break;
+	}
+}
+day_one_importer_wp_env_assert( ! empty( $day_one_importer_43_legacy_status['is_terminal'] ) && 'completed' === $day_one_importer_43_legacy_status['status'], '#43 AC6 — legacy job record without entry_post_type processed to completion.' );
+
+$day_one_importer_43_legacy_final = $day_one_importer_43_legacy_store->get_job( $day_one_importer_43_legacy_job['id'] );
+day_one_importer_wp_env_assert( is_array( $day_one_importer_43_legacy_final ), '#43 AC6 — completed legacy job remains displayable.' );
+$day_one_importer_43_legacy_counts  = Day_One_Importer_Results::from_array( $day_one_importer_43_legacy_final['results'] )->get_counts();
+$day_one_importer_43_legacy_created = isset( $day_one_importer_43_legacy_counts['posts_created'] ) ? (int) $day_one_importer_43_legacy_counts['posts_created'] : 0;
+$day_one_importer_43_legacy_skipped = isset( $day_one_importer_43_legacy_counts['posts_skipped'] ) ? (int) $day_one_importer_43_legacy_counts['posts_skipped'] : 0;
+day_one_importer_wp_env_assert( 1 === $day_one_importer_43_legacy_created, '#43 AC6 — legacy job created exactly one entry for the deleted UUID.' );
+day_one_importer_wp_env_assert( ( $created - 1 ) === $day_one_importer_43_legacy_skipped, '#43 AC6 — legacy job skipped every existing completed entry.' );
+$day_one_importer_43_legacy_new_ids = day_one_importer_wp_env_entry_ids_for_uuid( $day_one_importer_43_legacy_uuid );
+day_one_importer_wp_env_assert( 1 === count( $day_one_importer_43_legacy_new_ids ), '#43 AC6 — exactly one entry carries the legacy-run UUID across both entry post types.' );
+day_one_importer_wp_env_assert( 'post' === get_post_type( (int) reset( $day_one_importer_43_legacy_new_ids ) ), '#43 AC6 — the legacy job record without entry_post_type created the entry as type post (fallback).' );
+
+// #43 AC9 in-process media scope — content rewriting and read authorization
+// are parent-type-independent: an attachment whose parent is a journal entry
+// renders through the private-media endpoint, the import owner can read the
+// parent, and a subscriber cannot. Full endpoint status-code parity is
+// deliberately not asserted here (the endpoint exits); it is covered by the
+// manual verification flow instead.
+$day_one_importer_43_media_attachment_id = 0;
+$day_one_importer_43_media_parent_id     = 0;
+$day_one_importer_43_attachment_ids      = get_posts(
+	array(
+		'post_type'      => 'attachment',
+		'post_status'    => 'any',
+		'posts_per_page' => -1,
+		'fields'         => 'ids',
+		'orderby'        => 'ID',
+		'order'          => 'ASC',
+	)
+);
+foreach ( $day_one_importer_43_attachment_ids as $day_one_importer_43_attachment_id ) {
+	if ( 'day-one-export' !== (string) get_post_meta( (int) $day_one_importer_43_attachment_id, '_day_one_source', true ) ) {
+		continue;
+	}
+	$day_one_importer_43_attachment_parent = (int) wp_get_post_parent_id( (int) $day_one_importer_43_attachment_id );
+	if ( ! $day_one_importer_43_attachment_parent || Day_One_Importer_Post_Type::POST_TYPE !== get_post_type( $day_one_importer_43_attachment_parent ) ) {
+		continue;
+	}
+	// Some fixture attachments are attached to their entry without being
+	// embedded in its content; pick one the parent's stored markup
+	// references through the nonce-less private-media endpoint URL.
+	$day_one_importer_43_attachment_stored = (string) get_post_field( 'post_content', $day_one_importer_43_attachment_parent );
+	if ( 1 === preg_match( '/attachment_id=' . (int) $day_one_importer_43_attachment_id . '(?:\D|$)/', $day_one_importer_43_attachment_stored ) ) {
+		$day_one_importer_43_media_attachment_id = (int) $day_one_importer_43_attachment_id;
+		$day_one_importer_43_media_parent_id     = $day_one_importer_43_attachment_parent;
+		break;
+	}
+}
+day_one_importer_wp_env_assert( $day_one_importer_43_media_attachment_id > 0, '#43 AC9 — an imported attachment embedded in a journal entry parent exists.' );
+
+$day_one_importer_43_rendered = apply_filters( 'the_content', (string) get_post_field( 'post_content', $day_one_importer_43_media_parent_id ) );
+day_one_importer_wp_env_assert( false !== strpos( $day_one_importer_43_rendered, 'admin-ajax.php' ), '#43 AC9 — rendered journal entry content points at the admin-ajax endpoint.' );
+day_one_importer_wp_env_assert( false !== strpos( $day_one_importer_43_rendered, 'action=' . Day_One_Importer_Media::PRIVATE_MEDIA_ACTION ), '#43 AC9 — rendered journal entry content carries the private-media action.' );
+// The stored URL is nonce-less; a nonce parameter directly after this
+// attachment's ID proves the the_content rewrite ran for the CPT parent.
+day_one_importer_wp_env_assert(
+	1 === preg_match( '/action=' . preg_quote( Day_One_Importer_Media::PRIVATE_MEDIA_ACTION, '/' ) . '(?:&|&#0?38;|&amp;)attachment_id=' . $day_one_importer_43_media_attachment_id . '(?:&|&#0?38;|&amp;)nonce=[0-9a-f]+/', $day_one_importer_43_rendered ),
+	'#43 AC9 — rendered journal entry content carries a freshly nonce\'d private-media endpoint URL for the attachment.'
+);
+
+day_one_importer_wp_env_assert( current_user_can( 'read_post', $day_one_importer_43_media_parent_id ), '#43 AC9 — the import owner can read the journal entry parent of the imported attachment.' );
+$day_one_importer_43_subscriber_suffix = str_replace( '.', '', uniqid( '', true ) );
+$day_one_importer_43_subscriber_id     = wp_insert_user(
+	array(
+		'user_login' => 'day_one_importer_sub_' . $day_one_importer_43_subscriber_suffix,
+		'user_pass'  => wp_generate_password( 24, true ),
+		'user_email' => 'day-one-importer-sub-' . $day_one_importer_43_subscriber_suffix . '@example.com',
+		'role'       => 'subscriber',
+	)
+);
+day_one_importer_wp_env_assert( ! is_wp_error( $day_one_importer_43_subscriber_id ) && $day_one_importer_43_subscriber_id > 0, '#43 AC9 — subscriber user created for the authorization check.' );
+wp_set_current_user( (int) $day_one_importer_43_subscriber_id );
+day_one_importer_wp_env_assert( ! current_user_can( 'read_post', $day_one_importer_43_media_parent_id ), '#43 AC9 — a subscriber cannot read the private journal entry parent.' );
+wp_set_current_user( (int) $day_one_importer_original_user_id );
+
+// #43 AC13 — the versioned rewrite-flush guard short-circuits: the persisted
+// version already matches, so calling the guard again neither deletes nor
+// regenerates the rewrite_rules option.
+day_one_importer_wp_env_assert( Day_One_Importer_Post_Type::REWRITE_VERSION === get_option( Day_One_Importer_Post_Type::REWRITE_VERSION_OPTION ), '#43 AC13 — the persisted rewrite version matches the current REWRITE_VERSION.' );
+$day_one_importer_43_rewrite_rules_before = get_option( 'rewrite_rules' );
+Day_One_Importer_Post_Type::maybe_flush_rewrite_rules();
+day_one_importer_wp_env_assert( get_option( 'rewrite_rules' ) === $day_one_importer_43_rewrite_rules_before, '#43 AC13 — maybe_flush_rewrite_rules() left the rewrite_rules option byte-identical (guard short-circuited).' );
 
 echo wp_json_encode(
 	array(
