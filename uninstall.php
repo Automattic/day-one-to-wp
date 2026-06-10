@@ -2,8 +2,12 @@
 /**
  * Uninstall cleanup for Day One Importer.
  *
- * Removes plugin-owned job options and scheduled events. Imported posts and
- * media are intentionally preserved: they are the user's journal content.
+ * Removes plugin-owned job options and scheduled events. Imported entries —
+ * regular posts and Journal Entries custom post type entries alike — and
+ * their media are intentionally preserved: they are the user's journal
+ * content. Journal Entries stop appearing in wp-admin once uninstall removes
+ * the plugin (and with it the post type registration), but the entries
+ * themselves stay in the database.
  *
  * @package Day_One_Importer
  */

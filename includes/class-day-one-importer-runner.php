@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Day_One_Importer_Runner {
 	/**
-	 * Import schema version stored on posts.
+	 * Import schema version stored on imported entries (either entry post type).
 	 *
 	 * @var string
 	 */
@@ -767,7 +767,7 @@ class Day_One_Importer_Runner {
 	}
 
 	/**
-	 * Find existing imported post by UUID.
+	 * Find an existing imported entry by UUID, across both entry post types.
 	 *
 	 * @param string                   $uuid UUID.
 	 * @param Day_One_Importer_Results $results Results.

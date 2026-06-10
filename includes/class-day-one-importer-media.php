@@ -1701,8 +1701,8 @@ class Day_One_Importer_Media {
 	 * Inject fresh private media nonces into rendered post content.
 	 *
 	 * Stored block markup intentionally keeps stable nonce-less endpoint URLs so
-	 * imported posts do not expire. Rendered content receives user-specific
-	 * nonces immediately before output.
+	 * imported entries of either post type do not expire. Rendered content
+	 * receives user-specific nonces immediately before output.
 	 *
 	 * @param string $content Post content.
 	 * @return string Filtered content.
