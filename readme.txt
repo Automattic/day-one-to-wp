@@ -4,7 +4,7 @@ Tags: import, importer, day-one, journal, privacy
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.2.23
+Stable tag: 0.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,11 +12,11 @@ Import Day One JSON export ZIPs as private WordPress posts with categories, tags
 
 == Description ==
 
-Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, supported photos, supported videos, supported audios, and supported PDF attachments.
+Day One Importer is made by Automattic. It adds a WordPress admin importer for Day One JSON export ZIP files. It creates one private WordPress post for each Day One entry and attempts to preserve entry dates, journal categories, tags, text, supported photos, supported videos, supported audios, and supported PDF attachments. Entries import as private posts by default; the import screen also offers an optional Journal Entries custom post type, and the choice applies to newly imported entries only.
 
 The importer is designed for local or private archive migration workflows:
 
-* Imported posts are private by default.
+* Imported entries are private by default and created as regular posts; the import form can optionally target a Journal Entries custom post type instead, affecting newly imported entries only.
 * The PHP ZipArchive extension is required so ZIP exports can be inspected with safety budgets before extraction.
 * Large exports run as resumable jobs advanced by short browser requests with a WP-Cron fallback, reducing gateway timeout risk.
 * Re-importing the same export skips completed entries using Day One UUID metadata.
@@ -60,11 +60,22 @@ Yes. The importer stores Day One UUID metadata and skips entries that were alrea
 
 The importer initially supports common image formats such as JPEG/JPG and PNG, plus other image formats accepted safely by the target WordPress site. Day One videos (`.mov`, `.mp4`), Day One audios (`.mp3`, `.m4a`, `.aac`), and Day One PDFs (`application/pdf`) are imported when the site's MIME allowlist accepts them (`video/quicktime`, `video/mp4`, `audio/mpeg`, `audio/mp4`, `audio/aac`, and `application/pdf` are enabled by default for Administrator-role users on most WordPress sites). PDF preview / thumbnail rendering is intentionally out of scope: the emitted `core/file` block is link + Download button only. Unsupported or missing media generates warnings without stopping unrelated entries; video, audio, and PDF embeds whose MIME the site refuses (most notably `.lpcm` linear-PCM audio on default WordPress allowlists, or sites that have explicitly stripped `application/pdf` from `upload_mimes`) are dropped with a privacy-safe warning (no `core/file` fallback is emitted). To support additional video, audio, or PDF MIMEs, extend the uploader allowlist via the standard `upload_mimes` filter. New imported media is stored in a protected uploads subfolder and served through a nonce- and permission-checked endpoint. To reduce timeout risk during large imports, generated image sub-sizes are skipped during import; regenerate thumbnails after import if you need those sizes later.
 
+= Can I import into a custom post type instead of posts? =
+
+Yes. The upload form lets you choose, per import, between regular posts (the default) and a Journal Entries custom post type. The choice applies only to entries created by that import: previously imported entries keep their existing post type, and there is no migration between types.
+
+= What happens to imported entries if I uninstall the plugin? =
+
+Uninstalling retains all imported content, both regular posts and Journal Entries. After uninstall the custom post type is no longer registered, so Journal Entries disappear from wp-admin until a plugin registering the `day_one_entry` post type is active again. This is standard WordPress behavior; the content itself stays in the database.
+
 = Does the plugin contact external services? =
 
 No. The plugin processes ZIP files, extracted content, and resumable job manifests locally in protected WordPress temporary locations. Completed or canceled jobs clean up temporary files when possible; failed jobs retain enough state to retry until canceled or stale.
 
 == Changelog ==
+
+= 0.3.0 =
+* Add an option on the import form to import entries as a Journal Entries custom post type. Regular posts remain the default, and previously imported entries keep their existing post type.
 
 = 0.2.23 =
 * Security hardening for WordPress.org review: the PHP ZipArchive extension is now required (imports fail closed without it), ZIP expansion budgets (member count, total uncompressed size, per-member size, compression ratio) reject hostile archives before and during extraction, and idempotency lookups are scoped to the import owner.
