@@ -7,7 +7,7 @@
 - The fixture grows by exactly one or two entries per issue. Each entry is dedicated to a specific block-type, parser path, or runner contract, and every test that asserts on it pins the entry by its UUID (`FICTIONAL-SAMPLE-ENTRY-####`).
 - The plain-text `tests/fixtures/expected/` baselines pin the rendered post HTML for entries 0001-0017 (the #56 byte-parity range). Adding or moving entries in that range requires regenerating the baselines (see "How to extend").
 
-The committed entries cover every block type the importer can emit today: `core/paragraph`, `core/heading`, `core/list` (+ `core/list-item`), `core/code`, `core/quote`, `core/image`, `core/gallery`, `core/video`, `core/audio`, and `core/file`. The wp-env smoke walks every imported post with `parse_blocks()` and asserts that this set is fully exercised across the fixture; missing any one fails the smoke and names the gap.
+The committed entries cover every block type the importer can emit today: `core/paragraph`, `core/heading`, `core/list` (+ `core/list-item`), `core/code`, `core/quote`, `core/image`, `core/gallery`, `core/video`, `core/audio`, and `core/file`. The wp-env smoke walks every entry imported by its first pass (all created as type `post`) with `parse_blocks()` and asserts that this set is fully exercised across the fixture, then repeats the same coverage check against the fresh custom-post-type import later in the run; missing any one fails the smoke and names the gap.
 
 ## Per-entry table
 
@@ -83,9 +83,9 @@ Every block type the importer can emit today appears at least once in the fictio
 - `core/code` — entries 0014, 0016.
 - `core/quote` — entries 0015, 0016.
 - `core/image` — entries 0001, 0007 (attached only, no inline), 0018 (inline), 0021 (interleaved), 0023 (interleaved), 0025 (interleaved), 0026 (animated GIF).
-- `core/gallery` — exercised by the "post with multiple image attachments" branch in the smoke (any future fixture entry attaching >= 2 photos with inline embeds emits a `core/gallery`; the assertion at lines ~306-330 of `tests/wp-env-import-sample.php` covers ordering, IDs, and nested `core/image` children).
+- `core/gallery` — exercised by the "post with multiple image attachments" branch in the smoke (any future fixture entry attaching >= 2 photos with inline embeds emits a `core/gallery`; the multiple-attachments branch of the first-pass per-post walk in `tests/wp-env-import-sample.php` covers ordering, IDs, and nested `core/image` children).
 - `core/video` — entries 0020, 0021, 0023, 0025.
 - `core/audio` — entries 0022, 0023, 0025.
 - `core/file` — entries 0024, 0025.
 
-The consolidated block-type regression assertion at the end of the wp-env smoke walks every imported post via `parse_blocks()`, collects the set of block names, and fails with a clear "missing block type" message if any of the ten types above is absent across the entire fixture.
+The consolidated block-type regression assertion in the wp-env smoke runs immediately after the first-pass per-post walk (the #43 custom-post-type scenarios now follow it, so it no longer sits at the end of the script): it walks every entry imported by that first pass via `parse_blocks()`, collects the set of block names, and fails with a clear "missing block type" message if any of the ten types above is absent across the entire fixture. The #43 scenarios repeat the same ten-type check against the journal entries created by the fresh `day_one_entry` import.
