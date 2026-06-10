@@ -13,3 +13,6 @@ pipelines/
 coverage/
 *.log
 /day-one-importer.zip
+
+# Claude Code worktrees used by Radical Pipelines.
+.claude/worktrees/
